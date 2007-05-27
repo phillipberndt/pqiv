@@ -1,0 +1,16 @@
+PQIV README
+
+pqiv is a python rewrite of qiv. It's far from beeing complete but all
+major features are working. I wrote it because my favorite distribution
+gentoo dropped support for qiv. This script might be inefficient; to tell the
+truth, it's more like "quick and dirty".
+
+This package does not come with a Makefile as it's intended as a sourcefile for
+the ebuild only. Anyway, if you downloaded it on your own, installation is
+simple:
+ * Copy pqiv.py to /usr/bin/qiv
+ * Copy qiv.1 to /usr/share/man/man1/qiv.1 (optional)
+You'll need pygtk.
+
+Report bugs, feature requests, improvements, etc. to phillip.berndt at
+gmail dot com.
