@@ -116,6 +116,7 @@ class ImageViewer(gtk.Window):
 		self.fileList = fileList
 		if "thumbnail" in dir(options) and options.thumbnail == True:
 			self.bigThumbnail()
+			self.setTitle()
 		self.loadImage()
 
 	def fullscreen(self):
@@ -251,7 +252,10 @@ class ImageViewer(gtk.Window):
 				self.autoscaleToggle = not self.autoscaleToggle
 				self.loadImage()
 				gobject.timeout_add(5, self.display)
-				self.setTitle("Autoscale toggled")
+				if self.autoscaleToggle:
+					self.setTitle("Autoscale")
+				else:
+					self.setTitle("Autoscale disabled")
 			elif chr(event.keyval) == "l":
 				# Binding: l: Rotate left
 				self.rotate(gtk.gdk.PIXBUF_ROTATE_COUNTERCLOCKWISE)
@@ -358,6 +362,7 @@ class ImageViewer(gtk.Window):
 			timg.copy_area(0, 0, timgSize[0], timgSize[1], pixbuf, pos[0], pos[1])
 			del timg
 			gc.collect()
+		print
 		self.currentPixbuf = pixbuf
 		self.fileList = [ "#" ]
 		self.fileName = "#"
@@ -454,6 +459,10 @@ class ImageViewer(gtk.Window):
 				imgSize[1] = int(imgSize[1] * scaleFactor)
 
 	def autoResize(self):
+		"""
+			Resize the window to the optimal size for the
+			loaded image. Center the image in fullscreen.
+		"""
 		imgSize = [self.currentPixbuf.get_width() * self.scaleFactor, self.currentPixbuf.get_height() * self.scaleFactor]
 		imgSize = map(lambda x: max(int(x), 1), imgSize)
 		if not self.fullscreenToggle:
