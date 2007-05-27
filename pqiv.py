@@ -19,7 +19,7 @@
 # with this program; if not, write to the Free Software Foundation, Inc.,
 # 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
-VERSION=0.1
+VERSION=0.2
 
 import sys
 try:
@@ -237,7 +237,8 @@ class ImageViewer(gtk.Window):
 				self.setTitle("Zoom +")
 			elif chr(event.keyval) == "-":
 				# Binding: -: Zoom out
-				self.scaleFactor -= 0.1
+				if self.scaleFactor > 0.1:
+					self.scaleFactor -= 0.1
 				self.display()
 				self.autoResize()
 				gobject.timeout_add(10, self.display)
@@ -521,6 +522,7 @@ class ImageViewer(gtk.Window):
 			horizontally.
 		"""
 		self.currentPixbuf = self.currentPixbuf.flip(horizontally)
+		self.scaleCache[1] = 0
 		gc.collect()
 		
 	def display(self):
@@ -542,33 +544,13 @@ if __name__ == "__main__":
 
 	# Show bindings
 	if options.bindings:
-		# Generated using
-		# perl -e 'while(<>) { print "$1:\t$2\n" if(m/Bi{1}nding: (.+): (.+)$/);}' < pqiv
-		print """Key bindings for pqiv:
-			Right:  Move right (Fs)
-			Left:   Move left (Fs)
-			Top:    Move up (Fs)
-			Down:   Move down (Fs)
-			Return: Next image
-			PgUp:   +10 images
-			PgDwn:  -10 images
-			Backspace:      Previous image
-			Escape: Quit
-			Space:  Next image
-			q:      quit
-			f:      Toggle fullscreen
-			+:      Zoom in
-			-:      Zoom out
-			r:      Reload
-			m:      Toggle autoscale
-			l:      Rotate left
-			k:      Rotate right
-			s:      Toggle slideshow
-			h:      Flip horizontally
-			v:      Flip vertically
-			a:      Copy image to .qiv-select
-			i:      show infoscreen
-						""".replace("\n\t\t", "\n")
+		import re
+		print "Key bindings for pqiv:"
+		for line in open(sys.argv[0]).readlines():
+			match = re.search("Bi{1}nding: (.+:) (.+)$", line)
+			if match:
+				print " ", match.group(1).ljust(15), match.group(2)
+		print
 		sys.exit(0)
 		
 	# Create a list of all files
