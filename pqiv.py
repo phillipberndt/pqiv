@@ -306,8 +306,9 @@ class ImageViewer(gtk.Window):
 		gtk.main_quit()
 
 	def setTitle(self, infoString=None):
-		title = "pqiv: %s (%dx%d) %d%% [%d/%d]" % (self.fileName, self.currentPixbuf.get_width(), self.currentPixbuf.get_height(),
-			int(self.scaleFactor * 100), self.position + 1, len(self.fileList))
+		displayFilename = self.fileName.decode(sys.getfilesystemencoding(), "replace")
+		title = "pqiv: %s (%dx%d) %d%% [%d/%d]" % (displayFilename, self.currentPixbuf.get_width(), \
+			self.currentPixbuf.get_height(), int(self.scaleFactor * 100), self.position + 1, len(self.fileList))
 		if infoString != None:
 			title += " (%s)" % infoString
 		self.set_title(title)
