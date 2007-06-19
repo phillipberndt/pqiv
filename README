@@ -19,6 +19,7 @@ gmail dot com.
 CHANGELOG
 
 0.2
+	* It's possible to disable transparency now
 	* Corrected a bug concerning flipping
 	* Rewrote the code for -b parameter handling
 	* Autoscale message fixed
