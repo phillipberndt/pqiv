@@ -90,6 +90,7 @@ class ImageViewer(gtk.Window):
 	scaleFactor = 1
 	title = ""
 	scaleCache = [ "", 0, None ]
+	hideTransparent = False
 	_progResize = False
 
 	def __init__(self, fileList, options=None):
@@ -107,6 +108,8 @@ class ImageViewer(gtk.Window):
 		if "slide" in dir(options) and options.slide != None:
 			self.slideInterval = options.slide * 1000
 			self.slideshowRef = gobject.timeout_add(self.slideInterval, self.next)
+		if "transparent" in dir(options) and options.transparent == True:
+			self.hideTransparent = True
 
 		self.set_title("pqiv")
 		self.modify_bg(gtk.STATE_NORMAL, gtk.gdk.Color(0))
@@ -131,11 +134,12 @@ class ImageViewer(gtk.Window):
 		self.fixed.show()
 
 		# Transparency background image
-		self.imgTrans = gtk.Image()
-		self.imgTrans.set_size_request(self.get_size()[0], self.get_size()[1])
-		self.imgTrans.show()
-		self.imgTrans.bgOn = False
-		self.fixed.add(self.imgTrans)
+		if not self.hideTransparent:
+			self.imgTrans = gtk.Image()
+			self.imgTrans.set_size_request(self.get_size()[0], self.get_size()[1])
+			self.imgTrans.show()
+			self.imgTrans.bgOn = False
+			self.fixed.add(self.imgTrans)
 
 		# Image
 		self.imgDisplay = gtk.Image()
@@ -421,12 +425,18 @@ class ImageViewer(gtk.Window):
 			print >> sys.stderr, "Failed to load image %s" % fileName
 			return False
 
-		if self.currentPixbuf.get_has_alpha() and self.imgTrans.bgOn == False:
-			# Generate transparent image
-			background = generateTransparentBackground(self.get_screen().get_width(), self.get_screen().get_height())
-			self.imgTrans.set_from_pixbuf(background)
-			self.imgTrans.bgOn = True
-			del background
+		if not self.hideTransparent:
+			if self.currentPixbuf.get_has_alpha() and self.imgTrans.bgOn == False:
+				# Generate transparent image
+				background = generateTransparentBackground(self.get_screen().get_width(), self.get_screen().get_height())
+				self.imgTrans.set_from_pixbuf(background)
+				self.imgTrans.bgOn = True
+				self.imgTrans.show()
+				del background
+			elif self.currentPixbuf.get_has_alpha() and self.imgTrans.bgOn == True:
+				self.imgTrans.show()
+			else:
+				self.imgTrans.hide()
 
 		self.fileName = fileName
 
@@ -472,12 +482,12 @@ class ImageViewer(gtk.Window):
 				int(0.5 * (self.get_screen().get_height() - imgSize[1])))
 			self.move(position[0], position[1])
 			self.fixed.move(self.imgDisplay, 0, 0)
-			if self.imgTrans.bgOn:
+			if not self.hideTransparent and self.imgTrans.bgOn:
 				self.imgTrans.set_size_request(imgSize[0], imgSize[1])
 		else:
 			self.fixed.move(self.imgDisplay, max(0, int((self.get_size()[0] - imgSize[0]) / 2)),
 				max(0, int((self.get_size()[1] - imgSize[1]) / 2)))
-			if self.imgTrans.bgOn:
+			if not self.hideTransparent and self.imgTrans.bgOn:
 				self.imgTrans.set_size_request(int(self.get_size()[0]), int(self.get_size()[1]))
 
 	def getScaled(self, scaleFactor=None):
@@ -550,6 +560,7 @@ if __name__ == "__main__":
 	parser.add_option("-b", "--bindings", action="store_true", dest="bindings", help="Show keybindings")
 	parser.add_option("-s", "--slideshow", type="int", dest="slide", help="Activate slideshow with interval n")
 	parser.add_option("-t", "--thumbnail", action="store_true", dest="thumbnail", help="Create one big thumbnail")
+	parser.add_option("-c", "--transparency", action="store_true", dest="transparent", help="Don't show transparent background")
 	(options, args) = parser.parse_args()
 
 	# Show bindings

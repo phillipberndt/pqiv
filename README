@@ -14,3 +14,14 @@ You'll need pygtk.
 
 Report bugs, feature requests, improvements, etc. to phillip.berndt at
 gmail dot com.
+
+
+CHANGELOG
+
+0.2
+	* Corrected a bug concerning flipping
+	* Rewrote the code for -b parameter handling
+	* Autoscale message fixed
+	* Thumbnail title line fixed
+	* Resize documentation fixed
+	* Solved encoding problems
