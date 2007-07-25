@@ -934,12 +934,12 @@ int main(int argc, char *argv[]) {
 
 	/* }}} */
 	/* Load first image {{{ */
-	do {
+	while(!loadImage()) {
 		currentFile = currentFile->next;
 		if(currentFile == NULL) {
 			die("Failed to load any of the images");
 		}
-	} while(!loadImage());
+	}
 	if(optionFullScreen == TRUE) {
 		g_timeout_add(100, toFullscreenCb, NULL);
 	}

@@ -1,28 +1,47 @@
 PQIV README
 
-pqiv is a python rewrite of qiv. It's far from beeing complete but all
-major features are working. I wrote it because my favorite distribution
-gentoo dropped support for qiv. This script might be inefficient; to tell the
-truth, it's more like "quick and dirty".
+WHY NOT USE QIV?
 
-This package does not come with a Makefile as it's intended as a sourcefile for
-the ebuild only. Anyway, if you downloaded it on your own, installation is
-simple:
- * Copy pqiv.py to /usr/bin/qiv
- * Copy qiv.1 to /usr/share/man/man1/qiv.1 (optional)
-You'll need pygtk.
-
-Report bugs, feature requests, improvements, etc. to phillip.berndt at
-gmail dot com.
+qiv (http://www.klografx.net/qiv/index2.html) is a great image viewer, but it
+does not use gtk2 but imlib for image handling. This is bad, because many
+distributions (well, at least gentoo) do not offer this library anymore as it's
+quite old and not maintained anymore.
 
 
-CHANGELOG
+ABOUT PQIV
 
-0.2
-	* It's possible to disable transparency now
-	* Corrected a bug concerning flipping
-	* Rewrote the code for -b parameter handling
-	* Autoscale message fixed
-	* Thumbnail title line fixed
-	* Resize documentation fixed
-	* Solved encoding problems
+When the first release of pqiv was written, I used python, hence the name. I
+expected somebody else to write a c-rewrite of qiv, so I didn't really care
+about that. About one month later nothing happened yet, so I did this on my
+own. Starting from 0.4 pqiv means "pretty quick image viewer", written in pure
+c, using gtk+-2.0.
+
+Now the program is more or less feature complete. If you miss something either
+look for one of those big image viewers or pass me an email.
+
+
+FEATURES
+
+Thanks to Rene Saarsoo <nene ät triin döt net>, who suggested nearly all of the
+new 0.4 features. He also implemented most of them into the old python code,
+so ask him if you're interested in another python'ish version.
+
+Features include:
+ * Fullscreen
+ * Slideshow
+ * Rotate / Flip
+ * (Automatic/manual) Zoom
+ * Move by drag & drop in fullscreen
+ * Keep preferences in a configuration file
+ * Rather small executable (~28k), low ram consumtion, quick
+
+
+INSTALLATION
+
+Usual stuff. make && make install
+You'll need
+ * gtk+-2.0
+ * gthread-2.0
+ * pango
+ * glib
+All of those libs are included in the gtk+-2.0 package.
