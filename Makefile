@@ -8,11 +8,13 @@ debug:
 
 install: pqiv
 	install -Ds qiv $(PREFIX)/usr/bin/qiv
-	install -D brightd.1 $(PREFIX)/usr/share/man/man1/qiv.1
+	install -D qiv.1 $(PREFIX)/usr/share/man/man1/pqiv.1
+	link $(PREFIX)/usr/share/man/man1/pqiv.1 $(PREFIX)/usr/share/man/man1/qiv.1
 
 uninstall:
 	rm $(PREFIX)/usr/bin/qiv
 	rm $(PREFIX)/usr/share/man/man1/qiv.1
+	rm $(PREFIX)/usr/share/man/man1/pqiv.1
 
 clean:
 	rm -f qiv
@@ -21,6 +23,6 @@ clean:
 PACKAGE_VERSION=`awk '/RELEASE/ {print $$3}' pqiv.c | tr -d \" | head -n1`
 package: pqiv
 	mkdir pqiv-$(PACKAGE_VERSION)/
-	cp pqiv.{1,c} ChangeLog gpl.txt Makefile README pqiv-$(PACKAGE_VERSION)/
+	cp pqiv.c qiv.1 gpl.txt Makefile README pqiv-$(PACKAGE_VERSION)/
 	tar cjf pqiv-$(PACKAGE_VERSION).tar.bz2 pqiv-$(PACKAGE_VERSION)/
 	rm -rf pqiv-$(PACKAGE_VERSION)

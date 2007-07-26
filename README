@@ -12,7 +12,7 @@ ABOUT PQIV
 
 When the first release of pqiv was written, I used python, hence the name. I
 expected somebody else to write a c-rewrite of qiv, so I didn't really care
-about that. About one month later nothing happened yet, so I did this on my
+about that. About one month later nothing had happened yet, so I did this on my
 own. Starting from 0.4 pqiv means "pretty quick image viewer", written in pure
 c, using gtk+-2.0.
 
@@ -45,3 +45,22 @@ You'll need
  * pango
  * glib
 All of those libs are included in the gtk+-2.0 package.
+
+
+KNOWN PROBLEMS
+
+* Some window managers, especially Beryl, have problems with many commands in
+  short intervals. As a resize follows the unfullscreen command immediately,
+  the main window could be too big/small upon the unfullscreen command
+
+
+CHANGELOG
+
+pqiv 0.4
+ * Source rewritten into c
+ * Mouse moves image in fullscreen
+ * Configuration file
+ * Many bugfixes (i.e. fullscreen on startup)
+
+pqiv <0.4:
+ See the old python release for information on that

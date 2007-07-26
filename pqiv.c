@@ -53,6 +53,21 @@ GtkWidget *mouseEventBox;
 GdkPixbuf *currentImage = NULL;
 GdkPixbuf *scaledImage = NULL;
 static char emptyCursor[] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+char *chessBoard = 
+		"GdkP"
+		"\0\0\0\263"
+		"\2\1\0\2"
+		"\0\0\0@"
+		"\0\0\0\20"
+		"\0\0\0\20"
+		"\210jjj\377\210\233\233\233\377\210jjj\377\210\233\233\233\377\210jj"
+		"j\377\210\233\233\233\377\210jjj\377\210\233\233\233\377\210jjj\377\210"
+		"\233\233\233\377\210jjj\377\210\233\233\233\377\210jjj\377\210\233\233"
+		"\233\377\210jjj\377\220\233\233\233\377\210jjj\377\210\233\233\233\377"
+		"\210jjj\377\210\233\233\233\377\210jjj\377\210\233\233\233\377\210jj"
+		"j\377\210\233\233\233\377\210jjj\377\210\233\233\233\377\210jjj\377\210"
+		"\233\233\233\377\210jjj\377\210\233\233\233\377\210jjj\377";
+
 
 /* Structure for file list building */
 struct file {
@@ -77,6 +92,7 @@ int slideshowEnabled = 0;
 /* Program options */
 char optionHideInfoBox = FALSE;
 char optionFullScreen = FALSE;
+char optionDoChessboard = TRUE;
 /* }}} */
 /* Error, debug and info message stuff {{{ */
 /* Debugging {{{ */
@@ -94,7 +110,6 @@ char optionFullScreen = FALSE;
 char *infoText;
 void setInfoText(char *text) {
 	char newText[1024];
-
 	if(text == NULL) {
 		sprintf(newText, "pqiv: %s (%dx%d) %d%% [%d/%d]", g_filename_display_name(currentFile->fileName), gdk_pixbuf_get_width(scaledImage),
 			gdk_pixbuf_get_height(scaledImage), (int)(zoom * 100), currentFile->nr + 1, lastFile->nr + 1);
@@ -125,6 +140,7 @@ void helpMessage(char claim) { /* {{{ */
 		" -d n           Slideshow interval \n"
 		" -t             Shrink image(s) larger than the screen to fit \n"
 		" -r             Read additional filenames (not folders) from stdin \n"
+		" -c             Disable the background for transparent images \n"
 		"\n"
 		" Place any of those options into ~/.pqivrc (like you'd do here) to make it default.\n"
 		"\n"
@@ -245,6 +261,9 @@ void load_files(int *argc, char **argv[]) { /*{{{*/
 /* Load images and modify them {{{ */
 char loadImage() { /*{{{*/
 	GdkPixbuf *tmpImage;
+	GdkPixbuf *chessBoardBuf;
+	int i, n, o, p;
+
 	DEBUG2("loadImage", currentFile->fileName);
 	tmpImage = gdk_pixbuf_new_from_file(currentFile->fileName, NULL);
 	if(!tmpImage) {
@@ -254,7 +273,25 @@ char loadImage() { /*{{{*/
 	if(currentImage != NULL) {
 		g_object_unref(currentImage);
 	}
-	currentImage = tmpImage;
+	if(optionDoChessboard == TRUE && gdk_pixbuf_get_has_alpha(tmpImage)) {
+		/* Draw chessboard */
+		chessBoardBuf = gdk_pixbuf_new_from_inline(159, (const guint8 *)chessBoard, FALSE, NULL);
+		currentImage = gdk_pixbuf_copy(tmpImage);
+		o = gdk_pixbuf_get_width(currentImage);
+		p = gdk_pixbuf_get_height(currentImage);
+		for(i=0; i<=o; i+=16) {
+			for(n=0; n<=p; n+=16) {
+				gdk_pixbuf_copy_area(chessBoardBuf, 0, 0, (o-i<16)?o-i:16, (p-n<16)?p-n:16,
+					currentImage, i, n);
+			}
+		}
+		gdk_pixbuf_composite(tmpImage, currentImage, 0, 0, o, p, 0, 0, 1, 1, GDK_INTERP_BILINEAR, 255);
+		g_object_unref(tmpImage);
+		g_object_unref(chessBoardBuf);
+	}
+	else {
+		currentImage = tmpImage;
+	}
 
 	zoom = 1;
 	moveX = moveY = 0;
@@ -285,16 +322,9 @@ inline void scale() { /*{{{*/
 		}
 	}
 } /*}}}*/
-void autoScaleFactor() { /*{{{*/
+void forceAutoScaleFactor() { /*{{{*/
 	int imgx, imgy, scrx, scry, rem;
 	GdkScreen *screen;
-	DEBUG1("autoScaleFactor");
-
-	if(!autoScale) {
-		zoom = 1;
-		scale();
-		return;
-	}
 
 	screen = gtk_widget_get_screen(window);
 	imgx = gdk_pixbuf_get_width(currentImage);
@@ -316,6 +346,17 @@ void autoScaleFactor() { /*{{{*/
 		zoom = (scry - rem) * 1.0f / imgy;
 
 	scale();
+} /*}}}*/
+void autoScaleFactor() { /*{{{*/
+	DEBUG1("autoScaleFactor");
+
+	if(!autoScale) {
+		zoom = 1;
+		scale();
+		return;
+	}
+	
+	forceAutoScaleFactor();
 } /*}}}*/
 void scaleBy(float add) { /*{{{*/
 	DEBUG1("Scale by");
@@ -427,9 +468,9 @@ void resizeAndPosWindow() { /*{{{*/
 	scry = gdk_screen_get_height(screen);
 
 	gtk_widget_set_size_request(imageWidget, imgx, imgy);
-	gtk_widget_set_size_request(mouseEventBox, imgx, imgy);
 
 	if(!isFullscreen) {
+		gtk_widget_set_size_request(mouseEventBox, imgx, imgy);
 		gtk_window_set_resizable(GTK_WINDOW(window), TRUE);
 		gtk_main_iteration();
 		gtk_widget_set_size_request(window, imgx, imgy);
@@ -439,6 +480,7 @@ void resizeAndPosWindow() { /*{{{*/
 		gtk_fixed_move(GTK_FIXED(fixed), imageWidget, 0, 0);
 	}
 	else {
+		gtk_widget_set_size_request(mouseEventBox, scrx, scry);
 		gtk_fixed_move(GTK_FIXED(fixed), imageWidget, (scrx - imgx) / 2 + moveX, (scry - imgy) / 2 + moveY);
 	}
 } /*}}}*/
@@ -607,6 +649,15 @@ gint keyboardCb(GtkWidget *widget, GdkEventKey *event, gpointer data) { /*{{{*/
 			resizeAndPosWindow();
 			displayImage();
 			setInfoText("Zoomed out");
+			break;
+			/* }}} */
+		/* BIND: 0: Autoscale {{{ */
+		case '0':
+			forceAutoScaleFactor();
+			moveX = moveY = 0;
+			resizeAndPosWindow();
+			displayImage();
+			setInfoText("Autoscaled");
 			break;
 			/* }}} */
 		/* BIND: q: Quit {{{ */
@@ -812,7 +863,7 @@ int main(int argc, char *argv[]) {
 	}
 
 	opterr = 0;
-	while((option = getopt(optionCount, options, "ifstrd:")) > 0) {
+	while((option = getopt(optionCount, options, "ifsthrcd:")) > 0) {
 		switch(option) {
 			/* OPTION: -i: Hide info box */
 			case 'i':
@@ -841,8 +892,13 @@ int main(int argc, char *argv[]) {
 			case 'r':
 				optionReadStdin = TRUE;
 				break;
+			/* OPTION: -c: Disable the background for transparent images */
+			case 'c':
+				optionDoChessboard = FALSE;
+				break;
 			case '?':
 				helpMessage(optopt);
+			case 'h':
 			default:
 				helpMessage(0);
 		}
