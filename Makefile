@@ -20,9 +20,9 @@ clean:
 	rm -f qiv
 
 # Package generation
-PACKAGE_VERSION=`awk '/RELEASE/ {print $$3}' pqiv.c | tr -d \" | head -n1`
+PACKAGE_VERSION=`awk '/RELEASE/ {print $$3}' pqiv.c | tr -d \" | head -n1`$(SUFFIX)
 package: pqiv
 	mkdir pqiv-$(PACKAGE_VERSION)/
 	cp pqiv.c qiv.1 gpl.txt Makefile README pqiv-$(PACKAGE_VERSION)/
-	tar cjf pqiv-$(PACKAGE_VERSION).tar.bz2 pqiv-$(PACKAGE_VERSION)/
+	tar cjf pqiv-$(PACKAGE_VERSION).tbz pqiv-$(PACKAGE_VERSION)/
 	rm -rf pqiv-$(PACKAGE_VERSION)

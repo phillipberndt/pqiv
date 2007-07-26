@@ -155,6 +155,7 @@ void helpMessage(char claim) { /* {{{ */
 		" r              Reload \n"
 		" +              Zoom in \n"
 		" -              Zoom out \n"
+		" 0              Autoscale \n"
 		" q              Quit \n"
 		" t              Toggle autoscale \n"
 		" l              Rotate left \n"
