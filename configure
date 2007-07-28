@@ -1,0 +1,77 @@
+#!/bin/sh
+# Simple configure script for pqiv
+# Why not autoconf? -> K.i.s.s.!
+
+# Load settings from Makefile
+eval $(head -n 10 Makefile | egrep '^[A-Z_]+=' | sed -re 's/=(.+)/="\1"/')
+
+# Handle parameters
+PARAMETERS=$(getopt -q -l "prefix:,distdir:" -o "" -- "$@")
+if [ $? == "1" ]; then
+	cat <<EOF
+pqiv configuration
+
+options:
+  --prefix         Set the prefix for installed files
+  --destdir        Set the destdir for installed files (for package maintainers)
+
+EOF
+	exit
+fi
+eval set -- ${PARAMETERS//\//\\/}
+CHANGES=""
+while [ $# -gt 0 ]; do
+	PARAMETER=$1;
+	case ${PARAMETER} in
+		--prefix)
+			CHANGES="${CHANGES} -e 's/^PREFIX=.+/PREFIX=\"$2\"/'"
+			shift
+			;;
+		--distdir)
+			CHANGES="${CHANGES} -e 's/^DESTDIR=.+/DESTDIR=\"$2\"/'"
+			shift
+			;;
+		--)
+			break
+			;;
+	esac
+	shift
+done
+
+# Check dependencies
+for PACKAGE in ${REQUIRED_PACKAGES}; do
+	echo -n "Checking for ${PACKAGE}..."
+	for n in $(seq $[15 - ${#PACKAGE}]); do echo -n " "; done
+	pkg-config ${PACKAGE}
+	if [ $? == 0 ]; then
+		echo "ok"
+	else
+		echo "failed"
+		echo
+		pkg-config --print-errors ${PACKAGE}
+		exit 1
+	fi
+done
+
+# Change stuff in Makefile
+if [ "${CHANGES}" != "" ]; then
+	echo -n "Updating Makefile...           "
+	eval sed -i -r ${CHANGES} Makefile #&>/dev/null
+	if [ "$?" == 0 ]; then
+		echo "ok"
+	else
+		echo "failed"
+		echo
+		echo "Please update Makefile manually and report this as a bug!"
+		exit 1
+	fi
+fi
+
+# Reload settings and output
+eval $(head -n 10 Makefile | egrep '^[A-Z_]+=' | sed -re 's/=(.+)/="\1"/')
+echo
+echo "Destdir:                       ${DESTDIR}"
+echo "Prefix:                        ${PREFIX}"
+echo
+echo -e "Done. Run \033[1mmake all install\033[22m to install pqiv."
+exit 0

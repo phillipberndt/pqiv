@@ -34,12 +34,13 @@ Features include:
  * Move by drag & drop in fullscreen
  * Keep preferences in a configuration file
  * Rather small executable (~28k), low ram consumtion, quick
- * Execute predefined commands
+ * Execute predefined commands, pipe images through them or
+   display their output
 
 
 INSTALLATION
 
-Usual stuff. make && make install
+Usual stuff. ./configure && make && make install
 You'll need
  * gtk+-2.0
  * gthread-2.0
