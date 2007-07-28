@@ -17,7 +17,7 @@ options:
 EOF
 	exit
 }
-PARAMETERS=$(getopt -q -l "prefix:,distdir:,help" -o "h" -- "$@")
+PARAMETERS=$(getopt -q -l "prefix:,destdir:,help" -o "h" -- "$@")
 eval set -- ${PARAMETERS//\//\\/}
 CHANGES=""
 while [ $# -gt 0 ]; do
@@ -32,7 +32,7 @@ while [ $# -gt 0 ]; do
 			shift
 			;;
 		--destdir)
-			if [ "${2:0:1}" != "/" ]; then
+			if [ "${2:0:2}" != "\/" ]; then
 				echo "DESTDIR must be an absolute pathname"
 				exit 1
 			fi
