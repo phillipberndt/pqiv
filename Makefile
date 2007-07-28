@@ -1,7 +1,7 @@
 # Makefile for pqiv
 #
 DESTDIR="/"
-PREFIX="/usr/"
+PREFIX="/usr"
 REQUIRED_PACKAGES=gtk+-2.0 gthread-2.0 pango glib
 
 all: pqiv

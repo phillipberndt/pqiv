@@ -6,8 +6,7 @@
 eval $(head -n 10 Makefile | egrep '^[A-Z_]+=' | sed -re 's/=(.+)/="\1"/')
 
 # Handle parameters
-PARAMETERS=$(getopt -q -l "prefix:,distdir:" -o "" -- "$@")
-if [ $? == "1" ]; then
+help() {
 	cat <<EOF
 pqiv configuration
 
@@ -17,25 +16,55 @@ options:
 
 EOF
 	exit
-fi
+}
+PARAMETERS=$(getopt -q -l "prefix:,distdir:,help" -o "h" -- "$@")
 eval set -- ${PARAMETERS//\//\\/}
 CHANGES=""
 while [ $# -gt 0 ]; do
 	PARAMETER=$1;
 	case ${PARAMETER} in
 		--prefix)
+			if [ "${2:0:2}" != "\/" ]; then
+				echo "PREFIX must be an absolute pathname"
+				exit 1
+			fi
 			CHANGES="${CHANGES} -e 's/^PREFIX=.+/PREFIX=\"$2\"/'"
 			shift
 			;;
-		--distdir)
+		--destdir)
+			if [ "${2:0:1}" != "/" ]; then
+				echo "DESTDIR must be an absolute pathname"
+				exit 1
+			fi
 			CHANGES="${CHANGES} -e 's/^DESTDIR=.+/DESTDIR=\"$2\"/'"
 			shift
 			;;
 		--)
 			break
 			;;
+		-h)
+			help
+			;;
+		--help)
+			help
+			;;
 	esac
 	shift
+done
+
+# Check tools
+for TOOL in install pkg-config; do
+	echo -n "Checking for ${TOOL}..."
+	for n in $(seq $[15 - ${#TOOL}]); do echo -n " "; done
+	which ${TOOL} &>/dev/null
+	if [ $? == 0 ]; then
+		echo "ok"
+	else
+		echo "failed"
+		echo
+		echo "Please install ${TOOL}"
+		exit 1
+	fi
 done
 
 # Check dependencies
@@ -56,7 +85,7 @@ done
 # Change stuff in Makefile
 if [ "${CHANGES}" != "" ]; then
 	echo -n "Updating Makefile...           "
-	eval sed -i -r ${CHANGES} Makefile #&>/dev/null
+	eval sed -i -r ${CHANGES} Makefile &>/dev/null
 	if [ "$?" == 0 ]; then
 		echo "ok"
 	else
