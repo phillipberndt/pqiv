@@ -93,9 +93,10 @@ int slideshowEnabled = 0;
 char optionHideInfoBox = FALSE;
 char optionFullScreen = FALSE;
 char optionDoChessboard = TRUE;
-char *optionCommand1 = NULL;
-char *optionCommand2 = NULL;
-char *optionCommand3 = NULL;
+char *optionCommands[] = { NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL };
+
+/* Functions */
+char reloadImage();
 /* }}} */
 /* Error, debug and info message stuff {{{ */
 /* Debugging {{{ */
@@ -144,7 +145,9 @@ void helpMessage(char claim) { /* {{{ */
 		" -t             Shrink image(s) larger than the screen to fit \n"
 		" -r             Read additional filenames (not folders) from stdin \n"
 		" -c             Disable the background for transparent images \n"
-		" -<n> s         Set command number n (1-3) to s \n"
+		" -<n> s         Set command number n (1-9) to s \n"
+		"                Prepend command with | to pipe image->command->image\n"
+		"                Prepend command with > to display the output of the command\n"
 		"\n"
 		" Place any of those options into ~/.pqivrc (like you'd do here) to make it default.\n"
 		"\n"
@@ -169,7 +172,7 @@ void helpMessage(char claim) { /* {{{ */
 		" i              Show/hide info box \n"
 		" s              Slideshow toggle \n"
 		" a              Hardlink current image to .qiv-select/ \n"
-		" <n>            Run command n (1-3) \n"
+		" <n>            Run command n (1-9) \n"
 		" Drag & Drop    Move image (Fullscreen) \n"
 		" Scroll         Next/previous image \n"
 		"\n"
@@ -265,10 +268,23 @@ void load_files(int *argc, char **argv[]) { /*{{{*/
 		}
 	}
 } /*}}}*/
+gint windowCloseOnlyCb(GtkWidget *widget, GdkEventKey *event, gpointer data) { /*{{{*/
+	if(event->keyval == 'q') {
+		gtk_widget_destroy(widget);
+	}
+} /* }}} */
 void run_program(char *command) { /*{{{*/
-	char *buf2, *buf;
+	char *buf4, *buf3, *buf2, *buf;
+	GtkWidget *tmpWindow, *tmpScroller, *tmpText;
+	FILE *readInformation;
+	GString *infoString;
+	gsize uniTextLength;
 	int i;
-	if(fork() == 0) {
+	int tmpFileDescriptors[] = {0, 0};
+	if(command[0] == '>') {
+		/* Pipe information {{{ */
+		command = &command[1];
+		/* Write filename to buf2, escape "'s {{{ */
 		buf2 = (char*)malloc(strlen(currentFile->fileName) * 2 + 1);
 		buf = currentFile->fileName;
 		for(i=0;;i++,buf++) {
@@ -279,13 +295,136 @@ void run_program(char *command) { /*{{{*/
 			if(*buf == 0) {
 				break;
 			}
-		}
+		} /*}}}*/
 		buf = (char*)malloc(strlen(command) + 4 + strlen(buf2));
 		sprintf(buf, "%s \"%s\"", command, buf2);
-		system(buf);
-		free(buf);
+		readInformation = popen(buf, "r");
+		if(readInformation == NULL) {
+			fprintf(stderr, "Command execution failed for %s\n", command);
+			free(buf);
+			return;
+		}
+		infoString = g_string_new(NULL);
+		buf3 = (char*)malloc(1024);
+		while(fgets(buf3, 1024, readInformation) != NULL) {
+			g_string_append(infoString, buf3);
+		}
+		pclose(readInformation);
 		free(buf2);
-		exit(1);
+		free(buf3);
+		free(buf);
+	
+		/* Display information in a window */
+		tmpWindow = gtk_window_new(GTK_WINDOW_TOPLEVEL);
+		gtk_window_set_title(GTK_WINDOW(tmpWindow), command);
+		gtk_window_set_position(GTK_WINDOW(tmpWindow), GTK_WIN_POS_CENTER_ON_PARENT);
+		gtk_window_set_modal(GTK_WINDOW(tmpWindow), TRUE);
+		gtk_window_set_destroy_with_parent(GTK_WINDOW(tmpWindow), TRUE);
+		gtk_window_set_type_hint(GTK_WINDOW(tmpWindow), GDK_WINDOW_TYPE_HINT_DIALOG);
+		gtk_widget_set_size_request(tmpWindow, 400, 480);
+		g_signal_connect(tmpWindow, "key-press-event",
+			G_CALLBACK(windowCloseOnlyCb), NULL);
+		tmpScroller = gtk_scrolled_window_new(NULL, NULL);
+		gtk_container_add(GTK_CONTAINER(tmpWindow), tmpScroller);
+		gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(tmpScroller), GTK_POLICY_AUTOMATIC, GTK_POLICY_AUTOMATIC);
+		tmpText = gtk_text_view_new();
+		gtk_container_add(GTK_CONTAINER(tmpScroller), tmpText); 
+		gtk_text_view_set_editable(GTK_TEXT_VIEW(tmpText), FALSE);
+		if(g_utf8_validate(infoString->str, infoString->len, NULL) == FALSE) {
+			buf4 = g_convert(infoString->str, infoString->len, "utf8", "iso8859-1", NULL, &uniTextLength, NULL);
+			gtk_text_buffer_set_text(gtk_text_view_get_buffer(GTK_TEXT_VIEW(tmpText)), buf4, uniTextLength);
+			free(buf4);
+		}
+		else {
+			gtk_text_buffer_set_text(gtk_text_view_get_buffer(GTK_TEXT_VIEW(tmpText)), infoString->str,
+				infoString->len);
+		}
+		gtk_widget_show(tmpText);
+		gtk_widget_show(tmpScroller);
+		gtk_widget_show(tmpWindow);
+
+		g_string_free(infoString, TRUE);
+		/* }}} */
+	}
+	else if(command[0] == '|') {
+		/* Pipe data {{{ */
+		/*
+		 * buf3 -> Tempfile [0] for saving old image
+		 * buf4 -> Tempfile [1] for saving new image
+		 * buf2 -> For temporary storage of original currentFile->fileName
+		 * buf  -> Command
+		 */
+		command = &command[1];
+		buf3 = (char*)malloc(14);
+		strcpy(buf3, "/tmp/imgXXXXXX");
+		if((tmpFileDescriptors[0] = mkstemp(buf3)) == -1) {
+			fprintf(stderr, "Failed to create a temporary file\n");
+			free(buf3);
+			return;
+		}
+		buf4 = (char*)malloc(14);
+		strcpy(buf4, "/tmp/imgXXXXXX");
+		if((tmpFileDescriptors[1] = mkstemp(buf4)) == -1) {
+			fprintf(stderr, "Failed to create a temporary file\n");
+			free(buf3);
+			free(buf4);
+			return;
+		}
+		if(!gdk_pixbuf_save(currentImage, buf3, "png", NULL, NULL)) {
+			fprintf(stderr, "Failed to save current image\n");
+			free(buf3);
+			free(buf4);
+			return;
+		}
+		buf = (char*)malloc(strlen(command) + 10 + 2 * strlen(buf3));
+		sprintf(buf, "%s <\"%s\" >\"%s\"", command, buf3, buf4);
+		if(system(buf) == 0) {
+			/* Load image into pqiv */
+			buf2 = currentFile->fileName;
+			currentFile->fileName = buf4;
+			i = reloadImage();
+			currentFile->fileName = buf2;
+			if(i == TRUE) {
+				setInfoText("Success");
+			}
+			else {
+				setInfoText("Failure");
+			}
+		}
+		else {
+			fprintf(stderr, "Command execution failed for %s\n", command);
+		}
+		close(tmpFileDescriptors[0]);
+		unlink(buf3);
+		close(tmpFileDescriptors[1]);
+		unlink(buf4);
+		free(buf);
+		free(buf3);
+		free(buf4);
+		/* }}} */
+	}
+	else {
+		/* Run program {{{ */
+		if(fork() == 0) {
+			/* Write filename to buf2, escape "'s {{{ */
+			buf2 = (char*)malloc(strlen(currentFile->fileName) * 2 + 1);
+			buf = currentFile->fileName;
+			for(i=0;;i++,buf++) {
+				if(*buf == '"') {
+					buf2[i++] = '\\';
+				}
+				buf2[i] = *buf;
+				if(*buf == 0) {
+					break;
+				}
+			} /*}}}*/
+			buf = (char*)malloc(strlen(command) + 4 + strlen(buf2));
+			sprintf(buf, "%s \"%s\"", command, buf2);
+			system(buf);
+			free(buf);
+			free(buf2);
+			exit(1);
+		} /* }}} */
 	}
 } /*}}}*/
 /*}}}*/
@@ -785,22 +924,17 @@ gint keyboardCb(GtkWidget *widget, GdkEventKey *event, gpointer data) { /*{{{*/
 			setInfoText("Hardlink saved");
 			/* }}} */
 		/* BIND: <n>: Run command n (1-3) {{{ */
-		case '1':
-			if(optionCommand1 != NULL) {
-				run_program(optionCommand1);
-				setInfoText("Run command 1");
-			}
-			break;
-		case '2':
-			if(optionCommand2 != NULL) {
-				run_program(optionCommand2);
-				setInfoText("Run command 2");
-			}
-			break;
-		case '3':
-			if(optionCommand3 != NULL) {
-				run_program(optionCommand3);
-				setInfoText("Run command 3");
+		case '1': case '2': case '3': case '4':
+		case '5': case '6': case '7': case '8':
+		case '9':
+			i = event->keyval - '0';
+			if(optionCommands[i] != NULL) {
+				buf = (char*)malloc(15);
+				sprintf(buf, "Run command %c", event->keyval);
+				setInfoText(buf);
+				gtk_main_iteration();
+				free(buf);
+				run_program(optionCommands[i]);
 			}
 			break;
 			/* }}} */
@@ -914,7 +1048,7 @@ int main(int argc, char *argv[]) {
 	}
 
 	opterr = 0;
-	while((option = getopt(optionCount, options, "ifsthrcd:1:2:3:")) > 0) {
+	while((option = getopt(optionCount, options, "ifsthrcd:1:2:3:4:5:6:7:8:9:")) > 0) {
 		switch(option) {
 			/* OPTION: -i: Hide info box */
 			case 'i':
@@ -947,18 +1081,13 @@ int main(int argc, char *argv[]) {
 			case 'c':
 				optionDoChessboard = FALSE;
 				break;
-			/* OPTION: -<n> s: Set command number n (1-3) to s */
-			case '1':
-				optionCommand1 = (char*)malloc(strlen(optarg) + 1);
-				strcpy(optionCommand1, optarg);
-				break;
-			case '2':
-				optionCommand2 = (char*)malloc(strlen(optarg) + 1);
-				strcpy(optionCommand2, optarg);
-				break;
-			case '3':
-				optionCommand3 = (char*)malloc(strlen(optarg) + 1);
-				strcpy(optionCommand3, optarg);
+			/* OPTION: -<n> s: Set command number n (1-9) to s */
+			case '1': case '2': case '3': case '4':
+			case '5': case '6': case '7': case '8':
+			case '9':
+				i = option - '0';
+				optionCommands[i] = (char*)malloc(strlen(optarg) + 1);
+				strcpy(optionCommands[i], optarg);
 				break;
 			case '?':
 				helpMessage(optopt);
