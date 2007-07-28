@@ -1,20 +1,20 @@
-PREFIX=/
+PREFIX=/usr
 
 pqiv:
-	gcc $(CFLAGS) `pkg-config --libs --cflags gtk+-2.0 gthread-2.0 pango glib` -o qiv pqiv.c
+	$(CC) $(CFLAGS) `pkg-config --libs --cflags gtk+-2.0 gthread-2.0 pango glib` -o qiv pqiv.c
 
 debug:
-	gcc $(CGLAGS) -Wall -ggdb -DDEBUG `pkg-config --libs --cflags gtk+-2.0 gthread-2.0 pango glib` -o qiv pqiv.c
+	$(CC) $(CGLAGS) -Wall -ggdb -DDEBUG `pkg-config --libs --cflags gtk+-2.0 gthread-2.0 pango glib` -o qiv pqiv.c
 
 install: pqiv
-	install -Ds qiv $(PREFIX)/usr/bin/qiv
-	install -D qiv.1 $(PREFIX)/usr/share/man/man1/pqiv.1
-	link $(PREFIX)/usr/share/man/man1/pqiv.1 $(PREFIX)/usr/share/man/man1/qiv.1
+	install -D qiv $(DESTDIR)$(PREFIX)/bin/qiv
+	install -D qiv.1 $(DESTDIR)$(PREFIX)/share/man/man1/pqiv.1
+	link $(DESTDIR)$(PREFIX)/share/man/man1/pqiv.1 $(DESTDIR)$(PREFIX)/share/man/man1/qiv.1
 
 uninstall:
-	rm $(PREFIX)/usr/bin/qiv
-	rm $(PREFIX)/usr/share/man/man1/qiv.1
-	rm $(PREFIX)/usr/share/man/man1/pqiv.1
+	rm $(DESTDIR)$(PREFIX)/bin/qiv
+	rm $(DESTDIR)$(PREFIX)/share/man/man1/qiv.1
+	rm $(DESTDIR)$(PREFIX)/share/man/man1/pqiv.1
 
 clean:
 	rm -f qiv

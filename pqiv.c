@@ -93,6 +93,9 @@ int slideshowEnabled = 0;
 char optionHideInfoBox = FALSE;
 char optionFullScreen = FALSE;
 char optionDoChessboard = TRUE;
+char *optionCommand1 = NULL;
+char *optionCommand2 = NULL;
+char *optionCommand3 = NULL;
 /* }}} */
 /* Error, debug and info message stuff {{{ */
 /* Debugging {{{ */
@@ -141,6 +144,7 @@ void helpMessage(char claim) { /* {{{ */
 		" -t             Shrink image(s) larger than the screen to fit \n"
 		" -r             Read additional filenames (not folders) from stdin \n"
 		" -c             Disable the background for transparent images \n"
+		" -<n> s         Set command number n (1-3) to s \n"
 		"\n"
 		" Place any of those options into ~/.pqivrc (like you'd do here) to make it default.\n"
 		"\n"
@@ -165,6 +169,7 @@ void helpMessage(char claim) { /* {{{ */
 		" i              Show/hide info box \n"
 		" s              Slideshow toggle \n"
 		" a              Hardlink current image to .qiv-select/ \n"
+		" <n>            Run command n (1-3) \n"
 		" Drag & Drop    Move image (Fullscreen) \n"
 		" Scroll         Next/previous image \n"
 		"\n"
@@ -176,6 +181,8 @@ void helpMessage(char claim) { /* {{{ */
 #define EXTENSIONS "\\.(png|gif|jpg|bmp|xpm)$"
 regex_t extensionCompiled;
 void load_files_addfile(char *file) { /*{{{*/
+	FILE *test;
+
 	if(firstFile.fileName != NULL) {
 		lastFile->next = (struct file*)malloc(sizeof(struct file));
 		if(lastFile->next == NULL) {
@@ -256,6 +263,29 @@ void load_files(int *argc, char **argv[]) { /*{{{*/
 				close(test);
 			}
 		}
+	}
+} /*}}}*/
+void run_program(char *command) { /*{{{*/
+	char *buf2, *buf;
+	int i;
+	if(fork() == 0) {
+		buf2 = (char*)malloc(strlen(currentFile->fileName) * 2 + 1);
+		buf = currentFile->fileName;
+		for(i=0;;i++,buf++) {
+			if(*buf == '"') {
+				buf2[i++] = '\\';
+			}
+			buf2[i] = *buf;
+			if(*buf == 0) {
+				break;
+			}
+		}
+		buf = (char*)malloc(strlen(command) + 4 + strlen(buf2));
+		sprintf(buf, "%s \"%s\"", command, buf2);
+		system(buf);
+		free(buf);
+		free(buf2);
+		exit(1);
 	}
 } /*}}}*/
 /*}}}*/
@@ -754,6 +784,26 @@ gint keyboardCb(GtkWidget *widget, GdkEventKey *event, gpointer data) { /*{{{*/
 			free(buf);
 			setInfoText("Hardlink saved");
 			/* }}} */
+		/* BIND: <n>: Run command n (1-3) {{{ */
+		case '1':
+			if(optionCommand1 != NULL) {
+				run_program(optionCommand1);
+				setInfoText("Run command 1");
+			}
+			break;
+		case '2':
+			if(optionCommand2 != NULL) {
+				run_program(optionCommand2);
+				setInfoText("Run command 2");
+			}
+			break;
+		case '3':
+			if(optionCommand3 != NULL) {
+				run_program(optionCommand3);
+				setInfoText("Run command 3");
+			}
+			break;
+			/* }}} */
 	}
 	return 0;
 } /*}}}*/
@@ -864,7 +914,7 @@ int main(int argc, char *argv[]) {
 	}
 
 	opterr = 0;
-	while((option = getopt(optionCount, options, "ifsthrcd:")) > 0) {
+	while((option = getopt(optionCount, options, "ifsthrcd:1:2:3:")) > 0) {
 		switch(option) {
 			/* OPTION: -i: Hide info box */
 			case 'i':
@@ -896,6 +946,19 @@ int main(int argc, char *argv[]) {
 			/* OPTION: -c: Disable the background for transparent images */
 			case 'c':
 				optionDoChessboard = FALSE;
+				break;
+			/* OPTION: -<n> s: Set command number n (1-3) to s */
+			case '1':
+				optionCommand1 = (char*)malloc(strlen(optarg) + 1);
+				strcpy(optionCommand1, optarg);
+				break;
+			case '2':
+				optionCommand2 = (char*)malloc(strlen(optarg) + 1);
+				strcpy(optionCommand2, optarg);
+				break;
+			case '3':
+				optionCommand3 = (char*)malloc(strlen(optarg) + 1);
+				strcpy(optionCommand3, optarg);
 				break;
 			case '?':
 				helpMessage(optopt);
@@ -991,6 +1054,9 @@ int main(int argc, char *argv[]) {
 
 	/* }}} */
 	/* Load first image {{{ */
+	if(currentFile->fileName == NULL) {
+		die("Failed to load any of the images");
+	}
 	while(!loadImage()) {
 		currentFile = currentFile->next;
 		if(currentFile == NULL) {
