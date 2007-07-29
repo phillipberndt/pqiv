@@ -33,7 +33,7 @@ Features include:
  * (Automatic/manual) Zoom
  * Move by drag & drop in fullscreen
  * Keep preferences in a configuration file
- * Rather small executable (~28k), low ram consumtion, quick
+ * Rather small executable (~36k), low ram consumtion, quick
  * Execute predefined commands, pipe images through them or
    display their output
 

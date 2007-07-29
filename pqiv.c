@@ -19,7 +19,7 @@
  * 
  */
 #define RELEASE "0.4"
-#define DEBUG
+//#define DEBUG
 
 /* Includes {{{ */
 #include <stdio.h>
@@ -98,6 +98,9 @@ static char *optionCommands[] = { NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL
 
 /* Functions */
 char reloadImage();
+void autoScaleFactor();
+void resizeAndPosWindow();
+void displayImage();
 /* }}} */
 /* Error, debug and info message stuff {{{ */
 /* Debugging {{{ */
@@ -270,18 +273,21 @@ void load_files(int *argc, char **argv[]) { /*{{{*/
 					fprintf(stderr, "Failed to load the image from stdin: %s\n", loadError->message);
 					loadError->message = NULL;
 					g_error_free(loadError);
+					g_object_unref(memoryImageLoader);
 					loadError = NULL;
 					memoryArgImage = (GdkPixbuf*)1; /* Ignore further attempts to load an image from stdin */
 					break;
 				}
 			}
 			if(gdk_pixbuf_loader_close(memoryImageLoader, &loadError) == TRUE) {
-				memoryArgImage = gdk_pixbuf_loader_get_pixbuf(memoryImageLoader);
+				memoryArgImage = gdk_pixbuf_copy(gdk_pixbuf_loader_get_pixbuf(memoryImageLoader));
+				g_object_unref(memoryImageLoader);
 				load_files_addfile("-");
 			}
 			else {
 				fprintf(stderr, "Failed to load the image from stdin: %s\n", loadError->message);
 				g_error_free(loadError);
+				g_object_unref(memoryImageLoader);
 				memoryArgImage = (GdkPixbuf*)1; /* Ignore further attempts to load an image from stdin */
 			}
 			free(buf);
@@ -312,14 +318,28 @@ gint windowCloseOnlyCb(GtkWidget *widget, GdkEventKey *event, gpointer data) { /
 		gtk_widget_destroy(widget);
 	}
 } /* }}} */
+gboolean storeImageCb(const char *buf, gsize count, GError **error, gpointer data) { /*{{{*/
+	/* Write data to stdout */
+	if(write(*(int*)data, buf, count) != -1) {
+		return TRUE;
+	}
+	else {
+		close(*(int*)data);
+		return FALSE;
+	}
+} /*}}}*/
 void run_program(char *command) { /*{{{*/
 	char *buf4, *buf3, *buf2, *buf;
 	GtkWidget *tmpWindow, *tmpScroller, *tmpText;
 	FILE *readInformation;
 	GString *infoString;
 	gsize uniTextLength;
-	int i;
-	int tmpFileDescriptors[] = {0, 0};
+	GdkPixbufLoader *memoryImageLoader = NULL;
+	GdkPixbuf *tmpImage = NULL;
+	int i, child;
+	GError *loadError = NULL;
+	int tmpFileDescriptorsTo[] = {0, 0};
+	int tmpFileDescriptorsFrom[] = {0, 0};
 	if(command[0] == '>') {
 		/* Pipe information {{{ */
 		command = &command[1];
@@ -387,59 +407,82 @@ void run_program(char *command) { /*{{{*/
 	}
 	else if(command[0] == '|') {
 		/* Pipe data {{{ */
-		/*
-		 * buf3 -> Tempfile [0] for saving old image
-		 * buf4 -> Tempfile [1] for saving new image
-		 * buf2 -> For temporary storage of original currentFile->fileName
-		 * buf  -> Command
-		 */
 		command = &command[1];
-		buf3 = (char*)malloc(14);
-		strcpy(buf3, "/tmp/imgXXXXXX");
-		if((tmpFileDescriptors[0] = mkstemp(buf3)) == -1) {
-			fprintf(stderr, "Failed to create a temporary file\n");
-			free(buf3);
+		/* Create a pipe */
+		if(pipe(tmpFileDescriptorsTo) == -1) {
+			fprintf(stderr, "Failed to create pipes for data exchange\n");
+			setInfoText("Failure");
 			return;
 		}
-		buf4 = (char*)malloc(14);
-		strcpy(buf4, "/tmp/imgXXXXXX");
-		if((tmpFileDescriptors[1] = mkstemp(buf4)) == -1) {
-			fprintf(stderr, "Failed to create a temporary file\n");
-			free(buf3);
-			free(buf4);
+		if(pipe(tmpFileDescriptorsFrom) == -1) {
+			fprintf(stderr, "Failed to create pipes for data exchange\n");
+			setInfoText("Failure");
+			close(tmpFileDescriptorsTo[0]);
+			close(tmpFileDescriptorsTo[1]);
 			return;
 		}
-		if(!gdk_pixbuf_save(currentImage, buf3, "png", NULL, NULL)) {
-			fprintf(stderr, "Failed to save current image\n");
-			free(buf3);
-			free(buf4);
-			return;
+		/* Spawn child process */
+		if((child = fork()) == 0) {
+			dup2(tmpFileDescriptorsFrom[1], STDOUT_FILENO);
+			dup2(tmpFileDescriptorsTo[0], STDIN_FILENO);
+			close(tmpFileDescriptorsFrom[0]); close(tmpFileDescriptorsFrom[1]);
+			close(tmpFileDescriptorsTo[0]); close(tmpFileDescriptorsTo[1]);
+			_exit(system(command));
 		}
-		buf = (char*)malloc(strlen(command) + 10 + 2 * strlen(buf3));
-		sprintf(buf, "%s <\"%s\" >\"%s\"", command, buf3, buf4);
-		if(system(buf) == 0) {
-			/* Load image into pqiv */
-			buf2 = currentFile->fileName;
-			currentFile->fileName = buf4;
-			i = reloadImage();
-			currentFile->fileName = buf2;
-			if(i == TRUE) {
-				setInfoText("Success");
-			}
-			else {
+		/* Store currentImage to the child processes stdin */
+		if(fork() == 0) {
+			close(tmpFileDescriptorsFrom[0]); close(tmpFileDescriptorsFrom[1]);
+			close(tmpFileDescriptorsTo[0]); 
+			if(gdk_pixbuf_save_to_callback(currentImage, storeImageCb, &tmpFileDescriptorsTo[1],
+					"png", NULL, NULL) == FALSE) {
+				fprintf(stderr, "Failed to save image\n");
+				close(tmpFileDescriptorsFrom[0]); close(tmpFileDescriptorsFrom[1]);
+				close(tmpFileDescriptorsTo[0]); close(tmpFileDescriptorsTo[1]);
 				setInfoText("Failure");
+				_exit(1);
 			}
+			close(tmpFileDescriptorsTo[1]);
+			_exit(0);
+		}
+		fsync(tmpFileDescriptorsTo[1]);
+		close(tmpFileDescriptorsFrom[1]); close(tmpFileDescriptorsTo[0]);
+		close(tmpFileDescriptorsTo[1]);
+		/* Load new image from the child processes stdout */
+		memoryImageLoader = gdk_pixbuf_loader_new();
+		buf = (char*)malloc(1024);
+		while(TRUE) {
+			if((i = read(tmpFileDescriptorsFrom[0], buf, 1024)) < 1) {
+				break;
+			}
+			if(gdk_pixbuf_loader_write(memoryImageLoader, buf, i, &loadError) == FALSE) {
+				kill(child, 9);
+				fprintf(stderr, "Failed to load output image: %s\n", loadError->message);
+				g_object_unref(memoryImageLoader);
+				close(tmpFileDescriptorsFrom[0]);
+				free(buf);
+				setInfoText("Failure");
+				return;
+			}
+		}
+		close(tmpFileDescriptorsFrom[0]);
+		free(buf);
+		wait();
+
+		if(gdk_pixbuf_loader_close(memoryImageLoader, NULL) == TRUE) {
+			g_object_unref(currentImage);
+			tmpImage = gdk_pixbuf_loader_get_pixbuf(memoryImageLoader);
+			currentImage = gdk_pixbuf_copy(tmpImage);
+			g_object_unref(memoryImageLoader);
+			scaledAt = -1;
+			autoScaleFactor();
+			resizeAndPosWindow();
+			displayImage();
+			setInfoText("Success");
 		}
 		else {
-			fprintf(stderr, "Command execution failed for %s\n", command);
+			g_object_unref(memoryImageLoader);
+			setInfoText("Failure");
 		}
-		close(tmpFileDescriptors[0]);
-		unlink(buf3);
-		close(tmpFileDescriptors[1]);
-		unlink(buf4);
-		free(buf);
-		free(buf3);
-		free(buf4);
 		/* }}} */
 	}
 	else {
@@ -492,7 +535,7 @@ char loadImage() { /*{{{*/
 	}
 	if(optionDoChessboard == TRUE && gdk_pixbuf_get_has_alpha(tmpImage)) {
 		/* Draw chessboard */
-		DEBUG("Creating chessboard");
+		DEBUG1("Creating chessboard");
 		chessBoardBuf = gdk_pixbuf_new_from_inline(159, (const guint8 *)chessBoard, FALSE, NULL);
 		currentImage = gdk_pixbuf_copy(tmpImage);
 		o = gdk_pixbuf_get_width(currentImage);
@@ -1129,6 +1172,7 @@ int main(int argc, char *argv[]) {
 			/* OPTION: -r: Read additional filenames (not folders) from stdin */
 			case 'r':
 				optionReadStdin = TRUE;
+				memoryArgImage = (GdkPixbuf*)1; /* Don't allow - files */
 				break;
 			/* OPTION: -c: Disable the background for transparent images */
 			case 'c':

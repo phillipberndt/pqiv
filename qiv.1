@@ -2,11 +2,68 @@
 .SH NAME
 pqiv \- quick image viewer
 .SH SYNOPSIS
-.B qiv [-i] [-s] [-f] [-d n] [-r] [-t] <file(s) or folder(s)>
+.B qiv [-i] [-f] [-s] [-d n] [-t] [-r] [-c] [-<n>]  <file(s) or folder(s)>
 .SH DESCRIPTION
-pqiv is a really simple image viewer inspired by qiv. Run
+pqiv is a really simple image viewer inspired by qiv.
+.SH OPTIONS
+.TP
+.B -i
+Suppress the yellow info box in pqiv
+.TP
+.B -f
+Start pqiv in fullscreen mode
+.TP
+.B -s
+Auto start slide show
+.TP
+.B -d n
+Interval for the slideshow function, in seconds
+.TP
+.B -t
+Shrink image(s) larger than the screen to fit
+.TP
+.B -r
+Read filename(s) from STDIN.
+.TP
+.B -c
+pqiv will draw this well-known chessboard background for transparent images per
+default. Use this option to deactivate this behaviour.
+.TP
+.B -<n>
+Use those options (n \in 0..9) to define a command, which will be executed when
+you press the corresponding key in pqiv.
+.br
+.po 5
+Prepend the command with
+.B >
+to show the command's output in a dialog window.
+.br
+Prepend the command with
+.B |
+to let pqiv pipe the displayed image to your command and read/reload it from
+the command's output.
+.br
+.po 0
+.PP
+The contents of
+.B ~/.pqivrc
+will be prepended to pqiv's argv. So if you want to make an interval of 1 second
+the default for pqiv, put
+.nf
+	-d1
+.fi
+into that file.
+
+pqiv will display all files you specified on the command line. Directories will
+be searched recursively for files matching *.{png,gif,jpg,bmp,xpm}. Unless you specified
+.B -r
+the special file
+.B -
+will cause pqiv to read a file from stdin.
+.SH USAGE
+In pqiv, you can use both mouse and keyboard to navigate through the images. Execute
 .B qiv -h
-for information on how to use it.
+to get more information on the key bindings.
 .SH AUTHOR
 .nf
 Phillip Berndt (mail at pberndt dot com)
