@@ -19,13 +19,14 @@
  * 
  */
 #define RELEASE "0.4"
-//#define DEBUG
 
 /* Includes {{{ */
 #include <stdio.h>
 #include <gtk/gtk.h>
 #include <glib/gconvert.h>
 #include <sys/types.h>
+#include <sys/wait.h>
+#include <signal.h>
 #include <dirent.h>
 #include <unistd.h>
 #include <string.h>
@@ -92,7 +93,6 @@ static int slideshowEnabled = 0;
 
 /* Program options */
 static char optionHideInfoBox = FALSE;
-static char optionFullScreen = FALSE;
 static char optionDoChessboard = TRUE;
 static char *optionCommands[] = { NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL };
 
@@ -105,25 +105,27 @@ void displayImage();
 /* Error, debug and info message stuff {{{ */
 /* Debugging {{{ */
 #ifdef DEBUG
-	#define DEBUG1(text) fprintf(stderr, "%d: %s\n", __LINE__, text);
-	#define DEBUG2(text, param) fprintf(stderr, "%d: %s %s\n", __LINE__, text, param);
+	#define DEBUG1(text) g_printerr("(%04d) %-20s %s\n", __LINE__, G_STRFUNC, text);
+	#define DEBUG2(text, param) g_printerr("(%04d) %-20s %s %s\n", __LINE__, G_STRFUNC, text, param);
 	#define G_ENABLE_DEBUG
 #else
 	#define DEBUG1(text);
 	#define DEBUG2(text, param);
 #endif
-#define die(text) fprintf(stderr, "%s\n", text); exit(1);
+#define die(text) g_printerr("%s\n", text); exit(1);
 /* }}} */
 /* Info text (Yellow lable & title) {{{ */
 char *infoText;
 void setInfoText(char *text) {
 	char newText[1024];
 	if(text == NULL) {
-		sprintf(newText, "pqiv: %s (%dx%d) %d%% [%d/%d]", g_filename_display_name(currentFile->fileName), gdk_pixbuf_get_width(scaledImage),
+		sprintf(newText, "pqiv: %s (%dx%d) %d%% [%d/%d]", g_filename_display_name(currentFile->fileName),
+			gdk_pixbuf_get_width(scaledImage),
 			gdk_pixbuf_get_height(scaledImage), (int)(zoom * 100), currentFile->nr + 1, lastFile->nr + 1);
 	}
 	else {
-		sprintf(newText, "pqiv: %s (%dx%d) %d%% [%d/%d] (%s)", g_filename_display_name(currentFile->fileName), gdk_pixbuf_get_width(scaledImage),
+		sprintf(newText, "pqiv: %s (%dx%d) %d%% [%d/%d] (%s)", g_filename_display_name(currentFile->fileName),
+			gdk_pixbuf_get_width(scaledImage),
 			gdk_pixbuf_get_height(scaledImage), (int)(zoom * 100), currentFile->nr + 1, lastFile->nr + 1, text);
 	}
 	gtk_window_set_title(GTK_WINDOW(window), newText);
@@ -134,13 +136,13 @@ void helpMessage(char claim) { /* {{{ */
 	/* Perl code to get bindings:
 	 * perl -ne 'm/(?:OPTION|BIND): (.+?): (.+?)[{$\*]/ or next; $_=$1.(" "x(15-length($1))).$2; print "\" $_\\n\"\n";' < pqiv.c
 	 */
-	printf("usage: pqiv [options] <files or folders>\n"
+	g_print("usage: pqiv [options] <files or folders>\n"
 		"(p)qiv version " RELEASE " by Phillip Berndt\n"
 		"\n");
 	if(claim != 0) {
-		printf("I don't understand the meaning of %c\n\n", claim);
+		g_print("I don't understand the meaning of %c\n\n", claim);
 	}
-	printf(
+	g_print(
 		"options:\n"
 		" -i             Hide info box \n"
 		" -f             Start in fullscreen mode \n"
@@ -188,8 +190,6 @@ void helpMessage(char claim) { /* {{{ */
 #define EXTENSIONS "\\.(png|gif|jpg|bmp|xpm)$"
 regex_t extensionCompiled;
 void load_files_addfile(char *file) { /*{{{*/
-	FILE *test;
-
 	if(firstFile.fileName != NULL) {
 		lastFile->next = (struct file*)malloc(sizeof(struct file));
 		if(lastFile->next == NULL) {
@@ -259,7 +259,7 @@ void load_files(int *argc, char **argv[]) { /*{{{*/
 		if(strcmp((*argv)[i], "-") == 0) {
 			/* Load image from stdin {{{ */
 			if(memoryArgImage != NULL) {
-				fprintf(stderr, "You can't specify more than one image to be read from stdin.\n");
+				g_printerr("You can't specify more than one image to be read from stdin.\n");
 				continue;
 			}
 			memoryImageLoader = gdk_pixbuf_loader_new();
@@ -269,8 +269,8 @@ void load_files(int *argc, char **argv[]) { /*{{{*/
 				if(i == 0) {
 					break;
 				}
-				if(gdk_pixbuf_loader_write(memoryImageLoader, buf, i, &loadError) == FALSE) {
-					fprintf(stderr, "Failed to load the image from stdin: %s\n", loadError->message);
+				if(gdk_pixbuf_loader_write(memoryImageLoader, (unsigned char*)buf, i, &loadError) == FALSE) {
+					g_printerr("Failed to load the image from stdin: %s\n", loadError->message);
 					loadError->message = NULL;
 					g_error_free(loadError);
 					g_object_unref(memoryImageLoader);
@@ -285,7 +285,7 @@ void load_files(int *argc, char **argv[]) { /*{{{*/
 				load_files_addfile("-");
 			}
 			else {
-				fprintf(stderr, "Failed to load the image from stdin: %s\n", loadError->message);
+				g_printerr("Failed to load the image from stdin: %s\n", loadError->message);
 				g_error_free(loadError);
 				g_object_unref(memoryImageLoader);
 				memoryArgImage = (GdkPixbuf*)1; /* Ignore further attempts to load an image from stdin */
@@ -317,6 +317,7 @@ gint windowCloseOnlyCb(GtkWidget *widget, GdkEventKey *event, gpointer data) { /
 	if(event->keyval == 'q') {
 		gtk_widget_destroy(widget);
 	}
+	return 0;
 } /* }}} */
 gboolean storeImageCb(const char *buf, gsize count, GError **error, gpointer data) { /*{{{*/
 	/* Write data to stdout */
@@ -343,23 +344,12 @@ void run_program(char *command) { /*{{{*/
 	if(command[0] == '>') {
 		/* Pipe information {{{ */
 		command = &command[1];
-		/* Write filename to buf2, escape "'s {{{ */
-		buf2 = (char*)malloc(strlen(currentFile->fileName) * 2 + 1);
-		buf = currentFile->fileName;
-		for(i=0;;i++,buf++) {
-			if(*buf == '"') {
-				buf2[i++] = '\\';
-			}
-			buf2[i] = *buf;
-			if(*buf == 0) {
-				break;
-			}
-		} /*}}}*/
-		buf = (char*)malloc(strlen(command) + 4 + strlen(buf2));
-		sprintf(buf, "%s \"%s\"", command, buf2);
+		buf2 = g_shell_quote(currentFile->fileName);
+		buf = (char*)malloc(strlen(command) + 2 + strlen(buf2));
+		sprintf(buf, "%s %s", command, buf2);
 		readInformation = popen(buf, "r");
 		if(readInformation == NULL) {
-			fprintf(stderr, "Command execution failed for %s\n", command);
+			g_printerr("Command execution failed for %s\n", command);
 			free(buf);
 			return;
 		}
@@ -369,7 +359,7 @@ void run_program(char *command) { /*{{{*/
 			g_string_append(infoString, buf3);
 		}
 		pclose(readInformation);
-		free(buf2);
+		g_free(buf2);
 		free(buf3);
 		free(buf);
 	
@@ -410,12 +400,12 @@ void run_program(char *command) { /*{{{*/
 		command = &command[1];
 		/* Create a pipe */
 		if(pipe(tmpFileDescriptorsTo) == -1) {
-			fprintf(stderr, "Failed to create pipes for data exchange\n");
+			g_printerr("Failed to create pipes for data exchange\n");
 			setInfoText("Failure");
 			return;
 		}
 		if(pipe(tmpFileDescriptorsFrom) == -1) {
-			fprintf(stderr, "Failed to create pipes for data exchange\n");
+			g_printerr("Failed to create pipes for data exchange\n");
 			setInfoText("Failure");
 			close(tmpFileDescriptorsTo[0]);
 			close(tmpFileDescriptorsTo[1]);
@@ -435,7 +425,7 @@ void run_program(char *command) { /*{{{*/
 			close(tmpFileDescriptorsTo[0]); 
 			if(gdk_pixbuf_save_to_callback(currentImage, storeImageCb, &tmpFileDescriptorsTo[1],
 					"png", NULL, NULL) == FALSE) {
-				fprintf(stderr, "Failed to save image\n");
+				g_printerr("Failed to save image\n");
 				close(tmpFileDescriptorsFrom[0]); close(tmpFileDescriptorsFrom[1]);
 				close(tmpFileDescriptorsTo[0]); close(tmpFileDescriptorsTo[1]);
 				setInfoText("Failure");
@@ -454,9 +444,9 @@ void run_program(char *command) { /*{{{*/
 			if((i = read(tmpFileDescriptorsFrom[0], buf, 1024)) < 1) {
 				break;
 			}
-			if(gdk_pixbuf_loader_write(memoryImageLoader, buf, i, &loadError) == FALSE) {
-				kill(child, 9);
-				fprintf(stderr, "Failed to load output image: %s\n", loadError->message);
+			if(gdk_pixbuf_loader_write(memoryImageLoader, (unsigned char*)buf, i, &loadError) == FALSE) {
+				kill(child, SIGTERM);
+				g_printerr("Failed to load output image: %s\n", loadError->message);
 				g_object_unref(memoryImageLoader);
 				close(tmpFileDescriptorsFrom[0]);
 				free(buf);
@@ -466,7 +456,7 @@ void run_program(char *command) { /*{{{*/
 		}
 		close(tmpFileDescriptorsFrom[0]);
 		free(buf);
-		wait();
+		wait(NULL);
 
 		if(gdk_pixbuf_loader_close(memoryImageLoader, NULL) == TRUE) {
 			g_object_unref(currentImage);
@@ -488,23 +478,12 @@ void run_program(char *command) { /*{{{*/
 	else {
 		/* Run program {{{ */
 		if(fork() == 0) {
-			/* Write filename to buf2, escape "'s {{{ */
-			buf2 = (char*)malloc(strlen(currentFile->fileName) * 2 + 1);
-			buf = currentFile->fileName;
-			for(i=0;;i++,buf++) {
-				if(*buf == '"') {
-					buf2[i++] = '\\';
-				}
-				buf2[i] = *buf;
-				if(*buf == 0) {
-					break;
-				}
-			} /*}}}*/
-			buf = (char*)malloc(strlen(command) + 4 + strlen(buf2));
-			sprintf(buf, "%s \"%s\"", command, buf2);
+			buf2 = g_shell_quote(currentFile->fileName);
+			buf = (char*)malloc(strlen(command) + 2 + strlen(buf2));
+			sprintf(buf, "%s %s", command, buf2);
 			system(buf);
 			free(buf);
-			free(buf2);
+			g_free(buf2);
 			exit(1);
 		} /* }}} */
 	}
@@ -526,7 +505,7 @@ char loadImage() { /*{{{*/
 	else {
 		tmpImage = gdk_pixbuf_new_from_file(currentFile->fileName, NULL);
 		if(!tmpImage) {
-			printf("Failed to load %s\n", currentFile->fileName);
+			g_printerr("Failed to load %s\n", currentFile->fileName);
 			return FALSE;
 		}
 	}
@@ -798,7 +777,8 @@ gint keyboardCb(GtkWidget *widget, GdkEventKey *event, gpointer data) { /*{{{*/
 	int i = 0, n = 0;
 	char *buf, *buf2;
 	#ifdef DEBUG
-		printf("Keyboard: '%c' (%d), %d\n",
+		g_print("(%04d) %-20s Keyboard: '%c' (%d), %d\n",
+			__LINE__, G_STRFUNC,
 			event->keyval,
 			(int)event->keyval,
 			event->hardware_keycode
@@ -1097,6 +1077,7 @@ int main(int argc, char *argv[]) {
 	int optionCount = 1, i;
 /* }}} */
 /* glib & threads initialization {{{ */
+	DEBUG1("Debug mode enabled");
 	g_type_init();
 	g_thread_init(NULL);
 	gdk_threads_init();
@@ -1196,6 +1177,9 @@ int main(int argc, char *argv[]) {
 	/* }}} */
 	/* Load files {{{ */
 	argv++; argc--;
+	if(argv[0] == 0) {
+		exit(0);
+	}
 	if(strcmp(argv[0], "--") == 0) {
 		argv++; argc--;
 	}
