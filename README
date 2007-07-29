@@ -53,11 +53,19 @@ KNOWN PROBLEMS
 * Some window managers, especially Beryl, have problems with many commands in
   short intervals. As a resize follows the unfullscreen command immediately,
   the main window could be too big/small upon the unfullscreen command
-
+* If you experience problems with file encodings, try setting the environment
+  variable G_FILENAME_ENCODING to match your file system's encoding
 
 CHANGELOG
 
-pqiv 0.4
+pqiv 0.4 rc2
+ * Merged some code I forgot about into pqiv
+   Includes: Advanced command execution, more
+   glib calls instead of own functions
+ * Updated Makefile to conform to standards
+   Thanks to Samuli Suominen <drac at gentoo.org>
+ 
+pqiv 0.4 rc1
  * Source rewritten into c
  * Mouse moves image in fullscreen
  * Configuration file

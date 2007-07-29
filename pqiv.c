@@ -80,6 +80,7 @@ static struct file {
 } firstFile;
 static struct file *currentFile = &firstFile;
 static struct file *lastFile = &firstFile;
+GSList *fileExtensions;
 
 /* Program settings */
 static char isFullscreen = FALSE;
@@ -187,9 +188,7 @@ void helpMessage(char claim) { /* {{{ */
 } /* }}} */
 /* }}} */
 /* File loading and file structure {{{ */
-#define EXTENSIONS "\\.(png|gif|jpg|bmp|xpm)$"
-regex_t extensionCompiled;
-void load_files_addfile(char *file) { /*{{{*/
+void loadFilesAddFile(char *file) { /*{{{*/
 	if(firstFile.fileName != NULL) {
 		lastFile->next = (struct file*)malloc(sizeof(struct file));
 		if(lastFile->next == NULL) {
@@ -206,7 +205,19 @@ void load_files_addfile(char *file) { /*{{{*/
 	strcpy(lastFile->fileName, file);
 	lastFile->next = NULL;
 } /*}}}*/
-void load_files_helper(DIR *cwd) { /*{{{*/
+gint loadFilesFileExtensionsCompareCb(gconstpointer extension, gconstpointer file) { /*{{{*/
+	int i;
+
+	if(extension == NULL) {
+		return 1;
+	}
+	i = strlen((char*)file) - strlen((char*)extension);
+	if(i <= 0) {
+		return 1;
+	}
+	return strcasecmp(file + i, extension);
+} /*}}}*/
+void loadFilesHelper(DIR *cwd) { /*{{{*/
 	struct dirent *dirp;
 	DIR *ncwd;
 	int test;
@@ -220,12 +231,12 @@ void load_files_helper(DIR *cwd) { /*{{{*/
 		ncwd = opendir(dirp->d_name);
 		if(ncwd != NULL) {
 			chdir(dirp->d_name);
-			load_files_helper(ncwd);
+			loadFilesHelper(ncwd);
 			chdir("..");
 			closedir(ncwd);
 		}
 		else {
-			if(regexec(&extensionCompiled, dirp->d_name, 0, 0, 0) == 0) {
+			if(g_slist_find_custom(fileExtensions, (gpointer)dirp->d_name, loadFilesFileExtensionsCompareCb) != NULL) {
 				test = open(dirp->d_name, O_RDONLY);
 				if(test > -1) {
 					cwdName = (char*)malloc(1024);
@@ -235,7 +246,7 @@ void load_files_helper(DIR *cwd) { /*{{{*/
 						die("Failed to allocate memory");
 					}
 					sprintf(completeName, "%s/%s", cwdName, dirp->d_name);
-					load_files_addfile(completeName);
+					loadFilesAddFile(completeName);
 					free(cwdName);
 					free(completeName);
 					close(test);
@@ -244,7 +255,7 @@ void load_files_helper(DIR *cwd) { /*{{{*/
 		}
 	}
 } /*}}}*/
-void load_files(int *argc, char **argv[]) { /*{{{*/
+void loadFiles(int *argc, char **argv[]) { /*{{{*/
 	int i;
 	int test;
 	DIR *cwd;
@@ -253,8 +264,8 @@ void load_files(int *argc, char **argv[]) { /*{{{*/
 	GError *loadError = NULL;
 	GdkPixbufLoader *memoryImageLoader = NULL;
 
+	/* Load files */
 	DEBUG1("Load files");
-	regcomp(&extensionCompiled, EXTENSIONS, REG_ICASE | REG_EXTENDED | REG_NOSUB);
 	for(i=0; i<*argc; i++) {
 		if(strcmp((*argv)[i], "-") == 0) {
 			/* Load image from stdin {{{ */
@@ -282,7 +293,7 @@ void load_files(int *argc, char **argv[]) { /*{{{*/
 			if(gdk_pixbuf_loader_close(memoryImageLoader, &loadError) == TRUE) {
 				memoryArgImage = gdk_pixbuf_copy(gdk_pixbuf_loader_get_pixbuf(memoryImageLoader));
 				g_object_unref(memoryImageLoader);
-				load_files_addfile("-");
+				loadFilesAddFile("-");
 			}
 			else {
 				g_printerr("Failed to load the image from stdin: %s\n", loadError->message);
@@ -299,7 +310,7 @@ void load_files(int *argc, char **argv[]) { /*{{{*/
 			ocwd = (char*)malloc(1024);
 			getcwd(ocwd, 1024);
 			chdir((*argv)[i]);
-			load_files_helper(cwd);
+			loadFilesHelper(cwd);
 			chdir(ocwd);
 			free(ocwd);
 			closedir(cwd);
@@ -307,7 +318,7 @@ void load_files(int *argc, char **argv[]) { /*{{{*/
 		else {
 			test = open((*argv)[i], O_RDONLY);
 			if(test > -1) {
-				load_files_addfile((*argv)[i]);
+				loadFilesAddFile((*argv)[i]);
 				close(test);
 			}
 		}
@@ -329,7 +340,7 @@ gboolean storeImageCb(const char *buf, gsize count, GError **error, gpointer dat
 		return FALSE;
 	}
 } /*}}}*/
-void run_program(char *command) { /*{{{*/
+void runProgram(char *command) { /*{{{*/
 	char *buf4, *buf3, *buf2, *buf;
 	GtkWidget *tmpWindow, *tmpScroller, *tmpText;
 	FILE *readInformation;
@@ -1005,7 +1016,7 @@ gint keyboardCb(GtkWidget *widget, GdkEventKey *event, gpointer data) { /*{{{*/
 				setInfoText(buf);
 				gtk_main_iteration();
 				free(buf);
-				run_program(optionCommands[i]);
+				runProgram(optionCommands[i]);
 			}
 			break;
 			/* }}} */
@@ -1075,6 +1086,8 @@ int main(int argc, char *argv[]) {
 	FILE *optionsFile;
 	char *options[255];
 	int optionCount = 1, i;
+	char **fileFormatExtensionsIterator;
+	GSList *fileFormatsIterator;
 /* }}} */
 /* glib & threads initialization {{{ */
 	DEBUG1("Debug mode enabled");
@@ -1186,8 +1199,19 @@ int main(int argc, char *argv[]) {
 	if(argv[0] == 0) {
 		exit(0);
 	}
+	/* Load available file formats */
+	fileExtensions = g_slist_alloc();
+	fileFormatsIterator = gdk_pixbuf_get_formats();
+	do {
+		fileFormatExtensionsIterator = gdk_pixbuf_format_get_extensions(fileFormatsIterator->data);
+		while(*fileFormatExtensionsIterator != NULL) {
+			fileExtensions = g_slist_prepend(fileExtensions, *fileFormatExtensionsIterator);
+			++fileFormatExtensionsIterator;
+		}
+	} while(fileFormatsIterator = g_slist_next(fileFormatsIterator));
+	/* Load files */
 	memset(&firstFile, 0, sizeof(struct file));
-	load_files(&argc, &argv);
+	loadFiles(&argc, &argv);
 	if(optionReadStdin == TRUE) {
 		fileName = (char*)malloc(1025);
 		do {
@@ -1202,7 +1226,7 @@ int main(int argc, char *argv[]) {
 			fileNameL--;
 			if(*fileNameL < 33)
 				*fileNameL = 0;
-			load_files_addfile(fileName);
+			loadFilesAddFile(fileName);
 		} while(TRUE);
 	}
 	/* }}} */
