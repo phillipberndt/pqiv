@@ -46,7 +46,6 @@ You'll need
  * gthread-2.0
  * pango
  * glib
-All of those libs are included in the gtk+-2.0 package.
 
 
 KNOWN PROBLEMS
@@ -63,6 +62,7 @@ pqiv 0.4
  * Mouse moves image in fullscreen
  * Configuration file
  * Many bugfixes (i.e. fullscreen on startup)
+ * Ability to execute external commands
 
 pqiv <0.4:
  See the old python release for information on that

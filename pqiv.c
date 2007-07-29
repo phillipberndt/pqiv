@@ -19,7 +19,7 @@
  * 
  */
 #define RELEASE "0.4"
-//#define DEBUG
+#define DEBUG
 
 /* Includes {{{ */
 #include <stdio.h>
@@ -44,16 +44,17 @@ extern int optind, opterr, optopt;
 extern char **environ;
 
 /* GTK stuff */
-GtkWidget *window = NULL;
-GtkWidget *imageWidget = NULL;
-GtkWidget *fixed;
-GtkWidget *infoLabel;
-GtkWidget *infoLabelBox;
-GtkWidget *mouseEventBox;
-GdkPixbuf *currentImage = NULL;
-GdkPixbuf *scaledImage = NULL;
+static GtkWidget *window = NULL;
+static GtkWidget *imageWidget = NULL;
+static GtkWidget *fixed;
+static GtkWidget *infoLabel;
+static GtkWidget *infoLabelBox;
+static GtkWidget *mouseEventBox;
+static GdkPixbuf *currentImage = NULL;
+static GdkPixbuf *scaledImage = NULL;
+static GdkPixbuf *memoryArgImage = NULL;
 static char emptyCursor[] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
-char *chessBoard = 
+static char *chessBoard = 
 		"GdkP"
 		"\0\0\0\263"
 		"\2\1\0\2"
@@ -70,30 +71,30 @@ char *chessBoard =
 
 
 /* Structure for file list building */
-struct file {
+static struct file {
 	char *fileName;
 	int nr;
 	struct file *next;
 	struct file *prev;
 } firstFile;
-struct file *currentFile = &firstFile;
-struct file *lastFile = &firstFile;
+static struct file *currentFile = &firstFile;
+static struct file *lastFile = &firstFile;
 
 /* Program settings */
-char isFullscreen = FALSE;
-char infoBoxVisible = 0;
-float scaledAt;
-float zoom;
-char autoScale = TRUE;
-int moveX, moveY;
-int slideshowInterval = 3;
-int slideshowEnabled = 0;
+static char isFullscreen = FALSE;
+static char infoBoxVisible = 0;
+static float scaledAt;
+static float zoom;
+static char autoScale = TRUE;
+static int moveX, moveY;
+static int slideshowInterval = 3;
+static int slideshowEnabled = 0;
 
 /* Program options */
-char optionHideInfoBox = FALSE;
-char optionFullScreen = FALSE;
-char optionDoChessboard = TRUE;
-char *optionCommands[] = { NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL };
+static char optionHideInfoBox = FALSE;
+static char optionFullScreen = FALSE;
+static char optionDoChessboard = TRUE;
+static char *optionCommands[] = { NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL };
 
 /* Functions */
 char reloadImage();
@@ -245,10 +246,48 @@ void load_files(int *argc, char **argv[]) { /*{{{*/
 	int test;
 	DIR *cwd;
 	char *ocwd;
+	char *buf;
+	GError *loadError = NULL;
+	GdkPixbufLoader *memoryImageLoader = NULL;
 
 	DEBUG1("Load files");
 	regcomp(&extensionCompiled, EXTENSIONS, REG_ICASE | REG_EXTENDED | REG_NOSUB);
 	for(i=0; i<*argc; i++) {
+		if(strcmp((*argv)[i], "-") == 0) {
+			/* Load image from stdin {{{ */
+			if(memoryArgImage != NULL) {
+				fprintf(stderr, "You can't specify more than one image to be read from stdin.\n");
+				continue;
+			}
+			memoryImageLoader = gdk_pixbuf_loader_new();
+			buf = (char*)malloc(1024);
+			while(TRUE) {
+				i = fread(buf, 1, 1024, stdin);
+				if(i == 0) {
+					break;
+				}
+				if(gdk_pixbuf_loader_write(memoryImageLoader, buf, i, &loadError) == FALSE) {
+					fprintf(stderr, "Failed to load the image from stdin: %s\n", loadError->message);
+					loadError->message = NULL;
+					g_error_free(loadError);
+					loadError = NULL;
+					memoryArgImage = (GdkPixbuf*)1; /* Ignore further attempts to load an image from stdin */
+					break;
+				}
+			}
+			if(gdk_pixbuf_loader_close(memoryImageLoader, &loadError) == TRUE) {
+				memoryArgImage = gdk_pixbuf_loader_get_pixbuf(memoryImageLoader);
+				load_files_addfile("-");
+			}
+			else {
+				fprintf(stderr, "Failed to load the image from stdin: %s\n", loadError->message);
+				g_error_free(loadError);
+				memoryArgImage = (GdkPixbuf*)1; /* Ignore further attempts to load an image from stdin */
+			}
+			free(buf);
+			continue;
+			/* }}} */
+		}
 		cwd = opendir((*argv)[i]);
 		if(cwd != NULL) {
 			ocwd = (char*)malloc(1024);
@@ -435,16 +474,25 @@ char loadImage() { /*{{{*/
 	int i, n, o, p;
 
 	DEBUG2("loadImage", currentFile->fileName);
-	tmpImage = gdk_pixbuf_new_from_file(currentFile->fileName, NULL);
-	if(!tmpImage) {
-		printf("Failed to load %s\n", currentFile->fileName);
-		return FALSE;
+	if(strcmp(currentFile->fileName, "-") == 0) {
+		if(memoryArgImage == NULL) {
+			return FALSE;
+		}
+		tmpImage = g_object_ref(memoryArgImage);
+	}
+	else {
+		tmpImage = gdk_pixbuf_new_from_file(currentFile->fileName, NULL);
+		if(!tmpImage) {
+			printf("Failed to load %s\n", currentFile->fileName);
+			return FALSE;
+		}
 	}
 	if(currentImage != NULL) {
 		g_object_unref(currentImage);
 	}
 	if(optionDoChessboard == TRUE && gdk_pixbuf_get_has_alpha(tmpImage)) {
 		/* Draw chessboard */
+		DEBUG("Creating chessboard");
 		chessBoardBuf = gdk_pixbuf_new_from_inline(159, (const guint8 *)chessBoard, FALSE, NULL);
 		currentImage = gdk_pixbuf_copy(tmpImage);
 		o = gdk_pixbuf_get_width(currentImage);
@@ -1005,6 +1053,11 @@ int main(int argc, char *argv[]) {
 	char *options[255];
 	int optionCount = 1, i;
 /* }}} */
+/* glib & threads initialization {{{ */
+	g_type_init();
+	g_thread_init(NULL);
+	gdk_threads_init();
+/* }}} */
 	/* Command line and configuration parsing {{{ */
 	envP = environ;
 	options[0] = argv[0];
@@ -1099,6 +1152,9 @@ int main(int argc, char *argv[]) {
 	/* }}} */
 	/* Load files {{{ */
 	argv++; argc--;
+	if(strcmp(argv[0], "--") == 0) {
+		argv++; argc--;
+	}
 	if(argv[0] == 0) {
 		exit(0);
 	}
@@ -1123,9 +1179,6 @@ int main(int argc, char *argv[]) {
 	}
 	/* }}} */
 	/* Initialize gtk {{{ */
-	g_thread_init(NULL);
-	gdk_threads_init();
-
 	/* Create gtk window */
 	gtk_init(&argc, &argv);
 	window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
