@@ -94,7 +94,7 @@ static int slideshowEnabled = 0;
 
 /* Program options */
 static char optionHideInfoBox = FALSE;
-static char optionDoChessboard = TRUE;
+static char optionHideChessboardLevel = 0;
 static char *optionCommands[] = { NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL };
 static GdkInterpType optionInterpolation = GDK_INTERP_BILINEAR;
 
@@ -136,7 +136,8 @@ void setInfoText(char *text) {
 /* }}} */
 void helpMessage(char claim) { /* {{{ */
 	/* Perl code to get bindings:
-	 * perl -ne 'm/(?:OPTION|BIND): (.+?): (.+?)[{$\*]/ or next; $_=$1.(" "x(15-length($1))).$2; print "\" $_\\n\"\n";' < pqiv.c
+		 perl -ne 'if(m/(?:OPTION|BIND): (.+?): (.+?)[{$\*]/){$_=$1.(" "x(15-length($1))).$2;
+		 print "\" $_\\n\"\n";}if(m/ADD: (.+?)[{$}*]/){print "\"".(" "x16)."$1\\n\"\n";}' < pqiv.c 
 	 */
 	g_print("usage: pqiv [options] <files or folders>\n"
 		"(p)qiv version " RELEASE " by Phillip Berndt\n"
@@ -153,10 +154,11 @@ void helpMessage(char claim) { /* {{{ */
 		" -t             Shrink image(s) larger than the screen to fit \n"
 		" -r             Read additional filenames (not folders) from stdin \n"
 		" -c             Disable the background for transparent images \n"
-		" -p             Interpolation quality level (1-4, defaults to 3)\n"
+		"                Use twice to make the window transparent \n"
+		" -p             Interpolation quality level (1-4, defaults to 3) \n"
 		" -<n> s         Set command number n (1-9) to s \n"
-		"                Prepend command with | to pipe image->command->image\n"
-		"                Prepend command with > to display the output of the command\n"
+		"                Prepend command with | to pipe image->command->image \n"
+		"                Prepend command with > to display the output of the command \n"
 		"\n"
 		" Place any of those options into ~/.pqivrc (like you'd do here) to make it default.\n"
 		"\n"
@@ -525,7 +527,7 @@ char loadImage() { /*{{{*/
 	if(currentImage != NULL) {
 		g_object_unref(currentImage);
 	}
-	if(optionDoChessboard == TRUE && gdk_pixbuf_get_has_alpha(tmpImage)) {
+	if(optionHideChessboardLevel == 0 && gdk_pixbuf_get_has_alpha(tmpImage)) {
 		/* Draw chessboard */
 		DEBUG1("Creating chessboard");
 		chessBoardBuf = gdk_pixbuf_new_from_inline(159, (const guint8 *)chessBoard, FALSE, NULL);
@@ -635,26 +637,29 @@ void rotate(char left) { /*{{{*/
 	scaledAt = -1;
 } /*}}}*/
 /* }}} */
-/* Draw image to screen {{{ */
+/* Draw image to screen, for transparent windows {{{ */
 gint exposeCb(GtkWidget *widget, GdkEventExpose *event, gpointer data) { /*{{{*/
-	guchar *pixels;
-	int rowstride;
-
+	/* Taken from API documentation on developer.gnome.org */
+	cairo_t *cr;
 	DEBUG1("Expose");
-	if(scaledImage != NULL) {
-		rowstride = gdk_pixbuf_get_rowstride(scaledImage);
-		pixels = gdk_pixbuf_get_pixels(scaledImage) + rowstride * event->area.y + event->area.x * 3;
-		gdk_draw_rgb_image_dithalign(widget->window,
-			widget->style->black_gc,
-			event->area.x + moveX, event->area.y + moveY,
-			event->area.width, event->area.height,
-			GDK_RGB_DITHER_NORMAL,
-			pixels, rowstride,
-			event->area.x, event->area.y);
-	}
-
-	return 0;
+	cr = gdk_cairo_create(widget->window);
+	cairo_set_operator(cr, CAIRO_OPERATOR_CLEAR);
+	gdk_cairo_region(cr, event->region);
+	cairo_fill(cr);
+	cairo_destroy(cr);
+	return FALSE;
 } /*}}}*/
+/* Screen changed callback (for transparent window) {{{ */
+static void screenChangeCb(GtkWidget *widget, GdkScreen *old_screen, gpointer userdata) {
+	GdkScreen *screen;
+	GdkColormap *colormap;
+	DEBUG1("Screen changed");
+	
+	screen = gtk_widget_get_screen(widget);
+	colormap = gdk_screen_get_rgba_colormap(screen);
+	gtk_widget_set_colormap(widget, colormap);
+}
+/* }}} */
 void setFullscreen(char fullscreen) { /*{{{*/
 	GdkCursor *cursor;
 	GdkPixmap *source;
@@ -1026,7 +1031,7 @@ gint keyboardCb(GtkWidget *widget, GdkEventKey *event, gpointer data) { /*{{{*/
 	}
 	return 0;
 } /*}}}*/
-/* BIND: Drag & Drop: Move image (Fullscreen) {{{ */
+/* BIND: Drag & Drop: Move image (Fullscreen) and decoration switch {{{ */
 gint mouseButtonCb(GtkWidget *widget, GdkEventButton *event, gpointer data) {
 	GdkScreen *screen; int scrx, scry;
 	if(event->type == GDK_BUTTON_PRESS && isFullscreen == TRUE) {
@@ -1037,12 +1042,16 @@ gint mouseButtonCb(GtkWidget *widget, GdkEventButton *event, gpointer data) {
 		gdk_display_warp_pointer(gdk_display_get_default(),
 			gdk_display_get_default_screen(gdk_display_get_default()), scrx, scry);
 	}
+	else if(event->type == GDK_BUTTON_PRESS && isFullscreen == FALSE && optionHideChessboardLevel > 1) {
+		gtk_window_set_decorated(GTK_WINDOW(window), !gtk_window_get_decorated(GTK_WINDOW(window)));
+	}
 	else if(event->type == GDK_BUTTON_RELEASE) {
 		mouseScrollEnabled = FALSE;
 	}
 	return 0;
 }
-gint mouseMotionCb(GtkWidget *widget, GdkEventMotion *event, gpointer data) {
+/* }}} */
+gint mouseMotionCb(GtkWidget *widget, GdkEventMotion *event, gpointer data) { /* {{{ */
 	GdkScreen *screen; int scrx, scry;
 	if(mouseScrollEnabled == FALSE) {
 		return 0;
@@ -1072,8 +1081,8 @@ gint mouseScrollCb(GtkWidget *widget, GdkEventScroll *event, gpointer data) {
 		}
 	} while((!reloadImage()) && i != currentFile->nr);
 	return 0;
-	/* }}} */
 }
+/* }}} */
 /* }}} */
 
 int main(int argc, char *argv[]) {
@@ -1172,8 +1181,11 @@ int main(int argc, char *argv[]) {
 				memoryArgImage = (GdkPixbuf*)1; /* Don't allow - files */
 				break;
 			/* OPTION: -c: Disable the background for transparent images */
+			/* ADD: Use twice to make the window transparent */
 			case 'c':
-				optionDoChessboard = FALSE;
+				if(optionHideChessboardLevel < 3) {
+					optionHideChessboardLevel++;
+				}
 				break;
 			/* OPTION: -p: Interpolation quality level (1-4, defaults to 3) */
 			case 'p':
@@ -1186,6 +1198,8 @@ int main(int argc, char *argv[]) {
 				}
 				break;
 			/* OPTION: -<n> s: Set command number n (1-9) to s */
+			/* ADD: Prepend command with | to pipe image->command->image */
+			/* ADD: Prepend command with > to display the output of the command */
 			case '1': case '2': case '3': case '4':
 			case '5': case '6': case '7': case '8':
 			case '9':
@@ -1249,7 +1263,13 @@ int main(int argc, char *argv[]) {
 	window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
 	gtk_window_set_resizable(GTK_WINDOW(window), FALSE);
 	gtk_widget_set_size_request(window, 640, 480);
-	gtk_window_set_title (GTK_WINDOW(window), "pqiv");
+	gtk_window_set_title(GTK_WINDOW(window), "pqiv");
+	if(optionHideChessboardLevel > 1) {
+
+		gtk_widget_set_app_paintable(window, TRUE);
+		screenChangeCb(window, NULL, NULL);
+		gtk_window_set_decorated(GTK_WINDOW(window), FALSE);
+	}
 	gtk_widget_show(window);
 	fixed = gtk_fixed_new();
 	gtk_container_add(GTK_CONTAINER(window), fixed);
@@ -1259,6 +1279,10 @@ int main(int argc, char *argv[]) {
 	imageWidget = gtk_image_new();
 	color.red = 0; color.green = 0; color.blue = 0;
 	gtk_widget_modify_bg(GTK_WIDGET(window), GTK_STATE_NORMAL, &color);
+	if(optionHideChessboardLevel > 1) {
+		gtk_widget_set_app_paintable(imageWidget, TRUE);
+		screenChangeCb(imageWidget, NULL, NULL);
+	}
 	gtk_fixed_put(GTK_FIXED(fixed), imageWidget, 0, 0);
 	gtk_widget_show(imageWidget);
 
@@ -1285,6 +1309,16 @@ int main(int argc, char *argv[]) {
 	gtk_widget_show(mouseEventBox);
 
 	/* Signalling stuff */
+	if(optionHideChessboardLevel > 1) {
+		g_signal_connect(window, "expose-event",
+			G_CALLBACK(exposeCb), NULL);
+		g_signal_connect(window, "screen-changed",
+			G_CALLBACK(screenChangeCb), NULL);
+		g_signal_connect(imageWidget, "expose-event",
+			G_CALLBACK(exposeCb), NULL);
+		g_signal_connect(imageWidget, "screen-changed",
+			G_CALLBACK(screenChangeCb), NULL);
+	}
 	g_signal_connect(window, "key-press-event",
 		G_CALLBACK(keyboardCb), NULL);
 	g_signal_connect(mouseEventBox, "button-press-event",
@@ -1298,7 +1332,6 @@ int main(int argc, char *argv[]) {
 	g_signal_connect (window, "destroy",
 		G_CALLBACK(gtk_main_quit),
 	        &window);
-
 	/* }}} */
 	/* Load first image {{{ */
 	if(currentFile->fileName == NULL) {
