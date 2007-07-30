@@ -657,6 +657,10 @@ static void screenChangeCb(GtkWidget *widget, GdkScreen *old_screen, gpointer us
 	
 	screen = gtk_widget_get_screen(widget);
 	colormap = gdk_screen_get_rgba_colormap(screen);
+	if(!colormap) {
+		g_printerr("Sorry, alpha channels are not supported on this screen.\n");
+		die("Try again without -cc or activate compositing\n");
+	}
 	gtk_widget_set_colormap(widget, colormap);
 }
 /* }}} */
