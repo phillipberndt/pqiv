@@ -1006,6 +1006,7 @@ gint keyboardCb(GtkWidget *widget, GdkEventKey *event, gpointer data) { /*{{{*/
 			link(currentFile->fileName, buf);
 			free(buf);
 			setInfoText("Hardlink saved");
+			break;
 			/* }}} */
 		/* BIND: <n>: Run command n (1-3) {{{ */
 		case '1': case '2': case '3': case '4':
@@ -1254,7 +1255,7 @@ int main(int argc, char *argv[]) {
 	gtk_container_add(GTK_CONTAINER(window), fixed);
 	gtk_widget_show(fixed);
 
-	/* Create drawing area */
+	/* Create image widget */
 	imageWidget = gtk_image_new();
 	color.red = 0; color.green = 0; color.blue = 0;
 	gtk_widget_modify_bg(GTK_WIDGET(window), GTK_STATE_NORMAL, &color);

@@ -56,7 +56,12 @@ KNOWN PROBLEMS
 * If you experience problems with file encodings, try setting the environment
   variable G_FILENAME_ENCODING to match your file system's encoding
 
+
 CHANGELOG
+
+pqiv 0.4
+ * Added option to select interpolation type
+   (I don't expect this to need any testing)
 
 pqiv 0.4 rc2
  * Merged some code I forgot about into pqiv
