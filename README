@@ -36,6 +36,7 @@ Features include:
  * Rather small executable (~36k), low ram consumtion, quick
  * Execute predefined commands, pipe images through them or
    display their output
+ * Real transparency
 
 
 INSTALLATION
@@ -59,9 +60,7 @@ KNOWN PROBLEMS
 
 CHANGELOG
 
-pqiv 0.4
- * Added option to select interpolation type
-   (I don't expect this to need any testing)
+- no more new features before final, promise :) -
 
 pqiv 0.4 rc2
  * Merged some code I forgot about into pqiv
@@ -69,6 +68,9 @@ pqiv 0.4 rc2
    glib calls instead of own functions
  * Updated Makefile to conform to standards
    Thanks to Samuli Suominen <drac at gentoo.org>
+ * Added option to select interpolation type
+   (I don't expect this to need any testing)
+ * Added support for real transparent images
  
 pqiv 0.4 rc1
  * Source rewritten into c
