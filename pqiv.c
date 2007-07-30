@@ -96,6 +96,7 @@ static int slideshowEnabled = 0;
 static char optionHideInfoBox = FALSE;
 static char optionDoChessboard = TRUE;
 static char *optionCommands[] = { NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL };
+static GdkInterpType optionInterpolation = GDK_INTERP_BILINEAR;
 
 /* Functions */
 char reloadImage();
@@ -152,6 +153,7 @@ void helpMessage(char claim) { /* {{{ */
 		" -t             Shrink image(s) larger than the screen to fit \n"
 		" -r             Read additional filenames (not folders) from stdin \n"
 		" -c             Disable the background for transparent images \n"
+		" -p             Interpolation quality level (1-4, defaults to 3)\n"
 		" -<n> s         Set command number n (1-9) to s \n"
 		"                Prepend command with | to pipe image->command->image\n"
 		"                Prepend command with > to display the output of the command\n"
@@ -566,7 +568,7 @@ inline void scale() { /*{{{*/
 			scaledImage = gdk_pixbuf_scale_simple(currentImage, 10, 10, GDK_INTERP_BILINEAR);
 		}
 		else {
-			scaledImage = gdk_pixbuf_scale_simple(currentImage, (int)(imgx * zoom), (int)(imgy * zoom), GDK_INTERP_BILINEAR);
+			scaledImage = gdk_pixbuf_scale_simple(currentImage, (int)(imgx * zoom), (int)(imgy * zoom), optionInterpolation);
 		}
 		if(scaledImage == NULL) {
 			die("Failed to allocate memory");
@@ -1138,7 +1140,7 @@ int main(int argc, char *argv[]) {
 	}
 
 	opterr = 0;
-	while((option = getopt(optionCount, options, "ifsthrcd:1:2:3:4:5:6:7:8:9:")) > 0) {
+	while((option = getopt(optionCount, options, "ifsthrcp:d:1:2:3:4:5:6:7:8:9:")) > 0) {
 		switch(option) {
 			/* OPTION: -i: Hide info box */
 			case 'i':
@@ -1171,6 +1173,16 @@ int main(int argc, char *argv[]) {
 			/* OPTION: -c: Disable the background for transparent images */
 			case 'c':
 				optionDoChessboard = FALSE;
+				break;
+			/* OPTION: -p: Interpolation quality level (1-4, defaults to 3) */
+			case 'p':
+				switch(*optarg) {
+					case '1': optionInterpolation = GDK_INTERP_NEAREST; break;
+					case '2': optionInterpolation = GDK_INTERP_TILES; break;
+					case '3': optionInterpolation = GDK_INTERP_BILINEAR; break;
+					case '4': optionInterpolation = GDK_INTERP_HYPER; break;
+					default:  helpMessage(0);
+				}
 				break;
 			/* OPTION: -<n> s: Set command number n (1-9) to s */
 			case '1': case '2': case '3': case '4':
@@ -1208,7 +1220,7 @@ int main(int argc, char *argv[]) {
 			fileExtensions = g_slist_prepend(fileExtensions, *fileFormatExtensionsIterator);
 			++fileFormatExtensionsIterator;
 		}
-	} while(fileFormatsIterator = g_slist_next(fileFormatsIterator));
+	} while((fileFormatsIterator = g_slist_next(fileFormatsIterator)) != NULL);
 	/* Load files */
 	memset(&firstFile, 0, sizeof(struct file));
 	loadFiles(&argc, &argv);

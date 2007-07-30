@@ -29,6 +29,20 @@ Read filename(s) from STDIN.
 pqiv will draw this well-known chessboard background for transparent images per
 default. Use this option to deactivate this behaviour.
 .TP
+-p n
+Select interpolation type for resizing operations. Valid values for n:
+.br
+.po 5
+1: GDK_INTERP_NEAREST, copy the nearest pixel value
+.br
+2: GDK_INTERP_TILES, tile the image
+.br
+3: GDK_INTERP_BILINEAR, use bilinear interpolation
+.br
+4: GDK_INTERP_HYPER, use hyper interpolation
+.br
+.po 0
+.TP
 .B -<n>
 Use those options (n \in 0..9) to define a command, which will be executed when
 you press the corresponding key in pqiv.
