@@ -18,7 +18,7 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  * 
  */
-#define RELEASE "0.4"
+#define RELEASE "0.5"
 
 /* Includes {{{ */
 #include <stdio.h>
@@ -38,7 +38,9 @@
 #include <libgen.h>
 #include <sys/stat.h>
 #include <time.h>
-#include "lib/strnatcmp/strnatcmp.h"
+#ifndef NO_SORTING
+#include "lib/strnatcmp.h"
+#endif
 /* }}} */
 /* Definitions {{{ */
 /* libc stuff */
@@ -100,7 +102,9 @@ static int inotifyWd = -1;
 static char optionHideInfoBox = FALSE;
 static char optionUseInotify = FALSE;
 static char optionHideChessboardLevel = 0;
+#ifndef NO_COMMANDS
 static char *optionCommands[] = { NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL };
+#endif
 static GdkInterpType optionInterpolation = GDK_INTERP_BILINEAR;
 
 /* Functions */
@@ -155,21 +159,29 @@ void helpMessage(char claim) { /* {{{ */
 		" -i             Hide info box \n"
 		" -f             Start in fullscreen mode \n"
 		" -s             Activate slideshow \n"
+		#ifndef NO_SORTING	
 		" -n             Sort all files in natural order \n"
+		#endif
 		" -d n           Slideshow interval \n"
 		" -t             Shrink image(s) larger than the screen to fit \n"
 		" -r             Read additional filenames (not folders) from stdin \n"
 		" -c             Disable the background for transparent images \n"
+		#ifndef NO_COMPOSITING
 		"                Use twice to make the window transparent \n"
 		"                Use three times to make the window behave like a desktop widget \n"
+		#endif
 		" -w             Watch files for changes \n"
 		" -p             Interpolation quality level (1-4, defaults to 3) \n"
+		#ifndef NO_COMMANDS
 		" -<n> s         Set command number n (1-9) to s \n"
 		"                Prepend command with | to pipe image->command->image \n"
 		"                Prepend command with > to display the output of the command \n"
+		#endif
 		"\n"
+		#ifndef NO_CONFIG_FILE
 		" Place any of those options into ~/.pqivrc (like you'd do here) to make it default.\n"
 		"\n"
+		#endif
 		"key bindings:\n"
 		" Backspace      Previous image \n"
 		" PgUp           Jump 10 images forewards \n"
@@ -191,7 +203,9 @@ void helpMessage(char claim) { /* {{{ */
 		" i              Show/hide info box \n"
 		" s              Slideshow toggle \n"
 		" a              Hardlink current image to .qiv-select/ \n"
+		#ifndef NO_COMMANDS
 		" <n>            Run command n (1-3) \n"
+		#endif
 		" Drag & Drop    Move image (Fullscreen) and decoration switch \n"
 		" Scroll         Next/previous image \n"
 		"\n"
@@ -352,6 +366,7 @@ gboolean storeImageCb(const char *buf, gsize count, GError **error, gpointer dat
 		return FALSE;
 	}
 } /*}}}*/
+#ifndef NO_COMMANDS
 void runProgram(char *command) { /*{{{*/
 	char *buf4, *buf3, *buf2, *buf;
 	GtkWidget *tmpWindow, *tmpScroller, *tmpText;
@@ -511,6 +526,7 @@ void runProgram(char *command) { /*{{{*/
 		} /* }}} */
 	}
 } /*}}}*/
+#endif
 void inotifyCb(gpointer data, gint source_fd, GdkInputCondition condition) { /*{{{*/
 	struct inotify_event event;
 	GdkEventKey keyEvent;
@@ -541,6 +557,7 @@ void inotifyCb(gpointer data, gint source_fd, GdkInputCondition condition) { /*{
 	gdk_event_put((GdkEvent*)(&keyEvent));
 } /*}}}*/
 /* File sorting {{{ */
+#ifndef NO_SORTING
 int sortFilesCompare(const void *f1, const void *f2) {
 	return strnatcasecmp(
 		/* This is quite complex oO
@@ -577,6 +594,7 @@ void sortFiles() {
 	}
 	free(files);
 }
+#endif
 /* }}} */
 /*}}}*/
 /* Load images and modify them {{{ */
@@ -722,7 +740,8 @@ void rotate(char left) { /*{{{*/
 	scaledAt = -1;
 } /*}}}*/
 /* }}} */
-/* Draw image to screen, for transparent windows {{{ */
+/* Draw image to screen {{{ */
+#ifndef NO_COMPOSITING
 gint exposeCb(GtkWidget *widget, GdkEventExpose *event, gpointer data) { /*{{{*/
 	/* Taken from API documentation on developer.gnome.org */
 	cairo_t *cr;
@@ -749,6 +768,7 @@ static void screenChangeCb(GtkWidget *widget, GdkScreen *old_screen, gpointer us
 	gtk_widget_set_colormap(widget, colormap);
 }
 /* }}} */
+#endif
 void setFullscreen(char fullscreen) { /*{{{*/
 	GdkCursor *cursor;
 	GdkPixmap *source;
@@ -1117,6 +1137,7 @@ gint keyboardCb(GtkWidget *widget, GdkEventKey *event, gpointer data) { /*{{{*/
 			setInfoText("Hardlink saved");
 			break;
 			/* }}} */
+		#ifndef NO_COMMANDS
 		/* BIND: <n>: Run command n (1-3) {{{ */
 		case '1': case '2': case '3': case '4':
 		case '5': case '6': case '7': case '8':
@@ -1132,6 +1153,7 @@ gint keyboardCb(GtkWidget *widget, GdkEventKey *event, gpointer data) { /*{{{*/
 			}
 			break;
 			/* }}} */
+		#endif
 	}
 	return 0;
 } /*}}}*/
@@ -1139,7 +1161,11 @@ gint keyboardCb(GtkWidget *widget, GdkEventKey *event, gpointer data) { /*{{{*/
 gint mouseButtonCb(GtkWidget *widget, GdkEventButton *event, gpointer data) {
 	GdkScreen *screen; int scrx, scry;
 	if(event->button == 1) {
-		if(event->type == GDK_BUTTON_PRESS && (isFullscreen == TRUE || optionHideChessboardLevel == 3)) {
+		if(event->type == GDK_BUTTON_PRESS && (isFullscreen == TRUE 
+			#ifndef NO_COMPOSITING
+			|| optionHideChessboardLevel == 3
+			#endif
+			)) {
 			if(isFullscreen == TRUE) {
 				screen = gtk_widget_get_screen(window);
 				scrx = gdk_screen_get_width(screen) / 2;
@@ -1149,10 +1175,12 @@ gint mouseButtonCb(GtkWidget *widget, GdkEventButton *event, gpointer data) {
 			}
 			mouseScrollEnabled = TRUE;
 		}
+		#ifndef NO_COMPOSITING
 		else if(event->type == GDK_BUTTON_PRESS && isFullscreen == FALSE && optionHideChessboardLevel == 2) {
 			/* Change decoration when started with -cc */
 			gtk_window_set_decorated(GTK_WINDOW(window), !gtk_window_get_decorated(GTK_WINDOW(window)));
 		}
+		#endif
 		else if(event->type == GDK_BUTTON_RELEASE) {
 			mouseScrollEnabled = FALSE;
 		}
@@ -1177,6 +1205,7 @@ gint mouseMotionCb(GtkWidget *widget, GdkEventMotion *event, gpointer data) {
 		resizeAndPosWindow();
 		displayImage();
 	}
+	#ifndef NO_COMPOSITING
 	else if(optionHideChessboardLevel == 3) {
 		/* Move when started with -ccc */
 		gtk_window_get_position(GTK_WINDOW(window), &scrx, &scry);
@@ -1184,6 +1213,7 @@ gint mouseMotionCb(GtkWidget *widget, GdkEventMotion *event, gpointer data) {
 		scry -= gdk_pixbuf_get_height(scaledImage) / 2;
 		gtk_window_move(GTK_WINDOW(window), (int)(scrx + event->x), (int)(scry + event->y));
 	}
+	#endif
 	return 0;
 }
 /* }}} */
@@ -1214,7 +1244,9 @@ int main(int argc, char *argv[]) {
 	char *fileNameL;
 	char optionFullScreen = FALSE;
 	char optionActivateSlideshow = FALSE;
+	#ifndef NO_SORTING	
 	char optionSortFiles = FALSE;
+	#endif
 	char optionReadStdin = FALSE;
 	FILE *optionsFile;
 	char *options[255];
@@ -1231,6 +1263,7 @@ int main(int argc, char *argv[]) {
 	/* Command line and configuration parsing {{{ */
 	envP = environ;
 	options[0] = argv[0];
+	#ifndef NO_CONFIG_FILE
 	while((fileNameL = *envP++) != NULL) {
 		if(strncmp(fileNameL, "HOME=", 5) != 0) {
 			continue;
@@ -1262,6 +1295,7 @@ int main(int argc, char *argv[]) {
 		free(fileName);
 		break;
 	}
+	#endif
 	for(i=1; i<argc; i++) {
 		if(optionCount > 253) {
 			die("Too many options");
@@ -1285,10 +1319,12 @@ int main(int argc, char *argv[]) {
 			case 's':
 				optionActivateSlideshow = TRUE;
 				break;
+			#ifndef NO_SORTING
 			/* OPTION: -n: Sort all files in natural order */
 			case 'n':
 				optionSortFiles = TRUE;
 				break;
+			#endif
 			/* OPTION: -d n: Slideshow interval */
 			case 'd':
 				slideshowInterval = atoi(optarg);
@@ -1309,9 +1345,13 @@ int main(int argc, char *argv[]) {
 			/* ADD: Use twice to make the window transparent */
 			/* ADD: Use three times to make the window behave like a desktop widget */
 			case 'c':
+				#ifndef NO_COMPOSITING
 				if(optionHideChessboardLevel < 4) {
 					optionHideChessboardLevel++;
 				}
+				#else
+				optionHideChessboardLevel = 1;
+				#endif
 				break;
 			/* OPTION: -w: Watch files for changes */
 			case 'w':
@@ -1327,6 +1367,7 @@ int main(int argc, char *argv[]) {
 					default:  helpMessage(0);
 				}
 				break;
+			#ifndef NO_COMMANDS
 			/* OPTION: -<n> s: Set command number n (1-9) to s */
 			/* ADD: Prepend command with | to pipe image->command->image */
 			/* ADD: Prepend command with > to display the output of the command */
@@ -1337,6 +1378,7 @@ int main(int argc, char *argv[]) {
 				optionCommands[i] = (char*)malloc(strlen(optarg) + 1);
 				strcpy(optionCommands[i], optarg);
 				break;
+			#endif
 			case '?':
 				helpMessage(optopt);
 			case 'h':
@@ -1386,9 +1428,11 @@ int main(int argc, char *argv[]) {
 			loadFilesAddFile(fileName);
 		} while(TRUE);
 	}
+	#ifndef NO_SORTING
 	if(optionSortFiles == TRUE) {
 		sortFiles();
 	}
+	#endif
 	if(currentFile->fileName == NULL) {
 		die("Failed to load any of the images");
 	}
@@ -1406,12 +1450,14 @@ int main(int argc, char *argv[]) {
 	gtk_window_set_resizable(GTK_WINDOW(window), FALSE);
 	gtk_widget_set_size_request(window, 640, 480);
 	gtk_window_set_title(GTK_WINDOW(window), "pqiv");
+	#ifndef NO_COMPOSITING
 	if(optionHideChessboardLevel > 1) {
 
 		gtk_widget_set_app_paintable(window, TRUE);
 		screenChangeCb(window, NULL, NULL);
 		gtk_window_set_decorated(GTK_WINDOW(window), FALSE);
 	}
+	#endif
 	gtk_widget_show(window);
 	fixed = gtk_fixed_new();
 	gtk_container_add(GTK_CONTAINER(window), fixed);
@@ -1421,10 +1467,12 @@ int main(int argc, char *argv[]) {
 	imageWidget = gtk_image_new();
 	color.red = 0; color.green = 0; color.blue = 0;
 	gtk_widget_modify_bg(GTK_WIDGET(window), GTK_STATE_NORMAL, &color);
+	#ifndef NO_COMPOSITING
 	if(optionHideChessboardLevel > 1) {
 		gtk_widget_set_app_paintable(imageWidget, TRUE);
 		screenChangeCb(imageWidget, NULL, NULL);
 	}
+	#endif
 	gtk_fixed_put(GTK_FIXED(fixed), imageWidget, 0, 0);
 	gtk_widget_show(imageWidget);
 
@@ -1451,6 +1499,7 @@ int main(int argc, char *argv[]) {
 	gtk_widget_show(mouseEventBox);
 
 	/* Signalling stuff */
+	#ifndef NO_COMPOSITING
 	if(optionHideChessboardLevel > 1) {
 		g_signal_connect(window, "expose-event",
 			G_CALLBACK(exposeCb), NULL);
@@ -1461,6 +1510,7 @@ int main(int argc, char *argv[]) {
 		g_signal_connect(imageWidget, "screen-changed",
 			G_CALLBACK(screenChangeCb), NULL);
 	}
+	#endif
 	g_signal_connect(window, "key-press-event",
 		G_CALLBACK(keyboardCb), NULL);
 	g_signal_connect(mouseEventBox, "button-press-event",
@@ -1491,12 +1541,14 @@ int main(int argc, char *argv[]) {
 	}
 
 	/* Hide from taskbar and force to background when started with -ccc */
+	#ifndef NO_COMPOSITING
 	if(optionHideChessboardLevel == 3) {
 		gtk_window_stick(GTK_WINDOW(window));
 		gtk_window_set_keep_below(GTK_WINDOW(window), TRUE);
 		gtk_window_set_skip_taskbar_hint(GTK_WINDOW(window), TRUE);
 		gtk_window_set_skip_pager_hint(GTK_WINDOW(window), TRUE);
 	}
+	#endif
 
 	/* }}} */
 	/* Load first image {{{ */

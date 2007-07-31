@@ -2,6 +2,12 @@
 # Simple configure script for pqiv
 # Why not autoconf? -> K.i.s.s.!
 
+OPTIONS=( "no-sorting"		"Disable sorting of loaded files"		"-DNO_SORTING"		"lib/strnatcmp.c"
+          "no-compositing"	"Disable support for transparent windows"	"-DNO_COMPOSITING"	""
+	  "no-commands"		"Disable support for external command execution" "-DNO_COMMANDS"	""
+	  "no-config-file"	"Disable support for a configuration file"	"-DNO_CONFIG_FILE"	""
+	)
+
 # Load settings from Makefile
 eval $(head -n 10 Makefile | egrep '^[A-Z_]+=' | sed -re 's/=(.+)/="\1"/')
 
@@ -11,15 +17,34 @@ help() {
 pqiv configuration
 
 options:
-  --prefix         Set the prefix for installed files
-  --destdir        Set the destdir for installed files (for package maintainers)
-
+  --prefix=..           Set the prefix for installed files
+  --destdir=..          Set the destdir for installed files (for package maintainers)
 EOF
+	for INDEX in $(seq 0 4 ${#OPTIONS}); do
+		echo -n "  --${OPTIONS[$INDEX]}"
+		for n in $(seq $[20 - ${#OPTIONS[$INDEX]}]); do
+			echo -n " "
+		done
+		echo ${OPTIONS[$[$INDEX + 1]]}
+	done
+	echo
 	exit
 }
-PARAMETERS=$(getopt -q -l "prefix:,destdir:,help" -o "h" -- "$@")
+POSSIBLES=""
+for INDEX in $(seq 0 4 ${#OPTIONS}); do
+	POSSIBLES="${POSSIBLES},${OPTIONS[$INDEX]}"
+done
+PARAMETERS=$(getopt -q -l "prefix:,destdir:,help${POSSIBLES}" -o "h" -- "$@")
 eval set -- ${PARAMETERS//\//\\/}
 CHANGES=""
+OPTIONFLAGS=""
+for INDEX in $(seq 0 4 ${#OPTIONS}); do
+	if echo "$@" | grep -q -- "--${OPTIONS[$INDEX]}"; then
+		OPTIONFLAGS="${OPTIONFLAGS} ${OPTIONS[$[$INDEX + 2]]}"
+	else
+		OPTIONFLAGS="${OPTIONFLAGS} ${OPTIONS[$[$INDEX + 3]]}"
+	fi
+done
 while [ $# -gt 0 ]; do
 	PARAMETER=$1;
 	case ${PARAMETER} in
@@ -28,7 +53,7 @@ while [ $# -gt 0 ]; do
 				echo "PREFIX must be an absolute pathname"
 				exit 1
 			fi
-			CHANGES="${CHANGES} -e 's/^PREFIX=.+/PREFIX=\"$2\"/'"
+			CHANGES="${CHANGES} -e 's/^PREFIX=.*/PREFIX=\"$2\"/'"
 			shift
 			;;
 		--destdir)
@@ -36,7 +61,7 @@ while [ $# -gt 0 ]; do
 				echo "DESTDIR must be an absolute pathname"
 				exit 1
 			fi
-			CHANGES="${CHANGES} -e 's/^DESTDIR=.+/DESTDIR=\"$2\"/'"
+			CHANGES="${CHANGES} -e 's/^DESTDIR=.*/DESTDIR=\"$2\"/'"
 			shift
 			;;
 		--)
@@ -51,7 +76,6 @@ while [ $# -gt 0 ]; do
 	esac
 	shift
 done
-
 # Check tools
 for TOOL in install pkg-config; do
 	echo -n "Checking for ${TOOL}..."
@@ -95,6 +119,7 @@ if [ "${CHANGES}" != "" ]; then
 		exit 1
 	fi
 fi
+sed -i -r "s#^OPTIONFLAGS=.*#OPTIONFLAGS=${OPTIONFLAGS}#" Makefile #&>/dev/null
 
 # Reload settings and output
 eval $(head -n 10 Makefile | egrep '^[A-Z_]+=' | sed -re 's/=(.+)/="\1"/')

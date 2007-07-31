@@ -1,25 +1,23 @@
 # Makefile for pqiv
 #
+# Dynamic settings (changed by configure script)
 DESTDIR="/"
 PREFIX="/usr"
+OPTIONFLAGS= lib/strnatcmp.c  
+
+# Fixed settings
 REQUIRED_PACKAGES=gtk+-2.0 gthread-2.0 pango glib
-OBJECTS=lib/strnatcmp/strnatcmp.o
 
 # pqiv
 all: pqiv
-pqiv: libs
-	$(CC) $(CFLAGS) `pkg-config --libs --cflags $(REQUIRED_PACKAGES)` -o qiv $(OBJECTS) pqiv.c
-debug: libs
-	$(CC) $(CGLAGS) -Wall -ggdb -DDEBUG `pkg-config --libs --cflags $(REQUIRED_PACKAGES)` -o qiv $(OBJECTS) pqiv.c
-
-# Libraries
-libs:
-	$(MAKE) -C lib/
+pqiv: 
+	$(CC) $(CFLAGS) `pkg-config --libs --cflags $(REQUIRED_PACKAGES)` -o qiv $(OPTIONFLAGS) pqiv.c
+debug: 
+	$(CC) $(CGLAGS) -Wall -ggdb -DDEBUG `pkg-config --libs --cflags $(REQUIRED_PACKAGES)` $(OPTIONFLAGS) -o qiv pqiv.c
 
 # Cleanup
 clean:
 	rm -f qiv
-	$(MAKE) -C lib/ clean
 
 # Installation and uninstallation
 install: pqiv
