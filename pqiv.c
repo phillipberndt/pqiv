@@ -25,6 +25,7 @@
 #include <gtk/gtk.h>
 #include <glib/gconvert.h>
 #include <sys/types.h>
+#include <sys/inotify.h>
 #include <sys/wait.h>
 #include <signal.h>
 #include <dirent.h>
@@ -37,6 +38,7 @@
 #include <libgen.h>
 #include <sys/stat.h>
 #include <time.h>
+#include "lib/strnatcmp/strnatcmp.h"
 /* }}} */
 /* Definitions {{{ */
 /* libc stuff */
@@ -91,9 +93,12 @@ static char autoScale = TRUE;
 static int moveX, moveY;
 static int slideshowInterval = 3;
 static int slideshowEnabled = 0;
+static int inotifyFd = 0;
+static int inotifyWd = -1;
 
 /* Program options */
 static char optionHideInfoBox = FALSE;
+static char optionUseInotify = FALSE;
 static char optionHideChessboardLevel = 0;
 static char *optionCommands[] = { NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL };
 static GdkInterpType optionInterpolation = GDK_INTERP_BILINEAR;
@@ -150,11 +155,14 @@ void helpMessage(char claim) { /* {{{ */
 		" -i             Hide info box \n"
 		" -f             Start in fullscreen mode \n"
 		" -s             Activate slideshow \n"
+		" -n             Sort all files in natural order \n"
 		" -d n           Slideshow interval \n"
 		" -t             Shrink image(s) larger than the screen to fit \n"
 		" -r             Read additional filenames (not folders) from stdin \n"
 		" -c             Disable the background for transparent images \n"
 		"                Use twice to make the window transparent \n"
+		"                Use three times to make the window behave like a desktop widget \n"
+		" -w             Watch files for changes \n"
 		" -p             Interpolation quality level (1-4, defaults to 3) \n"
 		" -<n> s         Set command number n (1-9) to s \n"
 		"                Prepend command with | to pipe image->command->image \n"
@@ -183,8 +191,8 @@ void helpMessage(char claim) { /* {{{ */
 		" i              Show/hide info box \n"
 		" s              Slideshow toggle \n"
 		" a              Hardlink current image to .qiv-select/ \n"
-		" <n>            Run command n (1-9) \n"
-		" Drag & Drop    Move image (Fullscreen) \n"
+		" <n>            Run command n (1-3) \n"
+		" Drag & Drop    Move image (Fullscreen) and decoration switch \n"
 		" Scroll         Next/previous image \n"
 		"\n"
 		);
@@ -503,6 +511,73 @@ void runProgram(char *command) { /*{{{*/
 		} /* }}} */
 	}
 } /*}}}*/
+void inotifyCb(gpointer data, gint source_fd, GdkInputCondition condition) { /*{{{*/
+	struct inotify_event event;
+	GdkEventKey keyEvent;
+	char *fileName;
+	DEBUG1("Inotify cb");
+
+	read(inotifyFd, &event, sizeof(struct inotify_event) + 4);
+	if(event.len > 0) {
+		fileName = (char*)malloc(event.len + 2);
+		fileName[0] = event.name[0];
+		read(inotifyFd, fileName, event.len - 2);
+		fileName[event.len] = 0;
+		free(fileName);
+	}
+	if(event.mask != IN_CLOSE_WRITE) {
+		return;
+	}
+
+	/* We have to emulate a keypress because of some buggy wms */
+	memset(&keyEvent, 0, sizeof(GdkEventKey));
+	keyEvent.type = GDK_KEY_PRESS;
+	keyEvent.window = window->window;
+	keyEvent.time = time(NULL);
+	keyEvent.keyval = 114;
+	keyEvent.hardware_keycode = 27;
+	keyEvent.length = 1;
+	keyEvent.string = "r";
+	gdk_event_put((GdkEvent*)(&keyEvent));
+} /*}}}*/
+/* File sorting {{{ */
+int sortFilesCompare(const void *f1, const void *f2) {
+	return strnatcasecmp(
+		/* This is quite complex oO
+		 * qsort gives me pointers to the array elements,
+		 * which are pointers themselves
+		 */
+		(*(struct file **)f1)->fileName,
+		(*(struct file **)f2)->fileName
+		);
+}
+void sortFiles() {
+	/* TODO
+	 * Find a better method for this. Atm the code fills an array with
+	 * all elements, qsorts it and relinks all elements. It should be
+	 * possible to avoid the array or at least the linking without
+	 * having to write a new qsort implementation. Maybe something with
+	 * the string pointers?!
+	 */
+	DEBUG1("Sort");
+	int i = 0;
+	struct file *iterator = &firstFile;
+	struct file **files = (struct file**)malloc(sizeof(struct file*) * (lastFile->nr + 1));
+	do {
+		files[i++] = iterator;
+	} while((iterator = iterator->next) != NULL);
+	qsort(files, lastFile->nr + 1, sizeof(struct file*), sortFilesCompare);
+	firstFile = *files[0];
+	currentFile = files[0];
+	lastFile = files[lastFile->nr];
+	for(i=0; i<=lastFile->nr; i++) {
+		files[i]->next = i < lastFile->nr ? files[i+1] : NULL;
+		files[i]->prev = i > 0 ? files[i-1] : NULL;
+		files[i]->nr = i;
+	}
+	free(files);
+}
+/* }}} */
 /*}}}*/
 /* Load images and modify them {{{ */
 char loadImage() { /*{{{*/
@@ -547,6 +622,16 @@ char loadImage() { /*{{{*/
 	else {
 		currentImage = tmpImage;
 	}
+
+	/* Update inotify to manage automatic reloading {{{ */ 
+	if(optionUseInotify == TRUE) {
+		DEBUG1("Updating inotify fd");
+		if(inotifyWd != -1) {
+			inotify_rm_watch(inotifyFd, inotifyWd);
+			inotifyWd = -1;
+		}
+		inotifyWd = inotify_add_watch(inotifyFd, currentFile->fileName, IN_CLOSE_WRITE);
+	} /* }}} */
 
 	zoom = 1;
 	moveX = moveY = 0;
@@ -755,6 +840,7 @@ void displayImage() { /*{{{*/
 	gtk_image_set_from_pixbuf(GTK_IMAGE(imageWidget), scaledImage);
 } /*}}}*/
 char reloadImage() { /*{{{*/
+	/* In fact, not only reload but also used to load images */
 	if(!loadImage())
 		return FALSE;
 	autoScaleFactor();
@@ -797,6 +883,7 @@ void slideshowEnable(char enable) { /*{{{*/
 int mouseScrollEnabled = FALSE;
 gint keyboardCb(GtkWidget *widget, GdkEventKey *event, gpointer data) { /*{{{*/
 	int i = 0, n = 0;
+	float savedZoom;
 	char *buf, *buf2;
 	#ifdef DEBUG
 		g_print("(%04d) %-20s Keyboard: '%c' (%d), %d\n",
@@ -852,16 +939,16 @@ gint keyboardCb(GtkWidget *widget, GdkEventKey *event, gpointer data) { /*{{{*/
 			/* }}} */
 		/* BIND: Cursor keys: Move (Fullscreen) {{{ */
 		case 98:
-			i = (event->state != 1 ? 10 : 50);
+			i = (event->state & GDK_CONTROL_MASK ? 50 : 10);
 		case 104:
 			if(event->hardware_keycode == 104)
-				i = -(event->state != 1 ? 10 : 50);
+				i = -(event->state & GDK_CONTROL_MASK ? 50 : 10);
 		case 100:
 			if(event->hardware_keycode == 100)
-				n = (event->state != 1 ? 10 : 50);
+				n = (event->state & GDK_CONTROL_MASK ? 50 : 10);
 		case 102:
 			if(event->hardware_keycode == 102)
-				n = -(event->state != 1 ? 10 : 50);
+				n = -(event->state & GDK_CONTROL_MASK ? 50 : 10);
 
 			if(isFullscreen) {
 				moveX += n;
@@ -886,21 +973,34 @@ gint keyboardCb(GtkWidget *widget, GdkEventKey *event, gpointer data) { /*{{{*/
 			/* }}} */
 		/* BIND: f: Fullscreen {{{ */
 		case 'f':
-			moveX = moveY = 0;
-			setFullscreen(!isFullscreen);
-			autoScaleFactor();
-			resizeAndPosWindow();
-			displayImage();
+			if(optionHideChessboardLevel < 2) {
+				moveX = moveY = 0;
+				setFullscreen(!isFullscreen);
+				autoScaleFactor();
+				resizeAndPosWindow();
+				displayImage();
+			}
 			break;
 			/* }}} */
 		/* BIND: r: Reload {{{ */
 		case 'r':
-			reloadImage();
+			/* If in -cc mode, preserve zoom level */
+			if(optionHideChessboardLevel > 1) {
+				savedZoom = zoom;
+				if(!loadImage())
+					return 0;
+				zoom = savedZoom;
+				displayImage();
+				setInfoText(NULL);
+			}
+			else {
+				reloadImage();
+			}
 			break;
 			/* }}} */
 		/* BIND: +: Zoom in {{{ */
 		case '+':
-			scaleBy(.05);
+			scaleBy(event->state & GDK_CONTROL_MASK ? .2 : .05);
 			resizeAndPosWindow();
 			displayImage();
 			setInfoText("Zoomed in");
@@ -908,7 +1008,7 @@ gint keyboardCb(GtkWidget *widget, GdkEventKey *event, gpointer data) { /*{{{*/
 			/* }}} */
 		/* BIND: -: Zoom out {{{ */
 		case '-':
-			scaleBy(-.05);
+			scaleBy(-(event->state & GDK_CONTROL_MASK ? .2 : .05));
 			resizeAndPosWindow();
 			displayImage();
 			setInfoText("Zoomed out");
@@ -1038,45 +1138,61 @@ gint keyboardCb(GtkWidget *widget, GdkEventKey *event, gpointer data) { /*{{{*/
 /* BIND: Drag & Drop: Move image (Fullscreen) and decoration switch {{{ */
 gint mouseButtonCb(GtkWidget *widget, GdkEventButton *event, gpointer data) {
 	GdkScreen *screen; int scrx, scry;
-	if(event->type == GDK_BUTTON_PRESS && isFullscreen == TRUE) {
-		mouseScrollEnabled = TRUE;
-		screen = gtk_widget_get_screen(window);
-		scrx = gdk_screen_get_width(screen) / 2;
-		scry = gdk_screen_get_height(screen) / 2;
-		gdk_display_warp_pointer(gdk_display_get_default(),
-			gdk_display_get_default_screen(gdk_display_get_default()), scrx, scry);
-	}
-	else if(event->type == GDK_BUTTON_PRESS && isFullscreen == FALSE && optionHideChessboardLevel > 1) {
-		gtk_window_set_decorated(GTK_WINDOW(window), !gtk_window_get_decorated(GTK_WINDOW(window)));
-	}
-	else if(event->type == GDK_BUTTON_RELEASE) {
-		mouseScrollEnabled = FALSE;
+	if(event->button == 1) {
+		if(event->type == GDK_BUTTON_PRESS && (isFullscreen == TRUE || optionHideChessboardLevel == 3)) {
+			if(isFullscreen == TRUE) {
+				screen = gtk_widget_get_screen(window);
+				scrx = gdk_screen_get_width(screen) / 2;
+				scry = gdk_screen_get_height(screen) / 2;
+				gdk_display_warp_pointer(gdk_display_get_default(),
+					gdk_display_get_default_screen(gdk_display_get_default()), scrx, scry);
+			}
+			mouseScrollEnabled = TRUE;
+		}
+		else if(event->type == GDK_BUTTON_PRESS && isFullscreen == FALSE && optionHideChessboardLevel == 2) {
+			/* Change decoration when started with -cc */
+			gtk_window_set_decorated(GTK_WINDOW(window), !gtk_window_get_decorated(GTK_WINDOW(window)));
+		}
+		else if(event->type == GDK_BUTTON_RELEASE) {
+			mouseScrollEnabled = FALSE;
+		}
 	}
 	return 0;
 }
-/* }}} */
-gint mouseMotionCb(GtkWidget *widget, GdkEventMotion *event, gpointer data) { /* {{{ */
+gint mouseMotionCb(GtkWidget *widget, GdkEventMotion *event, gpointer data) {
 	GdkScreen *screen; int scrx, scry;
 	if(mouseScrollEnabled == FALSE) {
 		return 0;
 	}
-	screen = gtk_widget_get_screen(window);
-	scrx = gdk_screen_get_width(screen) / 2;
-	scry = gdk_screen_get_height(screen) / 2;
+	if(isFullscreen == TRUE) {
+		screen = gtk_widget_get_screen(window);
+		scrx = gdk_screen_get_width(screen) / 2;
+		scry = gdk_screen_get_height(screen) / 2;
 
-	moveX += event->x - scrx;
-	moveY += event->y - scry;
-	gdk_display_warp_pointer(gdk_display_get_default(),
-		gdk_display_get_default_screen(gdk_display_get_default()), scrx, scry);
+		moveX += event->x - scrx;
+		moveY += event->y - scry;
+		gdk_display_warp_pointer(gdk_display_get_default(),
+			gdk_display_get_default_screen(gdk_display_get_default()), scrx, scry);
 
-	resizeAndPosWindow();
-	displayImage();
+		resizeAndPosWindow();
+		displayImage();
+	}
+	else if(optionHideChessboardLevel == 3) {
+		/* Move when started with -ccc */
+		gtk_window_get_position(GTK_WINDOW(window), &scrx, &scry);
+		scrx -= gdk_pixbuf_get_width(scaledImage) / 2;
+		scry -= gdk_pixbuf_get_height(scaledImage) / 2;
+		gtk_window_move(GTK_WINDOW(window), (int)(scrx + event->x), (int)(scry + event->y));
+	}
 	return 0;
 }
 /* }}} */
 /* BIND: Scroll: Next/previous image {{{ */
 gint mouseScrollCb(GtkWidget *widget, GdkEventScroll *event, gpointer data) {
 	int i;
+	if(event->direction > 1) {
+		return 0;
+	}
 	i = currentFile->nr;
 	do {
 		currentFile = event->direction == 0 ? currentFile->next : currentFile->prev;
@@ -1098,6 +1214,7 @@ int main(int argc, char *argv[]) {
 	char *fileNameL;
 	char optionFullScreen = FALSE;
 	char optionActivateSlideshow = FALSE;
+	char optionSortFiles = FALSE;
 	char optionReadStdin = FALSE;
 	FILE *optionsFile;
 	char *options[255];
@@ -1154,7 +1271,7 @@ int main(int argc, char *argv[]) {
 	}
 
 	opterr = 0;
-	while((option = getopt(optionCount, options, "ifsthrcp:d:1:2:3:4:5:6:7:8:9:")) > 0) {
+	while((option = getopt(optionCount, options, "ifsnthrcwp:d:1:2:3:4:5:6:7:8:9:")) > 0) {
 		switch(option) {
 			/* OPTION: -i: Hide info box */
 			case 'i':
@@ -1167,6 +1284,10 @@ int main(int argc, char *argv[]) {
 			/* OPTION: -s: Activate slideshow */
 			case 's':
 				optionActivateSlideshow = TRUE;
+				break;
+			/* OPTION: -n: Sort all files in natural order */
+			case 'n':
+				optionSortFiles = TRUE;
 				break;
 			/* OPTION: -d n: Slideshow interval */
 			case 'd':
@@ -1186,10 +1307,15 @@ int main(int argc, char *argv[]) {
 				break;
 			/* OPTION: -c: Disable the background for transparent images */
 			/* ADD: Use twice to make the window transparent */
+			/* ADD: Use three times to make the window behave like a desktop widget */
 			case 'c':
-				if(optionHideChessboardLevel < 3) {
+				if(optionHideChessboardLevel < 4) {
 					optionHideChessboardLevel++;
 				}
+				break;
+			/* OPTION: -w: Watch files for changes */
+			case 'w':
+				optionUseInotify = TRUE;
 				break;
 			/* OPTION: -p: Interpolation quality level (1-4, defaults to 3) */
 			case 'p':
@@ -1259,6 +1385,18 @@ int main(int argc, char *argv[]) {
 				*fileNameL = 0;
 			loadFilesAddFile(fileName);
 		} while(TRUE);
+	}
+	if(optionSortFiles == TRUE) {
+		sortFiles();
+	}
+	if(currentFile->fileName == NULL) {
+		die("Failed to load any of the images");
+	}
+	while(!loadImage()) {
+		currentFile = currentFile->next;
+		if(currentFile == NULL) {
+			die("Failed to load any of the images");
+		}
 	}
 	/* }}} */
 	/* Initialize gtk {{{ */
@@ -1337,16 +1475,31 @@ int main(int argc, char *argv[]) {
 		G_CALLBACK(gtk_main_quit),
 	        &window);
 	/* }}} */
-	/* Load first image {{{ */
-	if(currentFile->fileName == NULL) {
-		die("Failed to load any of the images");
-	}
-	while(!loadImage()) {
-		currentFile = currentFile->next;
-		if(currentFile == NULL) {
-			die("Failed to load any of the images");
+	/* Initialize other stuff {{{ */
+	/* Initialize inotify */
+	if(optionUseInotify == TRUE) {
+		DEBUG1("Using inotify");
+		inotifyFd = inotify_init();
+		if(inotifyFd == -1) {
+			g_printerr("Inotify is not supported on your system\n");
+			optionUseInotify = FALSE;
+		}
+		else {
+			gdk_input_add(inotifyFd, GDK_INPUT_READ, inotifyCb, NULL);
+			inotifyWd = inotify_add_watch(inotifyFd, currentFile->fileName, IN_CLOSE_WRITE);
 		}
 	}
+
+	/* Hide from taskbar and force to background when started with -ccc */
+	if(optionHideChessboardLevel == 3) {
+		gtk_window_stick(GTK_WINDOW(window));
+		gtk_window_set_keep_below(GTK_WINDOW(window), TRUE);
+		gtk_window_set_skip_taskbar_hint(GTK_WINDOW(window), TRUE);
+		gtk_window_set_skip_pager_hint(GTK_WINDOW(window), TRUE);
+	}
+
+	/* }}} */
+	/* Load first image {{{ */
 	if(optionFullScreen == TRUE) {
 		g_timeout_add(100, toFullscreenCb, NULL);
 	}

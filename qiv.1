@@ -16,6 +16,9 @@ Start pqiv in fullscreen mode
 .B -s
 Auto start slide show
 .TP
+.B -n
+Sort the file list using natsort
+.TP
 .B -d n
 Interval for the slideshow function, in seconds
 .TP
@@ -29,6 +32,9 @@ Read filename(s) from STDIN.
 pqiv will draw this well-known chessboard background for transparent images per
 default. Use this option to deactivate this behaviour. If you use this option
 twice (and your wm supports it), it will cause the window to be transparent.
+.TP
+.B -w
+Watch open files for changes and reload them if necessary
 .TP
 -p n
 Select interpolation type for resizing operations. Valid values for n:

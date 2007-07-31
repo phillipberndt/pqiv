@@ -49,6 +49,11 @@ You'll need
  * glib
 
 
+THANKS
+
+This program uses Martin Pool's natsort algorithm [http://sourcefrog.net/projects/natsort/]
+
+
 KNOWN PROBLEMS
 
 * Some window managers, especially Beryl, have problems with many commands in
@@ -71,6 +76,8 @@ pqiv 0.4 rc2
  * Added option to select interpolation type
    (I don't expect this to need any testing)
  * Added support for real transparent images
+ * Added support for sorting (using natsort)
+ * Added support for real transparency
  
 pqiv 0.4 rc1
  * Source rewritten into c
