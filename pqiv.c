@@ -94,7 +94,8 @@ static float zoom;
 static char autoScale = TRUE;
 static int moveX, moveY;
 static int slideshowInterval = 3;
-static int slideshowEnabled = 0;
+static char slideshowEnabled = 0;
+static int slideshowID = 0;
 static int inotifyFd = 0;
 static int inotifyWd = -1;
 
@@ -801,16 +802,18 @@ static void screenChangeCb(GtkWidget *widget, GdkScreen *old_screen, gpointer us
 #endif
 #ifndef NO_FADING
 /* Fading images {{{ */
-/* TODO Use gdk_window_set_opacity when gtk 2.12 is in portage */
+/* TODO Use gdk_window_set_opacity when gtk 2.12 is in portage
+ */
 gboolean fadeOut(gpointer data) { /*{{{*/
 	struct fadeInfo *fadeStruct = (struct fadeInfo *)data;
 	int imgx, imgy;
 	GdkPixbuf *fadeBuf;
+	imgx = gdk_pixbuf_get_width(fadeStruct->pixbuf);
+	imgy = gdk_pixbuf_get_height(fadeStruct->pixbuf);
 
 	fadeStruct->alpha -= 20;
-	if(fadeStruct->alpha > 0) {
-		imgx = gdk_pixbuf_get_width(fadeStruct->pixbuf);
-		imgy = gdk_pixbuf_get_height(fadeStruct->pixbuf);
+	if(fadeStruct->alpha > 0 && imgx == gdk_pixbuf_get_width(scaledImage) &&
+		imgy == gdk_pixbuf_get_height(scaledImage)) {
 		
 		fadeBuf = gdk_pixbuf_copy(scaledImage);
 		gdk_pixbuf_composite(fadeStruct->pixbuf, fadeBuf, 0,
@@ -973,20 +976,25 @@ gboolean slideshowCb(gpointer data) { /*{{{*/
 	keyEvent.keyval = 32;
 	keyEvent.hardware_keycode = 65;
 	keyEvent.length = 1;
-	keyEvent.string = " ";
+	keyEvent.string = "x";
 	gdk_event_put((GdkEvent*)(&keyEvent));
 
-	return TRUE;
+	/* We can't use true here because some images could need a long time to load
+	 * This makes the whole slide show thing MUCH more complicated
+	 */
+	slideshowID = 0;
+	return FALSE;
 } /*}}}*/
-void slideshowEnable(char enable) { /*{{{*/
+inline void slideshowDo() { /*{{{*/
 	DEBUG1("Slideshow switch");
-	if(slideshowEnabled != 0) {
+	if(slideshowEnabled == FALSE) {
+		return;
+	}
+	if(slideshowID != 0) {
 		g_source_remove(slideshowEnabled);
-		slideshowEnabled = 0;
+		slideshowID = 0;
 	}
-	if(enable != FALSE) {
-		slideshowEnabled = g_timeout_add(slideshowInterval * 1000, slideshowCb, NULL);
-	}
+	slideshowID = g_timeout_add(slideshowInterval * 1000, slideshowCb, NULL);
 } /*}}}*/
 /* }}} */
 /* Keyboard & mouse event handlers {{{ */
@@ -1079,6 +1087,12 @@ gint keyboardCb(GtkWidget *widget, GdkEventKey *event, gpointer data) { /*{{{*/
 					currentFile = &firstFile;
 				}
 			} while((!reloadImage()) && i != currentFile->nr);
+			if(event->string[0] == 'x') {
+				/* This can't occour normaly but will when called by the
+				 * slideshow code
+				 */
+				slideshowDo();
+			}
 			break;
 			/* }}} */
 		/* BIND: f: Fullscreen {{{ */
@@ -1203,13 +1217,14 @@ gint keyboardCb(GtkWidget *widget, GdkEventKey *event, gpointer data) { /*{{{*/
 			/* }}} */
 		/* BIND: s: Slideshow toggle {{{ */
 		case 's':
-			if(slideshowEnabled != 0) {
+			if(slideshowEnabled == TRUE) {
 				setInfoText("Slideshow disabled");
-				slideshowEnable(FALSE);
+				slideshowEnabled = FALSE;
 			}
 			else {
 				setInfoText("Slideshow enabled");
-				slideshowEnable(TRUE);
+				slideshowEnabled = TRUE;
+				slideshowDo();
 			}
 			break;
 			/* }}} */
@@ -1333,7 +1348,6 @@ int main(int argc, char *argv[]) {
 	char *fileName;
 	char *fileNameL;
 	char optionFullScreen = FALSE;
-	char optionActivateSlideshow = FALSE;
 	#ifndef NO_SORTING	
 	char optionSortFiles = FALSE;
 	#endif
@@ -1413,7 +1427,7 @@ int main(int argc, char *argv[]) {
 			#endif
 			/* OPTION: -s: Activate slideshow */
 			case 's':
-				optionActivateSlideshow = TRUE;
+				slideshowEnabled = TRUE;
 				break;
 			#ifndef NO_SORTING
 			/* OPTION: -n: Sort all files in natural order */
@@ -1654,10 +1668,10 @@ int main(int argc, char *argv[]) {
 	autoScaleFactor();
 	resizeAndPosWindow();
 	displayImage();
-	setInfoText(NULL);
-	if(optionActivateSlideshow == TRUE) {
-		slideshowEnable(TRUE);
+	if(slideshowEnabled == TRUE) {
+		slideshowDo();
 	}
+	setInfoText(NULL);
 	/* }}} */
 	gtk_main();
 	return 0;
