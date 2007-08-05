@@ -20,7 +20,7 @@ clean:
 	rm -f qiv
 
 # Installation and uninstallation
-install: pqiv
+install:
 	install -D qiv $(DESTDIR)$(PREFIX)/bin/qiv
 	install -D qiv.1 $(DESTDIR)$(PREFIX)/share/man/man1/pqiv.1
 	link $(DESTDIR)$(PREFIX)/share/man/man1/pqiv.1 $(DESTDIR)$(PREFIX)/share/man/man1/qiv.1
