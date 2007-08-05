@@ -3,7 +3,7 @@
 # Dynamic settings (changed by configure script)
 DESTDIR="/"
 PREFIX="/usr"
-OPTIONFLAGS=
+OPTIONFLAGS= 
 
 # Fixed settings
 REQUIRED_PACKAGES=gtk+-2.0 gthread-2.0 pango glib
