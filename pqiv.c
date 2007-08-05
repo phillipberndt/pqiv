@@ -107,6 +107,14 @@ static char *optionCommands[] = { NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL
 #endif
 static GdkInterpType optionInterpolation = GDK_INTERP_BILINEAR;
 
+#ifndef NO_FADING
+static char optionFadeImages = FALSE;
+static struct fadeInfo {
+	GdkPixbuf *pixbuf;
+	int alpha;
+};
+#endif
+
 /* Functions */
 char reloadImage();
 void autoScaleFactor();
@@ -118,10 +126,12 @@ void displayImage();
 #ifdef DEBUG
 	#define DEBUG1(text) g_printerr("(%04d) %-20s %s\n", __LINE__, G_STRFUNC, text);
 	#define DEBUG2(text, param) g_printerr("(%04d) %-20s %s %s\n", __LINE__, G_STRFUNC, text, param);
+	#define DEBUG2d(text, param) g_printerr("(%04d) %-20s %s %d\n", __LINE__, G_STRFUNC, text, param);
 	#define G_ENABLE_DEBUG
 #else
 	#define DEBUG1(text);
 	#define DEBUG2(text, param);
+	#define DEBUG2d(text, param);
 #endif
 #define die(text) g_printerr("%s\n", text); exit(1);
 /* }}} */
@@ -144,9 +154,25 @@ void setInfoText(char *text) {
 }
 /* }}} */
 void helpMessage(char claim) { /* {{{ */
-	/* Perl code to get bindings:
-		 perl -ne 'if(m/(?:OPTION|BIND): (.+?): (.+?)[{$\*]/){$_=$1.(" "x(15-length($1))).$2;
-		 print "\" $_\\n\"\n";}if(m/ADD: (.+?)[{$}*]/){print "\"".(" "x16)."$1\\n\"\n";}' < pqiv.c 
+	/* Perl code to get bindings - simply execute this c file with perl -x {{{
+#!perl
+		$b = $o = "";
+		open(STDIN, "<", $0);
+		while(<>) {
+			m/#(?:ifn?def \w+|endif)/ and $ab .= "\t\t".$&."\n";
+			m/ADD: (.+?)[{$}\*]/ and $$l .= "\t\t\"".(" "x15)."$1\\n\"\n";
+			if(m/(BIND|OPTION): (.+?): (.+?)[{$\*]/) {
+				$l = ($1 eq "BIND" ? \$b : \$o);
+				$$l .= $ab."\t\t\" ".$2.(" "x(15-length($2))).$3."\\n\"\n";
+				$ab = "";
+				$$l =~ s/\#ifn?def\s\w+\s*\#endif\s* //x;
+			}
+		}
+		$$_ =~ s/#ifn?def \w+(?:.(?!#endif))+$/$&\t\t#endif\n/s for (\$o, \$b);
+		print q(		"options:\n")."\n$o\n\t\t\"\\n\"\n".q(		"key bindings:\n")."\n$b\n";
+		__END__
+
+		}}}		
 	 */
 	g_print("usage: pqiv [options] <files or folders>\n"
 		"(p)qiv version " RELEASE " by Phillip Berndt\n"
@@ -155,60 +181,64 @@ void helpMessage(char claim) { /* {{{ */
 		g_print("I don't understand the meaning of %c\n\n", claim);
 	}
 	g_print(
-		"options:\n"
-		" -i             Hide info box \n"
-		" -f             Start in fullscreen mode \n"
-		" -s             Activate slideshow \n"
-		#ifndef NO_SORTING	
-		" -n             Sort all files in natural order \n"
-		#endif
-		" -d n           Slideshow interval \n"
-		" -t             Shrink image(s) larger than the screen to fit \n"
-		" -r             Read additional filenames (not folders) from stdin \n"
-		" -c             Disable the background for transparent images \n"
-		#ifndef NO_COMPOSITING
-		"                Use twice to make the window transparent \n"
-		"                Use three times to make the window behave like a desktop widget \n"
-		#endif
-		" -w             Watch files for changes \n"
-		" -p             Interpolation quality level (1-4, defaults to 3) \n"
-		#ifndef NO_COMMANDS
-		" -<n> s         Set command number n (1-9) to s \n"
-		"                Prepend command with | to pipe image->command->image \n"
-		"                Prepend command with > to display the output of the command \n"
-		#endif
+                "options:\n"
+                " -i             Hide info box \n"
+                " -f             Start in fullscreen mode \n"
+                #ifndef NO_FADING
+                " -F             Fade between images \n"
+                #endif
+                " -s             Activate slideshow \n"
+                #ifndef NO_SORTING
+                " -n             Sort all files in natural order \n"
+                #endif
+                " -d n           Slideshow interval \n"
+                " -t             Shrink image(s) larger than the screen to fit \n"
+                " -r             Read additional filenames (not folders) from stdin \n"
+                " -c             Disable the background for transparent images \n"
+                "               Use twice to make the window transparent \n"
+                "               Use three times to make the window behave like a desktop widget \n"
+                " -w             Watch files for changes \n"
+                " -p             Interpolation quality level (1-4, defaults to 3) \n"
+                #ifndef NO_COMMANDS
+                " -<n> s         Set command number n (1-9) to s \n"
+                "               Prepend command with | to pipe image->command->image \n"
+                "               Prepend command with > to display the output of the command \n"
+                #endif
+
+
 		"\n"
 		#ifndef NO_CONFIG_FILE
 		" Place any of those options into ~/.pqivrc (like you'd do here) to make it default.\n"
 		"\n"
 		#endif
-		"key bindings:\n"
-		" Backspace      Previous image \n"
-		" PgUp           Jump 10 images forewards \n"
-		" PgDn           Jump 10 images backwards \n"
-		" Escape         Quit \n"
-		" Cursor keys    Move (Fullscreen) \n"
-		" Space          Next image \n"
-		" f              Fullscreen \n"
-		" r              Reload \n"
-		" +              Zoom in \n"
-		" -              Zoom out \n"
-		" 0              Autoscale \n"
-		" q              Quit \n"
-		" t              Toggle autoscale \n"
-		" l              Rotate left \n"
-		" k              Rotate right \n"
-		" h              Horizontal flip \n"
-		" v              Vertical flip \n"
-		" i              Show/hide info box \n"
-		" s              Slideshow toggle \n"
-		" a              Hardlink current image to .qiv-select/ \n"
-		#ifndef NO_COMMANDS
-		" <n>            Run command n (1-3) \n"
-		#endif
-		" Drag & Drop    Move image (Fullscreen) and decoration switch \n"
-		" Scroll         Next/previous image \n"
-		"\n"
+
+                "key bindings:\n"
+                " Backspace      Previous image \n"
+                " PgUp           Jump 10 images forewards \n"
+                " PgDn           Jump 10 images backwards \n"
+                " Escape         Quit \n"
+                " Cursor keys    Move (Fullscreen) \n"
+                " Space          Next image \n"
+                " f              Fullscreen \n"
+                " r              Reload \n"
+                " +              Zoom in \n"
+                " -              Zoom out \n"
+                " 0              Autoscale \n"
+                " q              Quit \n"
+                " t              Toggle autoscale \n"
+                " l              Rotate left \n"
+                " k              Rotate right \n"
+                " h              Horizontal flip \n"
+                " v              Vertical flip \n"
+                " i              Show/hide info box \n"
+                " s              Slideshow toggle \n"
+                " a              Hardlink current image to .qiv-select/ \n"
+                #ifndef NO_COMMANDS
+                " <n>            Run command n (1-3) \n"
+                #endif
+                " Drag & Drop    Move image (Fullscreen) and decoration switch \n"
+                " Scroll         Next/previous image \n"
+
 		);
 	exit(0);
 } /* }}} */
@@ -769,6 +799,53 @@ static void screenChangeCb(GtkWidget *widget, GdkScreen *old_screen, gpointer us
 }
 /* }}} */
 #endif
+#ifndef NO_FADING
+/* Fading images {{{ */
+/* TODO Use gdk_window_set_opacity when gtk 2.12 is in portage */
+gboolean fadeOut(gpointer data) { /*{{{*/
+	struct fadeInfo *fadeStruct = (struct fadeInfo *)data;
+	int imgx, imgy;
+	GdkPixbuf *fadeBuf;
+
+	fadeStruct->alpha -= 20;
+	if(fadeStruct->alpha > 0) {
+		imgx = gdk_pixbuf_get_width(fadeStruct->pixbuf);
+		imgy = gdk_pixbuf_get_height(fadeStruct->pixbuf);
+		
+		fadeBuf = gdk_pixbuf_copy(scaledImage);
+		gdk_pixbuf_composite(fadeStruct->pixbuf, fadeBuf, 0,
+			0, imgx, imgy, 0, 0, 1, 1,
+			GDK_INTERP_NEAREST, fadeStruct->alpha);
+		gtk_image_set_from_pixbuf(GTK_IMAGE(imageWidget), fadeBuf);
+		g_object_unref(fadeBuf);
+		return TRUE;
+	}
+	else {
+		gtk_image_set_from_pixbuf(GTK_IMAGE(imageWidget), scaledImage);
+		g_object_unref(fadeStruct->pixbuf);
+		free(fadeStruct);
+		return FALSE;
+	}
+} /*}}}*/
+void fadeImage(GdkPixbuf *image) { /*{{{*/
+	struct fadeInfo *fadeStruct;
+	fadeStruct = (struct fadeInfo*)malloc(sizeof(struct fadeInfo));
+	if(gdk_pixbuf_get_width(image) != gdk_pixbuf_get_width(scaledImage) ||
+		gdk_pixbuf_get_height(image) != gdk_pixbuf_get_height(scaledImage)) {
+		displayImage();
+		return;
+	}
+	DEBUG1("Fade");
+	if(scaledAt != zoom) {
+		scale();
+	}
+	fadeStruct->pixbuf = image;
+	fadeStruct->alpha = 255;
+	gtk_image_set_from_pixbuf(GTK_IMAGE(imageWidget), image);
+	g_timeout_add(50, fadeOut, fadeStruct);
+} /*}}}*/
+/* }}} */
+#endif
 void setFullscreen(char fullscreen) { /*{{{*/
 	GdkCursor *cursor;
 	GdkPixmap *source;
@@ -825,9 +902,9 @@ gboolean toFullscreenCb(gpointer data) { /*{{{*/
 	return FALSE;
 } /* }}} */
 void resizeAndPosWindow() { /*{{{*/
-	DEBUG1("Resize");
 	int imgx, imgy, scrx, scry;
 	GdkScreen *screen;
+	DEBUG1("Resize");
 	imgx = gdk_pixbuf_get_width(scaledImage);
 	imgy = gdk_pixbuf_get_height(scaledImage);
 	screen = gtk_widget_get_screen(window);
@@ -861,11 +938,24 @@ void displayImage() { /*{{{*/
 } /*}}}*/
 char reloadImage() { /*{{{*/
 	/* In fact, not only reload but also used to load images */
-	if(!loadImage())
+	GdkPixbuf *oldImage = g_object_ref(scaledImage);
+	if(!loadImage()) {
 		return FALSE;
+		g_object_unref(oldImage);
+	}
 	autoScaleFactor();
 	resizeAndPosWindow();
+	
+	#ifndef NO_FADING
+	if(optionFadeImages == TRUE) {
+		fadeImage(oldImage);
+	} else {
+		displayImage();
+	}
+	#else
 	displayImage();
+	#endif
+
 	setInfoText(NULL);
 	return TRUE;
 } /*}}}*/
@@ -1305,7 +1395,7 @@ int main(int argc, char *argv[]) {
 	}
 
 	opterr = 0;
-	while((option = getopt(optionCount, options, "ifsnthrcwp:d:1:2:3:4:5:6:7:8:9:")) > 0) {
+	while((option = getopt(optionCount, options, "ifFsnthrcwp:d:1:2:3:4:5:6:7:8:9:")) > 0) {
 		switch(option) {
 			/* OPTION: -i: Hide info box */
 			case 'i':
@@ -1315,6 +1405,12 @@ int main(int argc, char *argv[]) {
 			case 'f':
 				optionFullScreen = TRUE;
 				break;
+			#ifndef NO_FADING
+			/* OPTION: -F: Fade between images */
+			case 'F':
+				optionFadeImages = TRUE;
+				break;
+			#endif
 			/* OPTION: -s: Activate slideshow */
 			case 's':
 				optionActivateSlideshow = TRUE;
