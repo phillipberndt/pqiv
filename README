@@ -70,10 +70,10 @@ pqiv 0.5 dev
  * Advanced command execution
  * More glib calls instead of own functions
  * Added option to select interpolation type
-   (I don't expect this to need any testing)
  * Added support for real transparent images
  * Added support for sorting (using natsort)
  * Added support for real transparency
+ * Added support for fading between images
 
 pqiv 0.4
  * Updated Makefile to conform to standards
