@@ -146,8 +146,6 @@ void helpMessage(char claim) { /* {{{ */
 		" -r             Read additional filenames (not folders) from stdin \n"
 		" -c             Disable the background for transparent images \n"
 		" -<n> s         Set command number n (1-9) to s \n"
-		"                Prepend command with | to pipe image->command->image\n"
-		"                Prepend command with > to display the output of the command\n"
 		"\n"
 		" Place any of those options into ~/.pqivrc (like you'd do here) to make it default.\n"
 		"\n"
@@ -184,8 +182,6 @@ void helpMessage(char claim) { /* {{{ */
 #define EXTENSIONS "\\.(png|gif|jpg|bmp|xpm)$"
 regex_t extensionCompiled;
 void load_files_addfile(char *file) { /*{{{*/
-	FILE *test;
-
 	if(firstFile.fileName != NULL) {
 		lastFile->next = (struct file*)malloc(sizeof(struct file));
 		if(lastFile->next == NULL) {
@@ -268,22 +264,11 @@ void load_files(int *argc, char **argv[]) { /*{{{*/
 		}
 	}
 } /*}}}*/
-gint windowCloseOnlyCb(GtkWidget *widget, GdkEventKey *event, gpointer data) { /*{{{*/
-	if(event->keyval == 'q') {
-		gtk_widget_destroy(widget);
-	}
-} /* }}} */
 void run_program(char *command) { /*{{{*/
-	char *buf4, *buf3, *buf2, *buf;
-	GtkWidget *tmpWindow, *tmpScroller, *tmpText;
-	FILE *readInformation;
-	GString *infoString;
-	gsize uniTextLength;
+	char *buf2, *buf;
 	int i;
-	int tmpFileDescriptors[] = {0, 0};
-	if(command[0] == '>') {
-		/* Pipe information {{{ */
-		command = &command[1];
+	/* Run program {{{ */
+	if(fork() == 0) {
 		/* Write filename to buf2, escape "'s {{{ */
 		buf2 = (char*)malloc(strlen(currentFile->fileName) * 2 + 1);
 		buf = currentFile->fileName;
@@ -298,134 +283,11 @@ void run_program(char *command) { /*{{{*/
 		} /*}}}*/
 		buf = (char*)malloc(strlen(command) + 4 + strlen(buf2));
 		sprintf(buf, "%s \"%s\"", command, buf2);
-		readInformation = popen(buf, "r");
-		if(readInformation == NULL) {
-			fprintf(stderr, "Command execution failed for %s\n", command);
-			free(buf);
-			return;
-		}
-		infoString = g_string_new(NULL);
-		buf3 = (char*)malloc(1024);
-		while(fgets(buf3, 1024, readInformation) != NULL) {
-			g_string_append(infoString, buf3);
-		}
-		pclose(readInformation);
+		system(buf);
+		free(buf);
 		free(buf2);
-		free(buf3);
-		free(buf);
-	
-		/* Display information in a window */
-		tmpWindow = gtk_window_new(GTK_WINDOW_TOPLEVEL);
-		gtk_window_set_title(GTK_WINDOW(tmpWindow), command);
-		gtk_window_set_position(GTK_WINDOW(tmpWindow), GTK_WIN_POS_CENTER_ON_PARENT);
-		gtk_window_set_modal(GTK_WINDOW(tmpWindow), TRUE);
-		gtk_window_set_destroy_with_parent(GTK_WINDOW(tmpWindow), TRUE);
-		gtk_window_set_type_hint(GTK_WINDOW(tmpWindow), GDK_WINDOW_TYPE_HINT_DIALOG);
-		gtk_widget_set_size_request(tmpWindow, 400, 480);
-		g_signal_connect(tmpWindow, "key-press-event",
-			G_CALLBACK(windowCloseOnlyCb), NULL);
-		tmpScroller = gtk_scrolled_window_new(NULL, NULL);
-		gtk_container_add(GTK_CONTAINER(tmpWindow), tmpScroller);
-		gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(tmpScroller), GTK_POLICY_AUTOMATIC, GTK_POLICY_AUTOMATIC);
-		tmpText = gtk_text_view_new();
-		gtk_container_add(GTK_CONTAINER(tmpScroller), tmpText); 
-		gtk_text_view_set_editable(GTK_TEXT_VIEW(tmpText), FALSE);
-		if(g_utf8_validate(infoString->str, infoString->len, NULL) == FALSE) {
-			buf4 = g_convert(infoString->str, infoString->len, "utf8", "iso8859-1", NULL, &uniTextLength, NULL);
-			gtk_text_buffer_set_text(gtk_text_view_get_buffer(GTK_TEXT_VIEW(tmpText)), buf4, uniTextLength);
-			free(buf4);
-		}
-		else {
-			gtk_text_buffer_set_text(gtk_text_view_get_buffer(GTK_TEXT_VIEW(tmpText)), infoString->str,
-				infoString->len);
-		}
-		gtk_widget_show(tmpText);
-		gtk_widget_show(tmpScroller);
-		gtk_widget_show(tmpWindow);
-
-		g_string_free(infoString, TRUE);
-		/* }}} */
-	}
-	else if(command[0] == '|') {
-		/* Pipe data {{{ */
-		/*
-		 * buf3 -> Tempfile [0] for saving old image
-		 * buf4 -> Tempfile [1] for saving new image
-		 * buf2 -> For temporary storage of original currentFile->fileName
-		 * buf  -> Command
-		 */
-		command = &command[1];
-		buf3 = (char*)malloc(14);
-		strcpy(buf3, "/tmp/imgXXXXXX");
-		if((tmpFileDescriptors[0] = mkstemp(buf3)) == -1) {
-			fprintf(stderr, "Failed to create a temporary file\n");
-			free(buf3);
-			return;
-		}
-		buf4 = (char*)malloc(14);
-		strcpy(buf4, "/tmp/imgXXXXXX");
-		if((tmpFileDescriptors[1] = mkstemp(buf4)) == -1) {
-			fprintf(stderr, "Failed to create a temporary file\n");
-			free(buf3);
-			free(buf4);
-			return;
-		}
-		if(!gdk_pixbuf_save(currentImage, buf3, "png", NULL, NULL)) {
-			fprintf(stderr, "Failed to save current image\n");
-			free(buf3);
-			free(buf4);
-			return;
-		}
-		buf = (char*)malloc(strlen(command) + 10 + 2 * strlen(buf3));
-		sprintf(buf, "%s <\"%s\" >\"%s\"", command, buf3, buf4);
-		if(system(buf) == 0) {
-			/* Load image into pqiv */
-			buf2 = currentFile->fileName;
-			currentFile->fileName = buf4;
-			i = reloadImage();
-			currentFile->fileName = buf2;
-			if(i == TRUE) {
-				setInfoText("Success");
-			}
-			else {
-				setInfoText("Failure");
-			}
-		}
-		else {
-			fprintf(stderr, "Command execution failed for %s\n", command);
-		}
-		close(tmpFileDescriptors[0]);
-		unlink(buf3);
-		close(tmpFileDescriptors[1]);
-		unlink(buf4);
-		free(buf);
-		free(buf3);
-		free(buf4);
-		/* }}} */
-	}
-	else {
-		/* Run program {{{ */
-		if(fork() == 0) {
-			/* Write filename to buf2, escape "'s {{{ */
-			buf2 = (char*)malloc(strlen(currentFile->fileName) * 2 + 1);
-			buf = currentFile->fileName;
-			for(i=0;;i++,buf++) {
-				if(*buf == '"') {
-					buf2[i++] = '\\';
-				}
-				buf2[i] = *buf;
-				if(*buf == 0) {
-					break;
-				}
-			} /*}}}*/
-			buf = (char*)malloc(strlen(command) + 4 + strlen(buf2));
-			sprintf(buf, "%s \"%s\"", command, buf2);
-			system(buf);
-			free(buf);
-			free(buf2);
-			exit(1);
-		} /* }}} */
-	}
+		exit(1);
+	} /* }}} */
 } /*}}}*/
 /*}}}*/
 /* Load images and modify them {{{ */
