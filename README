@@ -58,6 +58,10 @@ KNOWN PROBLEMS
 CHANGELOG
 
 pqiv 0.4
+ * Updated Makefile to conform to standards
+   Thanks to Samuli Suominen <drac at gentoo.org>
+
+pqiv 0.4 rc1
  * Source rewritten into c
  * Mouse moves image in fullscreen
  * Configuration file
