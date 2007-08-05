@@ -65,19 +65,19 @@ KNOWN PROBLEMS
 
 CHANGELOG
 
-- no more new features before final, promise :) -
-
-pqiv 0.4 rc2
- * Merged some code I forgot about into pqiv
-   Includes: Advanced command execution, more
-   glib calls instead of own functions
- * Updated Makefile to conform to standards
-   Thanks to Samuli Suominen <drac at gentoo.org>
+pqiv 0.5 dev
+ * Fading between images
+ * Advanced command execution
+ * More glib calls instead of own functions
  * Added option to select interpolation type
    (I don't expect this to need any testing)
  * Added support for real transparent images
  * Added support for sorting (using natsort)
  * Added support for real transparency
+
+pqiv 0.4
+ * Updated Makefile to conform to standards
+   Thanks to Samuli Suominen <drac at gentoo.org>
  
 pqiv 0.4 rc1
  * Source rewritten into c

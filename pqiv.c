@@ -109,7 +109,7 @@ static GdkInterpType optionInterpolation = GDK_INTERP_BILINEAR;
 
 #ifndef NO_FADING
 static char optionFadeImages = FALSE;
-static struct fadeInfo {
+struct fadeInfo {
 	GdkPixbuf *pixbuf;
 	int alpha;
 };
