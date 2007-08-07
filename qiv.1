@@ -2,7 +2,7 @@
 .SH NAME
 pqiv \- quick image viewer
 .SH SYNOPSIS
-.B qiv [-i] [-f] [-F] [-s] [-d n] [-t] [-r] [-c] [-<n>]  <file(s) or folder(s)>
+.B qiv [options] <file(s) or folder(s)>
 .SH DESCRIPTION
 pqiv is a really simple image viewer inspired by qiv.
 .SH OPTIONS
@@ -26,7 +26,7 @@ Sort the file list using natsort
 Interval for the slideshow function, in seconds
 .TP
 .B -t
-Shrink image(s) larger than the screen to fit
+Do not shrink image(s) larger than the screen to fit
 .TP
 .B -r
 Read filename(s) from STDIN.
@@ -38,6 +38,9 @@ twice (and your wm supports it), it will cause the window to be transparent.
 .TP
 .B -w
 Watch open files for changes and reload them if necessary
+.TP
+.B -z n
+Set initial zoom level in percent. This is only useful in conjunction with -t.
 .TP
 -p n
 Select interpolation type for resizing operations. Valid values for n:
@@ -52,6 +55,9 @@ Select interpolation type for resizing operations. Valid values for n:
 4: GDK_INTERP_HYPER, use hyper interpolation
 .br
 .po 0
+.TP
+.B -P left,top
+Set initial window position. Defaults to center of screen.
 .TP
 .B -<n>
 Use those options (n \in 0..9) to define a command, which will be executed when

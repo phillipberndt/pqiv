@@ -102,6 +102,8 @@ static int inotifyWd = -1;
 /* Program options */
 static char optionHideInfoBox = FALSE;
 static char optionUseInotify = FALSE;
+static float optionInitialZoom = 1;
+static int optionWindowPosition[2] = {-1, -1};
 static char optionHideChessboardLevel = 0;
 #ifndef NO_COMMANDS
 static char *optionCommands[] = { NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL };
@@ -161,7 +163,7 @@ void helpMessage(char claim) { /* {{{ */
 		open(STDIN, "<", $0);
 		while(<>) {
 			m/#(?:ifn?def \w+|endif)/ and $ab .= "\t\t".$&."\n";
-			m/ADD: (.+?)[{$}\*]/ and $$l .= "\t\t\"".(" "x15)."$1\\n\"\n";
+			m/ADD: (.+?)[{$}\*]/ and $$l .= "\t\t\"".(" "x16)."$1\\n\"\n";
 			if(m/(BIND|OPTION): (.+?): (.+?)[{$\*]/) {
 				$l = ($1 eq "BIND" ? \$b : \$o);
 				$$l .= $ab."\t\t\" ".$2.(" "x(15-length($2))).$3."\\n\"\n";
@@ -183,6 +185,7 @@ void helpMessage(char claim) { /* {{{ */
 	}
 	g_print(
                 "options:\n"
+                "options:\n"
                 " -i             Hide info box \n"
                 " -f             Start in fullscreen mode \n"
                 #ifndef NO_FADING
@@ -193,17 +196,16 @@ void helpMessage(char claim) { /* {{{ */
                 " -n             Sort all files in natural order \n"
                 #endif
                 " -d n           Slideshow interval \n"
-                " -t             Shrink image(s) larger than the screen to fit \n"
+                " -t             Do not shrink image(s) larger than the screen to fit \n"
                 " -r             Read additional filenames (not folders) from stdin \n"
                 " -c             Disable the background for transparent images \n"
-                "               Use twice to make the window transparent \n"
-                "               Use three times to make the window behave like a desktop widget \n"
+                "                See manpage for what happens if you use this option more than once \n"
                 " -w             Watch files for changes \n"
+                " -z n           Set initial zoom level \n"
                 " -p             Interpolation quality level (1-4, defaults to 3) \n"
                 #ifndef NO_COMMANDS
                 " -<n> s         Set command number n (1-9) to s \n"
-                "               Prepend command with | to pipe image->command->image \n"
-                "               Prepend command with > to display the output of the command \n"
+                "                See manpage for advanced commands (starting with > or |) \n"
                 #endif
 
 
@@ -740,7 +742,7 @@ void autoScaleFactor() { /*{{{*/
 	DEBUG1("autoScaleFactor");
 
 	if(!autoScale) {
-		zoom = 1;
+		zoom = optionInitialZoom;
 		scale();
 		return;
 	}
@@ -908,6 +910,7 @@ void resizeAndPosWindow() { /*{{{*/
 	int imgx, imgy, scrx, scry;
 	GdkScreen *screen;
 	DEBUG1("Resize");
+
 	imgx = gdk_pixbuf_get_width(scaledImage);
 	imgy = gdk_pixbuf_get_height(scaledImage);
 	screen = gtk_widget_get_screen(window);
@@ -923,7 +926,12 @@ void resizeAndPosWindow() { /*{{{*/
 		gtk_widget_set_size_request(window, imgx, imgy);
 		gtk_main_iteration();
 		gtk_window_set_resizable(GTK_WINDOW(window), FALSE);
-		gtk_window_move(GTK_WINDOW(window), (scrx - imgx) / 2, (scry - imgy) / 2);
+		if(optionWindowPosition[0] == -1) {
+			gtk_window_move(GTK_WINDOW(window), (scrx - imgx) / 2, (scry - imgy) / 2);
+		}
+		else {
+			gtk_window_move(GTK_WINDOW(window), optionWindowPosition[0], optionWindowPosition[1]);
+		}
 		gtk_fixed_move(GTK_FIXED(fixed), imageWidget, 0, 0);
 	}
 	else {
@@ -1011,6 +1019,10 @@ gint keyboardCb(GtkWidget *widget, GdkEventKey *event, gpointer data) { /*{{{*/
 			event->hardware_keycode
 		);
 	#endif
+
+	if(optionHideChessboardLevel > 3) {
+		return 0;
+	}
 
 	switch(event->hardware_keycode) {
 		/* BIND: Backspace: Previous image {{{ */
@@ -1346,7 +1358,7 @@ int main(int argc, char *argv[]) {
 	char option;
 	char **envP;
 	char *fileName;
-	char *fileNameL;
+	char *buf;
 	char optionFullScreen = FALSE;
 	#ifndef NO_SORTING	
 	char optionSortFiles = FALSE;
@@ -1368,12 +1380,12 @@ int main(int argc, char *argv[]) {
 	envP = environ;
 	options[0] = argv[0];
 	#ifndef NO_CONFIG_FILE
-	while((fileNameL = *envP++) != NULL) {
-		if(strncmp(fileNameL, "HOME=", 5) != 0) {
+	while((buf = *envP++) != NULL) {
+		if(strncmp(buf, "HOME=", 5) != 0) {
 			continue;
 		}
-		fileName = (char*)malloc(strlen(&(fileNameL[5])) + 9);
-		sprintf(fileName, "%s/.pqivrc", &(fileNameL[5]));
+		fileName = (char*)malloc(strlen(&(buf[5])) + 9);
+		sprintf(fileName, "%s/.pqivrc", &(buf[5]));
 		optionsFile = fopen(fileName, "r");
 		
 		if(optionsFile) {
@@ -1409,7 +1421,7 @@ int main(int argc, char *argv[]) {
 	}
 
 	opterr = 0;
-	while((option = getopt(optionCount, options, "ifFsnthrcwp:d:1:2:3:4:5:6:7:8:9:")) > 0) {
+	while((option = getopt(optionCount, options, "ifFsnthrcwz:P:p:d:1:2:3:4:5:6:7:8:9:")) > 0) {
 		switch(option) {
 			/* OPTION: -i: Hide info box */
 			case 'i':
@@ -1439,10 +1451,11 @@ int main(int argc, char *argv[]) {
 			case 'd':
 				slideshowInterval = atoi(optarg);
 				if(slideshowInterval < 1) {
-					helpMessage('d');
+					g_printerr("The interval for the slideshow should be at least 1 second\n");
+					exit(1);
 				}
 				break;
-			/* OPTION: -t: Shrink image(s) larger than the screen to fit */
+			/* OPTION: -t: Do not shrink image(s) larger than the screen to fit */
 			case 't':
 				autoScale = FALSE;
 				break;
@@ -1452,11 +1465,10 @@ int main(int argc, char *argv[]) {
 				memoryArgImage = (GdkPixbuf*)1; /* Don't allow - files */
 				break;
 			/* OPTION: -c: Disable the background for transparent images */
-			/* ADD: Use twice to make the window transparent */
-			/* ADD: Use three times to make the window behave like a desktop widget */
+			/* ADD: See manpage for what happens if you use this option more than once */
 			case 'c':
 				#ifndef NO_COMPOSITING
-				if(optionHideChessboardLevel < 4) {
+				if(optionHideChessboardLevel < 5) {
 					optionHideChessboardLevel++;
 				}
 				#else
@@ -1466,6 +1478,14 @@ int main(int argc, char *argv[]) {
 			/* OPTION: -w: Watch files for changes */
 			case 'w':
 				optionUseInotify = TRUE;
+				break;
+			/* OPTION: -z n: Set initial zoom level */
+			case 'z':
+				optionInitialZoom = (float)atof(optarg) / 100;
+				if(optionInitialZoom < 0.01f || optionInterpolation > 10) {
+					g_printerr("Please choose a senseful zoom level (Between 1 and 1000%%).\n");
+					exit(1);
+				}
 				break;
 			/* OPTION: -p: Interpolation quality level (1-4, defaults to 3) */
 			case 'p':
@@ -1478,9 +1498,21 @@ int main(int argc, char *argv[]) {
 				}
 				break;
 			#ifndef NO_COMMANDS
+			/* OPTION: -P: Set initial window position (syntax: left,top) */
+			case 'P':
+				buf = index(optarg, ',');
+				if(i == 0) {
+					g_printerr("Syntax for -P is 'left,top'\n");
+					exit(1);
+				}
+				*buf = 0;
+				buf++;
+				optionWindowPosition[0] = atoi(optarg);
+				optionWindowPosition[1] = atoi(buf);
+				buf = NULL;
+				break;
 			/* OPTION: -<n> s: Set command number n (1-9) to s */
-			/* ADD: Prepend command with | to pipe image->command->image */
-			/* ADD: Prepend command with > to display the output of the command */
+			/* ADD: See manpage for advanced commands (starting with > or |) */
 			case '1': case '2': case '3': case '4':
 			case '5': case '6': case '7': case '8':
 			case '9':
@@ -1529,12 +1561,12 @@ int main(int argc, char *argv[]) {
 			if(strlen(fileName) == 0) {
 				break;
 			}
-			fileNameL = &fileName[strlen(fileName) - 1];
-			if(*fileNameL < 33)
-				*fileNameL = 0;
-			fileNameL--;
-			if(*fileNameL < 33)
-				*fileNameL = 0;
+			buf = &fileName[strlen(fileName) - 1];
+			if(*buf < 33)
+				*buf = 0;
+			buf--;
+			if(*buf < 33)
+				*buf = 0;
 			loadFilesAddFile(fileName);
 		} while(TRUE);
 	}
@@ -1652,7 +1684,7 @@ int main(int argc, char *argv[]) {
 
 	/* Hide from taskbar and force to background when started with -ccc */
 	#ifndef NO_COMPOSITING
-	if(optionHideChessboardLevel == 3) {
+	if(optionHideChessboardLevel > 3) {
 		gtk_window_stick(GTK_WINDOW(window));
 		gtk_window_set_keep_below(GTK_WINDOW(window), TRUE);
 		gtk_window_set_skip_taskbar_hint(GTK_WINDOW(window), TRUE);
