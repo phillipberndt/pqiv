@@ -185,7 +185,6 @@ void helpMessage(char claim) { /* {{{ */
 	}
 	g_print(
                 "options:\n"
-                "options:\n"
                 " -i             Hide info box \n"
                 " -f             Start in fullscreen mode \n"
                 #ifndef NO_FADING
@@ -203,11 +202,11 @@ void helpMessage(char claim) { /* {{{ */
                 " -w             Watch files for changes \n"
                 " -z n           Set initial zoom level \n"
                 " -p             Interpolation quality level (1-4, defaults to 3) \n"
+                " -P             Set initial window position (syntax: left,top) \n"
                 #ifndef NO_COMMANDS
                 " -<n> s         Set command number n (1-9) to s \n"
                 "                See manpage for advanced commands (starting with > or |) \n"
                 #endif
-
 
 		"\n"
 		#ifndef NO_CONFIG_FILE
@@ -1497,7 +1496,6 @@ int main(int argc, char *argv[]) {
 					default:  helpMessage(0);
 				}
 				break;
-			#ifndef NO_COMMANDS
 			/* OPTION: -P: Set initial window position (syntax: left,top) */
 			case 'P':
 				buf = index(optarg, ',');
@@ -1511,6 +1509,7 @@ int main(int argc, char *argv[]) {
 				optionWindowPosition[1] = atoi(buf);
 				buf = NULL;
 				break;
+			#ifndef NO_COMMANDS
 			/* OPTION: -<n> s: Set command number n (1-9) to s */
 			/* ADD: See manpage for advanced commands (starting with > or |) */
 			case '1': case '2': case '3': case '4':

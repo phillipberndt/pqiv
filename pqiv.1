@@ -12,15 +12,19 @@ Suppress the yellow info box in pqiv
 .TP
 .B -f
 Start pqiv in fullscreen mode
+#ifndef NO_FADING
 .TP
 .B -F
 Make qiv fade between images. Currently this does only work for images of equal size.
+#endif
 .TP
 .B -s
 Auto start slide show
+#ifndef NO_SORTING
 .TP
 .B -n
 Sort the file list using natsort
+#endif
 .TP
 .B -d n
 Interval for the slideshow function, in seconds
@@ -58,6 +62,7 @@ Select interpolation type for resizing operations. Valid values for n:
 .TP
 .B -P left,top
 Set initial window position. Defaults to center of screen.
+#ifndef NO_COMMANDS
 .TP
 .B -<n>
 Use those options (n \in 0..9) to define a command, which will be executed when
@@ -74,6 +79,7 @@ to let pqiv pipe the displayed image to your command and read/reload it from
 the command's output.
 .br
 .po 0
+#endif
 .PP
 The contents of
 .B ~/.pqivrc

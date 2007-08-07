@@ -9,15 +9,17 @@ OPTIONFLAGS= lib/strnatcmp.c
 REQUIRED_PACKAGES=gtk+-2.0 gthread-2.0 pango glib
 
 # pqiv
-all: pqiv
+all: pqiv manpage
 pqiv: 
 	$(CC) $(CFLAGS) `pkg-config --libs --cflags $(REQUIRED_PACKAGES)` -o qiv $(OPTIONFLAGS) pqiv.c
 debug: 
 	$(CC) $(CGLAGS) -Wall -ggdb -DDEBUG `pkg-config --libs --cflags $(REQUIRED_PACKAGES)` $(OPTIONFLAGS) -o qiv pqiv.c
+manpage:
+	$(CC) `echo " $(OPTIONFLAGS)" | sed -re 's/ [^-][^ ]+//g'` -E - <pqiv.1 | sed -nre '/^[^#].+/ p' > qiv.1
 
 # Cleanup
 clean:
-	rm -f qiv
+	rm -f qiv qiv.1
 
 # Installation and uninstallation
 install:
