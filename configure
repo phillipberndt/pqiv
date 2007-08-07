@@ -21,7 +21,7 @@ options:
   --prefix=..           Set the prefix for installed files
   --destdir=..          Set the destdir for installed files (for package maintainers)
 EOF
-	for INDEX in $(seq 0 4 ${#OPTIONS}); do
+	for INDEX in $(seq 0 4 $[${#OPTIONS[*]} - 1]); do
 		echo -n "  --${OPTIONS[$INDEX]}"
 		for n in $(seq $[20 - ${#OPTIONS[$INDEX]}]); do
 			echo -n " "
@@ -32,14 +32,14 @@ EOF
 	exit
 }
 POSSIBLES=""
-for INDEX in $(seq 0 4 ${#OPTIONS}); do
+for INDEX in $(seq 0 4 ${#OPTIONS[*]}); do
 	POSSIBLES="${POSSIBLES},${OPTIONS[$INDEX]}"
 done
 PARAMETERS=$(getopt -q -l "prefix:,destdir:,help${POSSIBLES}" -o "h" -- "$@")
 eval set -- ${PARAMETERS//\//\\/}
 CHANGES=""
 OPTIONFLAGS=""
-for INDEX in $(seq 0 4 ${#OPTIONS}); do
+for INDEX in $(seq 0 4 ${#OPTIONS[*]}); do
 	if echo "$@" | grep -q -- "--${OPTIONS[$INDEX]}"; then
 		OPTIONFLAGS="${OPTIONFLAGS} ${OPTIONS[$[$INDEX + 2]]}"
 	else

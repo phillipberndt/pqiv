@@ -37,8 +37,12 @@ Read filename(s) from STDIN.
 .TP
 .B -c
 pqiv will draw this well-known chessboard background for transparent images per
-default. Use this option to deactivate this behaviour. If you use this option
-twice (and your wm supports it), it will cause the window to be transparent.
+default. Use this option to deactivate this behaviour.
+#ifndef NO_COMPOSITING
+If you use this option twice (and your wm supports it), it will cause the window to be transparent.
+Use it three times to make the window stay in the background and use it for times to also disable
+controls. You can make pqiv behave like a desktop widget this way.
+#endif
 .TP
 .B -w
 Watch open files for changes and reload them if necessary
@@ -80,6 +84,7 @@ the command's output.
 .br
 .po 0
 #endif
+#ifndef NO_CONFIG_FILE
 .PP
 The contents of
 .B ~/.pqivrc
@@ -89,7 +94,8 @@ the default for pqiv, put
 	-d1
 .fi
 into that file.
-
+.PP
+#endif
 pqiv will display all files you specified on the command line. Directories will
 be searched recursively for files supported by gtk+
 (for example: bmp, gif, jpeg, png, wbmp, xpm, svg). Unless you specified

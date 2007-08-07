@@ -1464,7 +1464,9 @@ int main(int argc, char *argv[]) {
 				memoryArgImage = (GdkPixbuf*)1; /* Don't allow - files */
 				break;
 			/* OPTION: -c: Disable the background for transparent images */
+			#ifndef NO_COMPOSITING
 			/* ADD: See manpage for what happens if you use this option more than once */
+			#endif
 			case 'c':
 				#ifndef NO_COMPOSITING
 				if(optionHideChessboardLevel < 5) {
