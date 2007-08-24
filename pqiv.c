@@ -1168,16 +1168,16 @@ gint keyboardCb(GtkWidget *widget, GdkEventKey *event, gpointer data) { /*{{{*/
 			moveX = moveY = 0;
 			autoScale = !autoScale;
 			if(autoScale == TRUE) {
-				setInfoText("Autoscale on");
 				autoScaleFactor();
 				resizeAndPosWindow();
 				displayImage();
+				setInfoText("Autoscale on");
 			}
 			else {
-				setInfoText("Autoscale off");
 				autoScaleFactor();
 				resizeAndPosWindow();
 				displayImage();
+				setInfoText("Autoscale off");
 			}
 			
 			break;
