@@ -1364,7 +1364,7 @@ int main(int argc, char *argv[]) {
 	#endif
 	char optionReadStdin = FALSE;
 	FILE *optionsFile;
-	char *options[255];
+	char **options;
 	int optionCount = 1, i;
 	char **fileFormatExtensionsIterator;
 	GSList *fileFormatsIterator;
@@ -1377,6 +1377,7 @@ int main(int argc, char *argv[]) {
 /* }}} */
 	/* Command line and configuration parsing {{{ */
 	envP = environ;
+	options = (char**)malloc((argc + 250) * sizeof(char*));
 	options[0] = argv[0];
 	#ifndef NO_CONFIG_FILE
 	while((buf = *envP++) != NULL) {
@@ -1389,8 +1390,11 @@ int main(int argc, char *argv[]) {
 		
 		if(optionsFile) {
 			while((option = fgetc(optionsFile)) != EOF) {
-				if(optionCount > 253) {
-					die("Too many options");
+				if(optionCount > 250) {
+					die("Too many options; your configuration file is restricted to 250 options");
+				}
+				if(option < 33) {
+					continue;
 				}
 				options[optionCount] = (char*)malloc(1024);
 				i = 0;
@@ -1412,8 +1416,9 @@ int main(int argc, char *argv[]) {
 	}
 	#endif
 	for(i=1; i<argc; i++) {
-		if(optionCount > 253) {
-			die("Too many options");
+		if(optionCount > (argc + 250)) {
+			/* Can't be */
+			die("Too many options. This is a bug, please report it!");
 		}
 		options[optionCount] = argv[i];
 		optionCount++;
@@ -1529,6 +1534,7 @@ int main(int argc, char *argv[]) {
 				helpMessage(0);
 		}
 	}
+	free(options);
 	/* }}} */
 	/* Load files {{{ */
 	argv++; argc--;
