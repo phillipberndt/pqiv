@@ -30,7 +30,7 @@ uninstall:
 	rm $(DESTDIR)$(PREFIX)/bin/qiv
 	rm $(DESTDIR)$(PREFIX)/share/man/man1/qiv.1
 	rm $(DESTDIR)$(PREFIX)/share/man/man1/pqiv.1
-mininstall: pqiv
+mininstall:
 	install -D qiv /usr/local/bin
 
 # Package generation
