@@ -1374,6 +1374,9 @@ int main(int argc, char *argv[]) {
 	g_type_init();
 	g_thread_init(NULL);
 	gdk_threads_init();
+	if(gtk_init_check(&argc, &argv) == FALSE) {
+		die("Failed to open X11 Display.");
+	}
 /* }}} */
 	/* Command line and configuration parsing {{{ */
 	envP = environ;
@@ -1594,8 +1597,10 @@ int main(int argc, char *argv[]) {
 	/* }}} */
 	/* Initialize gtk {{{ */
 	/* Create gtk window */
-	gtk_init(&argc, &argv);
 	window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
+	if(!window) {
+		die("Failed to create a window");
+	}
 	gtk_window_set_resizable(GTK_WINDOW(window), FALSE);
 	gtk_widget_set_size_request(window, 640, 480);
 	gtk_window_set_title(GTK_WINDOW(window), "pqiv");
