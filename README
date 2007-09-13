@@ -66,6 +66,10 @@ KNOWN PROBLEMS
 
 CHANGELOG
 
+pqiv 0.5
+ * Minor bugfix: Show an error message when no X11 display
+   is found
+
 pqiv 0.5 dev
  * Fading between images
  * Advanced command execution

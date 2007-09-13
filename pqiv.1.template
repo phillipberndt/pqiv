@@ -88,8 +88,8 @@ the command's output.
 .PP
 The contents of
 .B ~/.pqivrc
-will be prepended to pqiv's argv. So if you want to make an interval of 1 second
-the default for pqiv, put
+will be prepended to pqiv's argv. So if you want to make an slideshow interval
+of 1 second the default for pqiv, put
 .nf
 	-d1
 .fi

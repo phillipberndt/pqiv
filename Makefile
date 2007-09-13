@@ -15,7 +15,7 @@ pqiv:
 debug: 
 	$(CC) $(CGLAGS) -Wall -ggdb -DDEBUG `pkg-config --libs --cflags $(REQUIRED_PACKAGES)` $(OPTIONFLAGS) -o qiv pqiv.c
 manpage:
-	$(CC) `echo " $(OPTIONFLAGS)" | sed -re 's/ [^-][^ ]+//g'` -E - <pqiv.1 | sed -nre '/^[^#].+/ p' > qiv.1
+	$(CC) `echo " $(OPTIONFLAGS)" | sed -re 's/ [^-][^ ]+//g'` -C -E - <pqiv.1.template | sed -nre '/^[^#].+/ p' > qiv.1
 
 # Cleanup
 clean:
