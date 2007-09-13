@@ -34,9 +34,9 @@ mininstall:
 	install -D qiv /usr/local/bin
 
 # Package generation
-PACKAGE_VERSION=`awk '/RELEASE/ {print $$3}' pqiv.c | tr -d \" | head -n1`$(SUFFIX)
+PACKAGE_VERSION:=$(shell awk '/RELEASE/ {print $$3}' pqiv.c | tr -d \" | head -n1)$(SUFFIX)
 package: 
 	mkdir pqiv-$(PACKAGE_VERSION)/
-	cp -r lib *.c qiv.1 gpl.txt configure Makefile README pqiv-$(PACKAGE_VERSION)/
+	cp -r lib *.c pqiv.1.template gpl.txt configure Makefile README pqiv-$(PACKAGE_VERSION)/
 	tar cjf pqiv-$(PACKAGE_VERSION).tbz pqiv-$(PACKAGE_VERSION)/
 	rm -rf pqiv-$(PACKAGE_VERSION)
