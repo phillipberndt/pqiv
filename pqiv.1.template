@@ -82,8 +82,14 @@ Prepend the command with
 .B |
 to let pqiv pipe the displayed image to your command and read/reload it from
 the command's output.
-.br
 .po 0
+.br
+.TP
+.B -q
+Behave (mostly) like the original qiv. With this option qiv will call
+.I qiv-command n file
+when you press a number key n, where n will be replaced by the key you pressed
+and file by the name of the current image.
 .\" end
 .\" unless NO_CONFIG_FILE
 .PP

@@ -206,6 +206,7 @@ void helpMessage(char claim) { /* {{{ */
                 #ifndef NO_COMMANDS
                 " -<n> s         Set command number n (1-9) to s \n"
                 "                See manpage for advanced commands (starting with > or |) \n"
+                " -q             Use the qiv-command script for commands \n"
                 #endif
 
 		"\n"
@@ -1428,7 +1429,7 @@ int main(int argc, char *argv[]) {
 	}
 
 	opterr = 0;
-	while((option = getopt(optionCount, options, "ifFsnthrcwz:P:p:d:1:2:3:4:5:6:7:8:9:")) > 0) {
+	while((option = getopt(optionCount, options, "ifFsnthrcwqz:P:p:d:1:2:3:4:5:6:7:8:9:")) > 0) {
 		switch(option) {
 			/* OPTION: -i: Hide info box */
 			case 'i':
@@ -1526,8 +1527,22 @@ int main(int argc, char *argv[]) {
 			case '5': case '6': case '7': case '8':
 			case '9':
 				i = option - '0';
+				if(optionCommands[i] != NULL) {
+					free(optionCommands[i]);
+				}
 				optionCommands[i] = (char*)malloc(strlen(optarg) + 1);
 				strcpy(optionCommands[i], optarg);
+				break;
+			/* OPTION: -q: Use the qiv-command script for commands */
+			case 'q':
+				for(i=0; i<10; i++) {
+					if(optionCommands[i] != NULL) {
+						free(optionCommands[i]);
+					}
+					optionCommands[i] = (char*)malloc(14);
+					memcpy(optionCommands[i], "qiv-command 0", 14);
+					optionCommands[i][12] += i;
+				}
 				break;
 			#endif
 			case '?':
