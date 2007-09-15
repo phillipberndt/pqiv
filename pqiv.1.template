@@ -1,3 +1,4 @@
+.\" vim:filetype=groff
 .TH qiv 1 "28 August 2007" "0.5" "qiv manual"
 .SH NAME
 pqiv \- quick image viewer
@@ -12,19 +13,19 @@ Suppress the yellow info box in pqiv
 .TP
 .B -f
 Start pqiv in fullscreen mode
-#ifndef NO_FADING
+.\" unless NO_FADING
 .TP
 .B -F
 Make qiv fade between images. Currently this does only work for images of equal size.
-#endif
+.\" end
 .TP
 .B -s
 Auto start slide show
-#ifndef NO_SORTING
+.\" unless NO_SORTING
 .TP
 .B -n
 Sort the file list using natsort
-#endif
+.\" end
 .TP
 .B -d n
 Interval for the slideshow function, in seconds
@@ -38,11 +39,11 @@ Read filename(s) from STDIN.
 .B -c
 pqiv will draw this well-known chessboard background for transparent images per
 default. Use this option to deactivate this behaviour.
-#ifndef NO_COMPOSITING
+.\" unless NO_COMPOSITING
 If you use this option twice (and your wm supports it), it will cause the window to be transparent.
 Use it three times to make the window stay in the background and use it for times to also disable
 controls. You can make pqiv behave like a desktop widget this way.
-#endif
+.\" end
 .TP
 .B -w
 Watch open files for changes and reload them if necessary
@@ -66,7 +67,7 @@ Select interpolation type for resizing operations. Valid values for n:
 .TP
 .B -P left,top
 Set initial window position. Defaults to center of screen.
-#ifndef NO_COMMANDS
+.\" unless NO_COMMANDS
 .TP
 .B -<n>
 Use those options (n \in 0..9) to define a command, which will be executed when
@@ -83,8 +84,8 @@ to let pqiv pipe the displayed image to your command and read/reload it from
 the command's output.
 .br
 .po 0
-#endif
-#ifndef NO_CONFIG_FILE
+.\" end
+.\" unless NO_CONFIG_FILE
 .PP
 The contents of
 .B ~/.pqivrc
@@ -95,7 +96,7 @@ of 1 second the default for pqiv, put
 .fi
 into that file.
 .PP
-#endif
+.\" end
 pqiv will display all files you specified on the command line. Directories will
 be searched recursively for files supported by gtk+
 (for example: bmp, gif, jpeg, png, wbmp, xpm, svg). Unless you specified

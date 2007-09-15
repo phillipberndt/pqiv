@@ -6,7 +6,7 @@ PREFIX="/usr"
 OPTIONFLAGS= lib/strnatcmp.c     
 
 # Fixed settings
-REQUIRED_PACKAGES=gtk+-2.0 gthread-2.0 pango glib
+REQUIRED_PACKAGES=gtk+-2.0 gthread-2.0 pango glib-2.0
 
 # pqiv
 all: pqiv manpage
@@ -14,8 +14,26 @@ pqiv:
 	$(CC) $(CFLAGS) `pkg-config --libs --cflags $(REQUIRED_PACKAGES)` -o qiv $(OPTIONFLAGS) pqiv.c
 debug: 
 	$(CC) $(CGLAGS) -Wall -ggdb -DDEBUG `pkg-config --libs --cflags $(REQUIRED_PACKAGES)` $(OPTIONFLAGS) -o qiv pqiv.c
+
+# The manpage stuff is kind of hackish, but it seems that I can't rely on the C
+# preprocessor (drac from gentoo reported "missing terminating ' character"
+# error messages).
+# The shell script strips code between '.\" unless FOO' and '.\" end' if FOO is
+# defined. It's compatible with sh in POSIX mode.
 manpage:
-	$(CC) `echo " $(OPTIONFLAGS)" | sed -re 's/ [^-][^ ]+//g'` -C -E - <pqiv.1.template | sed -nre '/^[^#].+/ p' > qiv.1
+	@( IN=0; while read -r LINE; do \
+		if [ "$${IN}" == "1" ]; then \
+			if echo "$${LINE}" | egrep -q '.\" end'; then IN=0; continue; fi; \
+			[ "$${MAT}" != "1" ] && echo "$${LINE}"; \
+			continue; \
+		fi; \
+		REQ=$$(echo "$${LINE}" | egrep '.\" unless ' | awk '{print $$3}'); \
+		[ "$${REQ}" == "" ] && { echo "$${LINE}"; continue; }; \
+		MAT=$$(echo "$(OPTIONFLAGS)" | grep -q -- "-D$${REQ}" && echo 1;); \
+		if [ "$${MAT}" == "1" ]; then ACT=Stripping; else ACT=Ignoring; fi; \
+		echo "$${ACT} $${REQ}" >&2; \
+		IN=1; \
+	done < pqiv.1.template ) > qiv.1
 
 # Cleanup
 clean:
