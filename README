@@ -74,6 +74,8 @@ CHANGELOG
 
 pqiv 0.6 dev
  * Added -q option
+ * Added --no-inotify option to make pqiv compatible with
+   !linux systems. (Yaakov)
 
 pqiv 0.5
  * Minor bugfix: Show an error message when no X11 display
