@@ -25,7 +25,6 @@
 #include <gtk/gtk.h>
 #include <glib/gconvert.h>
 #include <sys/types.h>
-#include <sys/inotify.h>
 #include <sys/wait.h>
 #include <signal.h>
 #include <dirent.h>
@@ -40,6 +39,9 @@
 #include <time.h>
 #ifndef NO_SORTING
 #include "lib/strnatcmp.h"
+#endif
+#ifndef NO_INOTIFY
+#include <sys/inotify.h>
 #endif
 /* }}} */
 /* Definitions {{{ */
@@ -96,12 +98,16 @@ static int moveX, moveY;
 static int slideshowInterval = 3;
 static char slideshowEnabled = 0;
 static int slideshowID = 0;
+#ifndef NO_INOTIFY
 static int inotifyFd = 0;
 static int inotifyWd = -1;
+#endif
 
 /* Program options */
 static char optionHideInfoBox = FALSE;
+#ifndef NO_INOTIFY
 static char optionUseInotify = FALSE;
+#endif
 static float optionInitialZoom = 1;
 static int optionWindowPosition[2] = {-1, -1};
 static char optionHideChessboardLevel = 0;
@@ -199,7 +205,9 @@ void helpMessage(char claim) { /* {{{ */
                 " -r             Read additional filenames (not folders) from stdin \n"
                 " -c             Disable the background for transparent images \n"
                 "                See manpage for what happens if you use this option more than once \n"
+                #ifndef NO_INOTIFY
                 " -w             Watch files for changes \n"
+                #endif
                 " -z n           Set initial zoom level \n"
                 " -p             Interpolation quality level (1-4, defaults to 3) \n"
                 " -P             Set initial window position (syntax: left,top) \n"
@@ -560,6 +568,7 @@ void runProgram(char *command) { /*{{{*/
 	}
 } /*}}}*/
 #endif
+#ifndef NO_INOTIFY
 void inotifyCb(gpointer data, gint source_fd, GdkInputCondition condition) { /*{{{*/
 	struct inotify_event event;
 	GdkEventKey keyEvent;
@@ -589,6 +598,7 @@ void inotifyCb(gpointer data, gint source_fd, GdkInputCondition condition) { /*{
 	keyEvent.string = "r";
 	gdk_event_put((GdkEvent*)(&keyEvent));
 } /*}}}*/
+#endif
 /* File sorting {{{ */
 #ifndef NO_SORTING
 int sortFilesCompare(const void *f1, const void *f2) {
@@ -674,6 +684,7 @@ char loadImage() { /*{{{*/
 		currentImage = tmpImage;
 	}
 
+	#ifndef NO_INOTIFY
 	/* Update inotify to manage automatic reloading {{{ */ 
 	if(optionUseInotify == TRUE) {
 		DEBUG1("Updating inotify fd");
@@ -683,6 +694,7 @@ char loadImage() { /*{{{*/
 		}
 		inotifyWd = inotify_add_watch(inotifyFd, currentFile->fileName, IN_CLOSE_WRITE);
 	} /* }}} */
+	#endif
 
 	zoom = 1;
 	moveX = moveY = 0;
@@ -1485,10 +1497,12 @@ int main(int argc, char *argv[]) {
 				optionHideChessboardLevel = 1;
 				#endif
 				break;
+			#ifndef NO_INOTIFY
 			/* OPTION: -w: Watch files for changes */
 			case 'w':
 				optionUseInotify = TRUE;
 				break;
+			#endif
 			/* OPTION: -z n: Set initial zoom level */
 			case 'z':
 				optionInitialZoom = (float)atof(optarg) / 100;
@@ -1695,6 +1709,7 @@ int main(int argc, char *argv[]) {
 	        &window);
 	/* }}} */
 	/* Initialize other stuff {{{ */
+	#ifndef NO_INOTIFY
 	/* Initialize inotify */
 	if(optionUseInotify == TRUE) {
 		DEBUG1("Using inotify");
@@ -1708,6 +1723,7 @@ int main(int argc, char *argv[]) {
 			inotifyWd = inotify_add_watch(inotifyFd, currentFile->fileName, IN_CLOSE_WRITE);
 		}
 	}
+	#endif
 
 	/* Hide from taskbar and force to background when started with -ccc */
 	#ifndef NO_COMPOSITING

@@ -7,6 +7,7 @@ OPTIONS=( "no-sorting"		"Disable sorting of loaded files"		"-DNO_SORTING"		"lib/
 	  "no-fading"		"Disable support for fading images"		"-DNO_FADING"		""
 	  "no-commands"		"Disable support for external command execution" "-DNO_COMMANDS"	""
 	  "no-config-file"	"Disable support for a configuration file"	"-DNO_CONFIG_FILE"	""
+	  "no-inotify"		"Disable support for file monitoring"		"-DNO_INOTIFY"		""
 	)
 
 # Load settings from Makefile

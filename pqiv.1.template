@@ -44,9 +44,11 @@ If you use this option twice (and your wm supports it), it will cause the window
 Use it three times to make the window stay in the background and use it for times to also disable
 controls. You can make pqiv behave like a desktop widget this way.
 .\" end
+.\" unless NO_INOTIFY
 .TP
 .B -w
 Watch open files for changes and reload them if necessary
+.\" end
 .TP
 .B -z n
 Set initial zoom level in percent. This is only useful in conjunction with -t.
