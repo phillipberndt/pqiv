@@ -98,6 +98,7 @@ static int moveX, moveY;
 static int slideshowInterval = 3;
 static char slideshowEnabled = 0;
 static int slideshowID = 0;
+static char aliases[128];
 #ifndef NO_INOTIFY
 static int inotifyFd = 0;
 static int inotifyWd = -1;
@@ -211,6 +212,7 @@ void helpMessage(char claim) { /* {{{ */
                 " -z n           Set initial zoom level \n"
                 " -p             Interpolation quality level (1-4, defaults to 3) \n"
                 " -P             Set initial window position (syntax: left,top) \n"
+		" -a nf          Define n as a keyboard alias for f \n"
                 #ifndef NO_COMMANDS
                 " -<n> s         Set command number n (1-9) to s \n"
                 "                See manpage for advanced commands (starting with > or |) \n"
@@ -1036,6 +1038,17 @@ gint keyboardCb(GtkWidget *widget, GdkEventKey *event, gpointer data) { /*{{{*/
 		return 0;
 	}
 
+	if(aliases[event->keyval] != 0) {
+		#ifdef DEBUG
+			g_print("(%04d) %-20s Rewrite '%c' to '%c'\n",
+				__LINE__, G_STRFUNC,
+				event->keyval,
+				aliases[event->keyval]
+			);
+		#endif
+		event->keyval = aliases[event->keyval];
+	}
+
 	switch(event->hardware_keycode) {
 		/* BIND: Backspace: Previous image {{{ */
 		case 22:
@@ -1440,8 +1453,9 @@ int main(int argc, char *argv[]) {
 		optionCount++;
 	}
 
+	memset(aliases, 0, sizeof(aliases));
 	opterr = 0;
-	while((option = getopt(optionCount, options, "ifFsnthrcwqz:P:p:d:1:2:3:4:5:6:7:8:9:")) > 0) {
+	while((option = getopt(optionCount, options, "ifFsnthrcwqz:P:p:d:a:1:2:3:4:5:6:7:8:9:")) > 0) {
 		switch(option) {
 			/* OPTION: -i: Hide info box */
 			case 'i':
@@ -1533,6 +1547,14 @@ int main(int argc, char *argv[]) {
 				optionWindowPosition[0] = atoi(optarg);
 				optionWindowPosition[1] = atoi(buf);
 				buf = NULL;
+				break;
+			/* OPTION: -a nf: Define n as a keyboard alias for f */
+			case 'a':
+				if((unsigned char)optarg[0] > 128) {
+					g_printerr("Can't define aliases for non ASCII characters.\n");
+					exit(1);
+				}
+				aliases[(unsigned int)optarg[0]] = optarg[1];
 				break;
 			#ifndef NO_COMMANDS
 			/* OPTION: -<n> s: Set command number n (1-9) to s */
