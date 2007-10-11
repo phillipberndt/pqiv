@@ -664,6 +664,7 @@ char loadImage() { /*{{{*/
 		}
 	}
 	if(currentImage != NULL) {
+		DEBUG1("Free old image");
 		g_object_unref(currentImage);
 	}
 	if(optionHideChessboardLevel == 0 && gdk_pixbuf_get_has_alpha(tmpImage)) {
@@ -977,9 +978,10 @@ char reloadImage() { /*{{{*/
 	/* In fact, not only reload but also used to load images */
 	GdkPixbuf *oldImage = g_object_ref(scaledImage);
 	if(!loadImage()) {
-		return FALSE;
 		g_object_unref(oldImage);
+		return FALSE;
 	}
+
 	autoScaleFactor();
 	resizeAndPosWindow();
 	
@@ -988,9 +990,11 @@ char reloadImage() { /*{{{*/
 		fadeImage(oldImage);
 	} else {
 		displayImage();
+	g_object_unref(oldImage);
 	}
 	#else
 	displayImage();
+	g_object_unref(oldImage);
 	#endif
 
 	setInfoText(NULL);
@@ -1288,9 +1292,13 @@ gint keyboardCb(GtkWidget *widget, GdkEventKey *event, gpointer data) { /*{{{*/
 			}
 			buf2 = basename(currentFile->fileName);
 			sprintf(buf, "./.qiv-select/%s", buf2);
-			link(currentFile->fileName, buf);
+			if(link(currentFile->fileName, buf) != 0) {
+				setInfoText("Failed to save hardlink");
+			}
+			else {
+				setInfoText("Hardlink saved");
+			}
 			free(buf);
-			setInfoText("Hardlink saved");
 			break;
 			/* }}} */
 		#ifndef NO_COMMANDS
