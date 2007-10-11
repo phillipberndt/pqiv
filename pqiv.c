@@ -1036,7 +1036,7 @@ inline void slideshowDo() { /*{{{*/
 } /*}}}*/
 /* }}} */
 /* Keyboard & mouse event handlers {{{ */
-int mouseScrollEnabled = FALSE;
+char mouseScrollEnabled = FALSE;
 gint keyboardCb(GtkWidget *widget, GdkEventKey *event, gpointer data) { /*{{{*/
 	int i = 0, n = 0;
 	float savedZoom;
@@ -1347,6 +1347,23 @@ gint mouseButtonCb(GtkWidget *widget, GdkEventButton *event, gpointer data) {
 		#endif
 		else if(event->type == GDK_BUTTON_RELEASE) {
 			mouseScrollEnabled = FALSE;
+		}
+	}
+	if(event->button == 3 && isFullscreen == TRUE) {
+		screen = gtk_widget_get_screen(window);
+		scrx = gdk_screen_get_width(screen) / 2;
+		scry = gdk_screen_get_height(screen) / 2;
+
+		if(event->type == GDK_BUTTON_PRESS) {
+			gdk_display_warp_pointer(gdk_display_get_default(),
+				gdk_display_get_default_screen(gdk_display_get_default()), scrx, scry);
+		}
+		else if(event->type == GDK_BUTTON_RELEASE) {
+			DEBUG1("Scale (Mousezoom)");
+			scaleBy((float)(event->y - scry) * -0.001);
+			resizeAndPosWindow();
+			displayImage();
+			setInfoText(NULL);
 		}
 	}
 	return 0;

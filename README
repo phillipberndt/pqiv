@@ -79,6 +79,7 @@ pqiv 0.6 dev
    !linux systems. (Yaakov)
  * Added -a for aliasing (Idea by David Lindquist)
  * -t scales images up to fill the screen (optional)
+ * zoom in fullscreen via mouse 3 & scroll (not realtime)
 
 pqiv 0.5
  * Minor bugfix: Show an error message when no X11 display

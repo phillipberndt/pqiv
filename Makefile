@@ -3,7 +3,7 @@
 # Dynamic settings (changed by configure script)
 DESTDIR="/"
 PREFIX="/usr"
-OPTIONFLAGS= lib/strnatcmp.c -DNO_COMPOSITING -DNO_FADING   -DNO_INOTIFY 
+OPTIONFLAGS= lib/strnatcmp.c      
 
 # Fixed settings
 REQUIRED_PACKAGES=gtk+-2.0 gthread-2.0 pango glib-2.0
