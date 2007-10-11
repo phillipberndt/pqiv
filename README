@@ -59,6 +59,7 @@ CONTRIBUTORS
 
 * Nir Tzachar
 * Yaakov (Cygwin Ports)
+* David Lindquist
 
 
 KNOWN PROBLEMS
@@ -76,6 +77,8 @@ pqiv 0.6 dev
  * Added -q option
  * Added --no-inotify option to make pqiv compatible with
    !linux systems. (Yaakov)
+ * Added -a for aliasing (Idea by David Lindquist)
+ * -t scales images up to fill the screen (optional)
 
 pqiv 0.5
  * Minor bugfix: Show an error message when no X11 display

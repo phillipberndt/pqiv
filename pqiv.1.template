@@ -1,5 +1,5 @@
 .\" vim:filetype=groff
-.TH qiv 1 "28 August 2007" "0.5" "qiv manual"
+.TH qiv 1 "11 October 2007" "0.6" "qiv manual"
 .SH NAME
 pqiv \- quick image viewer
 .SH SYNOPSIS
@@ -31,7 +31,9 @@ Sort the file list using natsort
 Interval for the slideshow function, in seconds
 .TP
 .B -t
-Do not shrink image(s) larger than the screen to fit
+If used once:  Scale small images up to fill the whole screen
+.br
+If used twice: Do not shrink image(s) larger than the screen to fit
 .TP
 .B -r
 Read filename(s) from STDIN.

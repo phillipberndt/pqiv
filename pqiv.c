@@ -18,7 +18,7 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  * 
  */
-#define RELEASE "0.5"
+#define RELEASE "0.6"
 
 /* Includes {{{ */
 #include <stdio.h>
@@ -93,7 +93,7 @@ static char isFullscreen = FALSE;
 static char infoBoxVisible = 0;
 static float scaledAt;
 static float zoom;
-static char autoScale = TRUE;
+static enum autoScaleSetting { OFF, ON, ALWAYS } autoScale = ON;
 static int moveX, moveY;
 static int slideshowInterval = 3;
 static char slideshowEnabled = 0;
@@ -203,6 +203,7 @@ void helpMessage(char claim) { /* {{{ */
                 #endif
                 " -d n           Slideshow interval \n"
                 " -t             Do not shrink image(s) larger than the screen to fit \n"
+                "                Use twice to deactivate scaling completely \n"
                 " -r             Read additional filenames (not folders) from stdin \n"
                 " -c             Disable the background for transparent images \n"
                 "                See manpage for what happens if you use this option more than once \n"
@@ -236,7 +237,7 @@ void helpMessage(char claim) { /* {{{ */
                 " r              Reload \n"
                 " +              Zoom in \n"
                 " -              Zoom out \n"
-                " 0              Autoscale \n"
+                " 0              Autoscale down \n"
                 " q              Quit \n"
                 " t              Toggle autoscale \n"
                 " l              Rotate left \n"
@@ -727,7 +728,7 @@ inline void scale() { /*{{{*/
 		}
 	}
 } /*}}}*/
-void forceAutoScaleFactor() { /*{{{*/
+void forceAutoScaleFactor(enum autoScaleSetting upDown) { /*{{{*/
 	int imgx, imgy, scrx, scry, rem;
 	GdkScreen *screen;
 
@@ -745,23 +746,34 @@ void forceAutoScaleFactor() { /*{{{*/
 	}
 
 	zoom = 1;
-	if(imgx > scrx - rem)
+	if(upDown == ALWAYS) {
+		/* Scale small images up */
 		zoom = (scrx - rem) * 1.0f / imgx;
-	if(imgy * zoom > scry - rem)
-		zoom = (scry - rem) * 1.0f / imgy;
+		if(imgy * zoom > scry - rem) {
+			zoom = (scry - rem) * 1.0f / imgy;
+		}
+	}
+	else {
+		if(imgx > scrx - rem) {
+			zoom = (scrx - rem) * 1.0f / imgx;
+		}
+		if(imgy * zoom > scry - rem) {
+			zoom = (scry - rem) * 1.0f / imgy;
+		}
+	}
 
 	scale();
 } /*}}}*/
 void autoScaleFactor() { /*{{{*/
 	DEBUG1("autoScaleFactor");
 
-	if(!autoScale) {
+	if(autoScale == OFF) {
 		zoom = optionInitialZoom;
 		scale();
 		return;
 	}
 	
-	forceAutoScaleFactor();
+	forceAutoScaleFactor(autoScale);
 } /*}}}*/
 void scaleBy(float add) { /*{{{*/
 	DEBUG1("Scale by");
@@ -1175,9 +1187,9 @@ gint keyboardCb(GtkWidget *widget, GdkEventKey *event, gpointer data) { /*{{{*/
 			setInfoText("Zoomed out");
 			break;
 			/* }}} */
-		/* BIND: 0: Autoscale {{{ */
+		/* BIND: 0: Autoscale down {{{ */
 		case '0':
-			forceAutoScaleFactor();
+			forceAutoScaleFactor(ON);
 			moveX = moveY = 0;
 			resizeAndPosWindow();
 			displayImage();
@@ -1192,17 +1204,19 @@ gint keyboardCb(GtkWidget *widget, GdkEventKey *event, gpointer data) { /*{{{*/
 		/* BIND: t: Toggle autoscale {{{ */
 		case 't':
 			moveX = moveY = 0;
-			autoScale = !autoScale;
-			if(autoScale == TRUE) {
-				autoScaleFactor();
-				resizeAndPosWindow();
-				displayImage();
+			autoScale = (autoScale + 1) % 3;
+
+			autoScaleFactor();
+			resizeAndPosWindow();
+			displayImage();
+
+			if(autoScale == ON) {
 				setInfoText("Autoscale on");
 			}
+			else if(autoScale == ALWAYS) {
+				setInfoText("Autoscale on with scaleup enabled");
+			}
 			else {
-				autoScaleFactor();
-				resizeAndPosWindow();
-				displayImage();
 				setInfoText("Autoscale off");
 			}
 			
@@ -1489,9 +1503,10 @@ int main(int argc, char *argv[]) {
 					exit(1);
 				}
 				break;
-			/* OPTION: -t: Do not shrink image(s) larger than the screen to fit */
+			/* OPTION: -t: Scale images up to fill the whole screen */
+			/* ADD: Use twice to deactivate scaling completely */
 			case 't':
-				autoScale = FALSE;
+				autoScale = (autoScale + 1) % 3;
 				break;
 			/* OPTION: -r: Read additional filenames (not folders) from stdin */
 			case 'r':
