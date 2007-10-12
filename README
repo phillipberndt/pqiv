@@ -60,7 +60,7 @@ CONTRIBUTORS
  * Nir Tzachar
  * Yaakov (Cygwin Ports)
  * David Lindquist
- * Tinou
+ * Tinoucas
 
 
 KNOWN PROBLEMS
@@ -99,7 +99,7 @@ pqiv 0.6 dev
  * Added -a for aliasing (Idea by David Lindquist)
  * -t scales images up to fill the screen (optional)
  * zoom in fullscreen via mouse 3 & scroll (not realtime)
- * Mousebuttons behave more qiv-like. (Tinou)
+ * Mousebuttons behave more qiv-like. (Tinoucas)
 
 pqiv 0.5
  * Minor bugfix: Show an error message when no X11 display
