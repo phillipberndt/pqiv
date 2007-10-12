@@ -57,18 +57,37 @@ This program uses Martin Pool's natsort algorithm [http://sourcefrog.net/project
 
 CONTRIBUTORS
 
-* Nir Tzachar
-* Yaakov (Cygwin Ports)
-* David Lindquist
+ * Nir Tzachar
+ * Yaakov (Cygwin Ports)
+ * David Lindquist
+ * Tinou
 
 
 KNOWN PROBLEMS
 
-* Some window managers, especially Beryl, have problems with many commands in
-  short intervals. As a resize follows the unfullscreen command immediately,
-  the main window could be too big/small upon the unfullscreen command
-* If you experience problems with file encodings, try setting the environment
-  variable G_FILENAME_ENCODING to match your file system's encoding
+ * Some window managers, especially Beryl, have problems with many commands in
+   short intervals. As a resize follows the unfullscreen command immediately,
+   the main window could be too big/small upon the unfullscreen command
+ * If you experience problems with file encodings, try setting the environment
+   variable G_FILENAME_ENCODING to match your file system's encoding
+ * It seems that GTK buffers images in memory even after they are freed. If you
+   reload images (press 'r') often, the memory consumed by the procress will
+   increase. However, it doesn't do so linearly and reaches a limit, so it's
+   probably not an issue in pqiv's code. IF you can assert any linear increase
+   report that as a bug!
+
+
+CODING-STYLE
+
+I personally dislike the typical C coding style. Which means I won't ever use
+it in pqiv code. Here's what I do:
+ * Tabs (width 8) instead of spaces
+ * if(..) {\n\t..\n}
+   same goes for while/do/..
+ * }\nelse {
+ * function(\n\tparameters,\n\t..\n)
+ * I indent preprocessor stuff whereever I think it might improve readability
+ * Variable names are capitalized the java way (eachNewWordStartsCapitalized)
 
 
 CHANGELOG
@@ -80,6 +99,7 @@ pqiv 0.6 dev
  * Added -a for aliasing (Idea by David Lindquist)
  * -t scales images up to fill the screen (optional)
  * zoom in fullscreen via mouse 3 & scroll (not realtime)
+ * Mousebuttons behave more qiv-like. (Tinou)
 
 pqiv 0.5
  * Minor bugfix: Show an error message when no X11 display

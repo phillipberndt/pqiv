@@ -1,5 +1,5 @@
 /**
- * vim:ft=c:fileencoding=utf-8:fdm=marker
+ * vim:ft=c:fileencoding=utf-8:fdm=marker:tabstop=8
  *
  * pqiv - pretty quick image viewer
  * Copyright (c) Phillip Berndt, 2007
@@ -45,6 +45,9 @@
 #endif
 /* }}} */
 /* Definitions {{{ */
+/* Compile time settings */
+#define DRAG_MAX_TIME 150
+
 /* libc stuff */
 extern char *optarg;
 extern int optind, opterr, optopt;
@@ -1323,7 +1326,9 @@ gint keyboardCb(GtkWidget *widget, GdkEventKey *event, gpointer data) { /*{{{*/
 } /*}}}*/
 /* BIND: Drag & Drop: Move image (Fullscreen) and decoration switch {{{ */
 gint mouseButtonCb(GtkWidget *widget, GdkEventButton *event, gpointer data) {
-	GdkScreen *screen; int scrx, scry;
+	GdkScreen *screen; int scrx, scry, i;
+	static guint32 timeOfButtonPress;
+	/* Button 1 for scrolling */
 	if(event->button == 1) {
 		if(event->type == GDK_BUTTON_PRESS && (isFullscreen == TRUE 
 			#ifndef NO_COMPOSITING
@@ -1349,6 +1354,7 @@ gint mouseButtonCb(GtkWidget *widget, GdkEventButton *event, gpointer data) {
 			mouseScrollEnabled = FALSE;
 		}
 	}
+	/* Button 3 for zooming */
 	if(event->button == 3 && isFullscreen == TRUE) {
 		screen = gtk_widget_get_screen(window);
 		scrx = gdk_screen_get_width(screen) / 2;
@@ -1366,6 +1372,34 @@ gint mouseButtonCb(GtkWidget *widget, GdkEventButton *event, gpointer data) {
 			setInfoText(NULL);
 		}
 	}
+	/* Button 2 for quitting */
+	if(event->button == 2 && event->type == GDK_BUTTON_RELEASE
+		#ifndef NO_COMPOSITING
+		&& optionHideChessboardLevel != 4 && optionHideChessboardLevel != 2
+		#endif
+		) {
+		gtk_main_quit();
+	}
+	/* Button 1/3 single click for next/previous image */
+	if((event->button == 1 || event->button == 3)
+		#ifndef NO_COMPOSITING
+		&& optionHideChessboardLevel != 4 && optionHideChessboardLevel != 2
+		#endif
+		) {
+		if(event->type == GDK_BUTTON_PRESS) {
+			timeOfButtonPress = event->time;
+		}
+		else if(event->type == GDK_BUTTON_RELEASE && event->time - timeOfButtonPress <= DRAG_MAX_TIME) {
+			i = currentFile->nr;
+			do {
+				currentFile = event->button == 1 ? currentFile->next : currentFile->prev;
+				if(currentFile == NULL) {
+					currentFile = event->button == 1 ? &firstFile : lastFile;
+				}
+			} while((!reloadImage()) && i != currentFile->nr);
+		}
+	}
+
 	return 0;
 }
 gint mouseMotionCb(GtkWidget *widget, GdkEventMotion *event, gpointer data) {
@@ -1789,7 +1823,7 @@ int main(int argc, char *argv[]) {
 
 	/* Hide from taskbar and force to background when started with -ccc */
 	#ifndef NO_COMPOSITING
-	if(optionHideChessboardLevel > 3) {
+	if(optionHideChessboardLevel > 2) {
 		gtk_window_stick(GTK_WINDOW(window));
 		gtk_window_set_keep_below(GTK_WINDOW(window), TRUE);
 		gtk_window_set_skip_taskbar_hint(GTK_WINDOW(window), TRUE);
