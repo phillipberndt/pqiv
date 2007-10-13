@@ -205,7 +205,7 @@ void helpMessage(char claim) { /* {{{ */
                 " -n             Sort all files in natural order \n"
                 #endif
                 " -d n           Slideshow interval \n"
-                " -t             Do not shrink image(s) larger than the screen to fit \n"
+                " -t             Scale images up to fill the whole screen \n"
                 "                Use twice to deactivate scaling completely \n"
                 " -r             Read additional filenames (not folders) from stdin \n"
                 " -c             Disable the background for transparent images \n"
@@ -216,19 +216,14 @@ void helpMessage(char claim) { /* {{{ */
                 " -z n           Set initial zoom level \n"
                 " -p             Interpolation quality level (1-4, defaults to 3) \n"
                 " -P             Set initial window position (syntax: left,top) \n"
-		" -a nf          Define n as a keyboard alias for f \n"
+                " -a nf          Define n as a keyboard alias for f \n"
                 #ifndef NO_COMMANDS
                 " -<n> s         Set command number n (1-9) to s \n"
                 "                See manpage for advanced commands (starting with > or |) \n"
                 " -q             Use the qiv-command script for commands \n"
                 #endif
 
-		"\n"
-		#ifndef NO_CONFIG_FILE
-		" Place any of those options into ~/.pqivrc (like you'd do here) to make it default.\n"
-		"\n"
-		#endif
-
+                "\n"
                 "key bindings:\n"
                 " Backspace      Previous image \n"
                 " PgUp           Jump 10 images forewards \n"
@@ -254,6 +249,9 @@ void helpMessage(char claim) { /* {{{ */
                 " <n>            Run command n (1-3) \n"
                 #endif
                 " Drag & Drop    Move image (Fullscreen) and decoration switch \n"
+                " Button 3/Drag Zoom in and out \n"
+                " Button 2       Quit \n"
+                " Button 1/3     Next/previous image \n"
                 " Scroll         Next/previous image \n"
 
 		);
@@ -1354,7 +1352,7 @@ gint mouseButtonCb(GtkWidget *widget, GdkEventButton *event, gpointer data) {
 			mouseScrollEnabled = FALSE;
 		}
 	}
-	/* Button 3 for zooming */
+	/* BIND: Button 3/Drag: Zoom in and out */
 	if(event->button == 3 && isFullscreen == TRUE) {
 		screen = gtk_widget_get_screen(window);
 		scrx = gdk_screen_get_width(screen) / 2;
@@ -1372,7 +1370,7 @@ gint mouseButtonCb(GtkWidget *widget, GdkEventButton *event, gpointer data) {
 			setInfoText(NULL);
 		}
 	}
-	/* Button 2 for quitting */
+	/* BIND: Button 2: Quit */
 	if(event->button == 2 && event->type == GDK_BUTTON_RELEASE
 		#ifndef NO_COMPOSITING
 		&& optionHideChessboardLevel != 4 && optionHideChessboardLevel != 2
@@ -1380,7 +1378,7 @@ gint mouseButtonCb(GtkWidget *widget, GdkEventButton *event, gpointer data) {
 		) {
 		gtk_main_quit();
 	}
-	/* Button 1/3 single click for next/previous image */
+	/* BIND: Button 1/3: Next/previous image */
 	if((event->button == 1 || event->button == 3)
 		#ifndef NO_COMPOSITING
 		&& optionHideChessboardLevel != 4 && optionHideChessboardLevel != 2

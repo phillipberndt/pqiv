@@ -92,7 +92,7 @@ it in pqiv code. Here's what I do:
 
 CHANGELOG
 
-pqiv 0.6 dev
+pqiv 0.6
  * Added -q option
  * Added --no-inotify option to make pqiv compatible with
    !linux systems. (Yaakov)
