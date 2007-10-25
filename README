@@ -92,6 +92,9 @@ it in pqiv code. Here's what I do:
 
 CHANGELOG
 
+pqiv 0.6.1
+ * Fixed an array index overflow which led to a segfault (Tinoucas)
+ 
 pqiv 0.6
  * Added -q option
  * Added --no-inotify option to make pqiv compatible with

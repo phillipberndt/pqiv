@@ -1055,7 +1055,7 @@ gint keyboardCb(GtkWidget *widget, GdkEventKey *event, gpointer data) { /*{{{*/
 		return 0;
 	}
 
-	if(aliases[event->keyval] != 0) {
+	if(event->keyval < 128 && aliases[event->keyval] != 0) {
 		#ifdef DEBUG
 			g_print("(%04d) %-20s Rewrite '%c' to '%c'\n",
 				__LINE__, G_STRFUNC,
