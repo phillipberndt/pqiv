@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 # Simple configure script for pqiv
 # Why not autoconf? -> K.i.s.s.!
 

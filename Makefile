@@ -7,6 +7,7 @@ OPTIONFLAGS= lib/strnatcmp.c
 
 # Fixed settings
 REQUIRED_PACKAGES=gtk+-2.0 gthread-2.0 pango glib-2.0
+SHELL=bash
 
 # pqiv
 all: pqiv manpage
