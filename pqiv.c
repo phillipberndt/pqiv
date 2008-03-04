@@ -650,21 +650,29 @@ void sortFiles() {
 	 */
 	DEBUG1("Sort");
 	int i = 0;
-	struct file *iterator = &firstFile;
-	struct file **files = (struct file**)malloc(sizeof(struct file*) * (lastFile->nr + 1));
+	int fileCount = lastFile->nr;
+	struct file *tmpStore = (struct file*)malloc(sizeof(struct file));
+	memcpy(tmpStore, &firstFile, sizeof(struct file));
+	struct file *iterator = tmpStore;
+	if(iterator->next != NULL) {
+		iterator->next->prev = iterator;
+	}
+	struct file **files = (struct file**)malloc(sizeof(struct file*) * (fileCount + 1));
 	do {
 		files[i++] = iterator;
 	} while((iterator = iterator->next) != NULL);
 	qsort(files, lastFile->nr + 1, sizeof(struct file*), sortFilesCompare);
-	firstFile = *files[0];
-	currentFile = files[0];
-	lastFile = files[lastFile->nr];
-	for(i=0; i<=lastFile->nr; i++) {
-		files[i]->next = i < lastFile->nr ? files[i+1] : NULL;
-		files[i]->prev = i > 0 ? files[i-1] : NULL;
+	lastFile = files[fileCount];
+	for(i=0; i<=fileCount; i++) {
 		files[i]->nr = i;
+		files[i]->prev = (i == 0 ? NULL : files[i-1]);
+		files[i]->next = (i == fileCount ? NULL : files[i+1]);
 	}
-	free(files);
+	memcpy(&firstFile, files[0], sizeof(struct file));
+	if(firstFile.next != NULL) {
+		files[1]->prev = &firstFile;
+	}
+	free(files[0]);
 }
 #endif
 /* }}} */
