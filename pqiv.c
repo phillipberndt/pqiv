@@ -18,7 +18,7 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  * 
  */
-#define RELEASE "0.6"
+#define RELEASE "0.7"
 
 /* Includes {{{ */
 #include <stdio.h>
@@ -66,11 +66,7 @@ static GdkPixbuf *memoryArgImage = NULL;
 static char emptyCursor[] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
 static char *chessBoard = 
 		"GdkP"
-		"\0\0\0\263"
-		"\2\1\0\2"
-		"\0\0\0@"
-		"\0\0\0\20"
-		"\0\0\0\20"
+		"\0\0\0\263" "\2\1\0\2" "\0\0\0@" "\0\0\0\20" "\0\0\0\20"
 		"\210jjj\377\210\233\233\233\377\210jjj\377\210\233\233\233\377\210jj"
 		"j\377\210\233\233\233\377\210jjj\377\210\233\233\233\377\210jjj\377\210"
 		"\233\233\233\377\210jjj\377\210\233\233\233\377\210jjj\377\210\233\233"
@@ -78,7 +74,20 @@ static char *chessBoard =
 		"\210jjj\377\210\233\233\233\377\210jjj\377\210\233\233\233\377\210jj"
 		"j\377\210\233\233\233\377\210jjj\377\210\233\233\233\377\210jjj\377\210"
 		"\233\233\233\377\210jjj\377\210\233\233\233\377\210jjj\377";
-
+static char *appIcon =
+		"GdkP"
+		"\0\0\1\15" "\2\1\0\2" "\0\0\0@" "\0\0\0\20" "\0\0\0\20"
+		"\244\0\0\0\0\210\377\226\0\377\207\0\0\0\0\212\377\226\0\377\206\0\0"
+		"\0\0\212\377\226\0\377\205\0\0\0\0\205\377\226\0\377\204\0\0\0\0\203"
+		"\377\226\0\377\204\0\0\0\0\204\377\226\0\377\206\0\0\0\0\202\377\226"
+		"\0\377\204\0\0\0\0\203\377\226\0\377\207\0\0\0\0\202\377\226\0\377\204"
+		"\0\0\0\0\203\377\226\0\377\202\0\0\0\0\202\377\226\0\377\204\0\0\0\0"
+		"\1\377\226\0\377\204\0\0\0\0\203\377\226\0\377\202\0\0\0\0\203\377\226"
+		"\0\377\202\0\0\0\0\202\377\226\0\377\205\0\0\0\0\202\377\226\0\377\203"
+		"\0\0\0\0\203\377\226\0\377\1\0\0\0\0\202\377\226\0\377\206\0\0\0\0\202"
+		"\377\226\0\377\203\0\0\0\0\204\377\226\0\377\207\0\0\0\0\211\377\226"
+		"\0\377\211\0\0\0\0\202\377\226\0\377\203\0\0\0\0\203\377\226\0\377\216"
+		"\0\0\0\0\202\377\226\0\377\222\0\0\0\0";
 
 /* Structure for file list building */
 static struct file {
@@ -89,7 +98,8 @@ static struct file {
 } firstFile;
 static struct file *currentFile = &firstFile;
 static struct file *lastFile = &firstFile;
-GSList *fileExtensions;
+GtkFileFilter *fileFormatsFilter;
+GTree* recursionCheckTree = NULL;
 
 /* Program settings */
 static char isFullscreen = FALSE;
@@ -112,6 +122,7 @@ static char optionHideInfoBox = FALSE;
 #ifndef NO_INOTIFY
 static char optionUseInotify = FALSE;
 #endif
+static char optionFollowSymlinks = FALSE;
 static float optionInitialZoom = 1;
 static int optionWindowPosition[2] = {-1, -1};
 static char optionHideChessboardLevel = 0;
@@ -201,6 +212,7 @@ void helpMessage(char claim) { /* {{{ */
                 " -F             Fade between images \n"
                 #endif
                 " -s             Activate slideshow \n"
+		" -S             Follow symlinks \n"
                 #ifndef NO_SORTING
                 " -n             Sort all files in natural order \n"
                 #endif
@@ -249,11 +261,10 @@ void helpMessage(char claim) { /* {{{ */
                 " <n>            Run command n (1-3) \n"
                 #endif
                 " Drag & Drop    Move image (Fullscreen) and decoration switch \n"
-                " Button 3/Drag Zoom in and out \n"
+                " Button 3/Drag  Zoom in and out \n"
                 " Button 2       Quit \n"
                 " Button 1/3     Next/previous image \n"
                 " Scroll         Next/previous image \n"
-
 		);
 	exit(0);
 } /* }}} */
@@ -276,24 +287,28 @@ void loadFilesAddFile(char *file) { /*{{{*/
 	strcpy(lastFile->fileName, file);
 	lastFile->next = NULL;
 } /*}}}*/
-gint loadFilesFileExtensionsCompareCb(gconstpointer extension, gconstpointer file) { /*{{{*/
-	int i;
-
-	if(extension == NULL) {
-		return 1;
-	}
-	i = strlen((char*)file) - strlen((char*)extension);
-	if(i <= 0) {
-		return 1;
-	}
-	return strcasecmp(file + i, extension);
-} /*}}}*/
 void loadFilesHelper(DIR *cwd) { /*{{{*/
 	struct dirent *dirp;
+	GtkFileFilterInfo validFileTester;
 	DIR *ncwd;
 	int test;
 	char *completeName;
+	char symlinkedDir[2];
 	char *cwdName;
+	gchar *lowerName;
+	cwdName = (char*)malloc(1024);
+	getcwd(cwdName, 1024);
+	/* Tree for recursion checking */
+	if(optionFollowSymlinks == TRUE) {
+		recursionCheckTree = g_tree_new((GCompareFunc)strcmp);
+		if(g_tree_lookup(recursionCheckTree, cwdName) != NULL) {
+			DEBUG2("Recursion detected, will not traverse into ", cwdName);
+			free(cwdName);
+			return;
+		}
+		g_tree_insert(recursionCheckTree, cwdName, (void*)1);
+	}
+	validFileTester.contains = GTK_FILE_FILTER_FILENAME | GTK_FILE_FILTER_DISPLAY_NAME;
 	while((dirp = readdir(cwd)) != NULL) {
 		if(strcmp(dirp->d_name, ".") == 0 || strcmp(dirp->d_name, "..") == 0) {
 			continue;
@@ -301,32 +316,40 @@ void loadFilesHelper(DIR *cwd) { /*{{{*/
 
 		ncwd = opendir(dirp->d_name);
 		if(ncwd != NULL) {
-			chdir(dirp->d_name);
-			loadFilesHelper(ncwd);
-			chdir("..");
+			if(optionFollowSymlinks == FALSE && readlink(dirp->d_name, symlinkedDir, 2) != -1) {
+				DEBUG2("Will not traverse into symlinked directory %s\n", dirp->d_name);
+				continue;
+			}
+			if(chdir(dirp->d_name) == 0) {
+				loadFilesHelper(ncwd);
+			}
+			chdir(cwdName);
 			closedir(ncwd);
 		}
 		else {
-			if(g_slist_find_custom(fileExtensions, (gpointer)dirp->d_name, loadFilesFileExtensionsCompareCb) != NULL) {
+			lowerName = g_ascii_strdown(dirp->d_name, strlen(dirp->d_name));
+			validFileTester.filename = validFileTester.display_name = lowerName;
+			if(gtk_file_filter_filter(fileFormatsFilter, &validFileTester)) {
 				test = open(dirp->d_name, O_RDONLY);
 				if(test > -1) {
-					cwdName = (char*)malloc(1024);
-					getcwd(cwdName, 1024);
 					completeName = (char*)malloc(strlen(dirp->d_name) + strlen(cwdName) + 2);
 					if(completeName == NULL) {
 						die("Failed to allocate memory");
 					}
 					sprintf(completeName, "%s/%s", cwdName, dirp->d_name);
 					loadFilesAddFile(completeName);
-					free(cwdName);
 					free(completeName);
 					close(test);
 				}
 			}
+			g_free(lowerName);
 		}
 	}
+	if(optionFollowSymlinks == FALSE) {
+		free(cwdName);
+	}
 } /*}}}*/
-void loadFiles(int *argc, char **argv[]) { /*{{{*/
+void loadFiles(char **iterator) { /*{{{*/
 	int i;
 	int test;
 	DIR *cwd;
@@ -337,8 +360,8 @@ void loadFiles(int *argc, char **argv[]) { /*{{{*/
 
 	/* Load files */
 	DEBUG1("Load files");
-	for(i=0; i<*argc; i++) {
-		if(strcmp((*argv)[i], "-") == 0) {
+	while(*iterator != 0) {
+		if(strcmp(*iterator, "-") == 0) {
 			/* Load image from stdin {{{ */
 			if(memoryArgImage != NULL) {
 				g_printerr("You can't specify more than one image to be read from stdin.\n");
@@ -376,23 +399,25 @@ void loadFiles(int *argc, char **argv[]) { /*{{{*/
 			continue;
 			/* }}} */
 		}
-		cwd = opendir((*argv)[i]);
+		cwd = opendir(*iterator);
 		if(cwd != NULL) {
 			ocwd = (char*)malloc(1024);
 			getcwd(ocwd, 1024);
-			chdir((*argv)[i]);
-			loadFilesHelper(cwd);
+			if(chdir(*iterator) == 0) {
+				loadFilesHelper(cwd);
+			}
 			chdir(ocwd);
 			free(ocwd);
 			closedir(cwd);
 		}
 		else {
-			test = open((*argv)[i], O_RDONLY);
+			test = open(*iterator, O_RDONLY);
 			if(test > -1) {
-				loadFilesAddFile((*argv)[i]);
+				loadFilesAddFile(*iterator);
 				close(test);
 			}
 		}
+		iterator++;
 	}
 } /*}}}*/
 gint windowCloseOnlyCb(GtkWidget *widget, GdkEventKey *event, gpointer data) { /*{{{*/
@@ -1451,6 +1476,7 @@ gint mouseScrollCb(GtkWidget *widget, GdkEventScroll *event, gpointer data) {
 int main(int argc, char *argv[]) {
 /* Variable definitions {{{ */
 	GdkColor color;
+	GtkWidget *fileChooser;
 	char option;
 	char **envP;
 	char *fileName;
@@ -1462,6 +1488,7 @@ int main(int argc, char *argv[]) {
 	char optionReadStdin = FALSE;
 	FILE *optionsFile;
 	char **options;
+	char **parameterIterator;
 	int optionCount = 1, i;
 	char **fileFormatExtensionsIterator;
 	GSList *fileFormatsIterator;
@@ -1526,7 +1553,7 @@ int main(int argc, char *argv[]) {
 
 	memset(aliases, 0, sizeof(aliases));
 	opterr = 0;
-	while((option = getopt(optionCount, options, "ifFsnthrcwqz:P:p:d:a:1:2:3:4:5:6:7:8:9:")) > 0) {
+	while((option = getopt(optionCount, options, "ifFsSnthrcwqz:P:p:d:a:1:2:3:4:5:6:7:8:9:")) > 0) {
 		switch(option) {
 			/* OPTION: -i: Hide info box */
 			case 'i':
@@ -1545,6 +1572,10 @@ int main(int argc, char *argv[]) {
 			/* OPTION: -s: Activate slideshow */
 			case 's':
 				slideshowEnabled = TRUE;
+				break;
+			/* OPTION: -S: Follow symlinks */
+			case 'S':
+				optionFollowSymlinks = TRUE;
 				break;
 			#ifndef NO_SORTING
 			/* OPTION: -n: Sort all files in natural order */
@@ -1660,32 +1691,30 @@ int main(int argc, char *argv[]) {
 				helpMessage(0);
 		}
 	}
-	free(options);
 	/* }}} */
 	/* Load files {{{ */
-	argv++; argc--;
-	if(argv[0] == 0) {
-		exit(0);
-	}
-	if(strcmp(argv[0], "--") == 0) {
-		argv++; argc--;
-	}
-	if(argv[0] == 0) {
-		exit(0);
-	}
 	/* Load available file formats */
-	fileExtensions = g_slist_alloc();
+	fileFormatsFilter = gtk_file_filter_new();
+	gtk_file_filter_set_name(fileFormatsFilter, "Images");
+	gtk_file_filter_add_pixbuf_formats(fileFormatsFilter);
 	fileFormatsIterator = gdk_pixbuf_get_formats();
 	do {
 		fileFormatExtensionsIterator = gdk_pixbuf_format_get_extensions(fileFormatsIterator->data);
 		while(*fileFormatExtensionsIterator != NULL) {
-			fileExtensions = g_slist_prepend(fileExtensions, *fileFormatExtensionsIterator);
+			buf = (char*)malloc(strlen(*fileFormatExtensionsIterator) + 3);
+			sprintf(buf, "*.%s", *fileFormatExtensionsIterator);
+			gtk_file_filter_add_pattern(fileFormatsFilter, buf);
+			free(buf);
 			++fileFormatExtensionsIterator;
 		}
 	} while((fileFormatsIterator = g_slist_next(fileFormatsIterator)) != NULL);
+	g_slist_free(fileFormatsIterator);
+	parameterIterator = options + optind;
 	/* Load files */
 	memset(&firstFile, 0, sizeof(struct file));
-	loadFiles(&argc, &argv);
+	if(argv[0] != 0) {
+		loadFiles(parameterIterator);
+	}
 	if(optionReadStdin == TRUE) {
 		fileName = (char*)malloc(1025);
 		do {
@@ -1709,8 +1738,43 @@ int main(int argc, char *argv[]) {
 	}
 	#endif
 	if(currentFile->fileName == NULL) {
-		die("Failed to load any of the images");
+		if(options[optind] == 0) {
+			/* No images given */
+			if(isatty(0)) {
+				/* If stdin is no TTY, show GTK+ load file dialog */
+				fileChooser = gtk_file_chooser_dialog_new("Open image(s)..",
+					NULL,
+					GTK_FILE_CHOOSER_ACTION_OPEN,
+					GTK_STOCK_CANCEL, GTK_RESPONSE_CANCEL,
+					GTK_STOCK_OPEN, GTK_RESPONSE_ACCEPT,
+					NULL);
+				gtk_file_chooser_add_filter(GTK_FILE_CHOOSER(fileChooser),
+					fileFormatsFilter);
+				gtk_file_chooser_set_select_multiple(GTK_FILE_CHOOSER(fileChooser),
+					TRUE);
+				if(gtk_dialog_run(GTK_DIALOG(fileChooser)) == GTK_RESPONSE_CANCEL) {
+					return 0;
+				}
+				/* Reuse fileFormatsIterator for this file list,
+				 * don't let the name confuse you ;) */
+				fileFormatsIterator = gtk_file_chooser_get_filenames(
+					GTK_FILE_CHOOSER(fileChooser));
+				do {
+					loadFilesAddFile(fileFormatsIterator->data);
+					g_free(fileFormatsIterator->data);
+				} while((fileFormatsIterator = g_slist_next(fileFormatsIterator)) != NULL);
+				g_slist_free(fileFormatsIterator);
+				gtk_widget_destroy(fileChooser);
+			}
+			else {
+				return 0;
+			}
+		}
+		else {
+			die("Failed to load any of the images");
+		}
 	}
+	free(options);
 	while(!loadImage()) {
 		currentFile = currentFile->next;
 		if(currentFile == NULL) {
@@ -1735,6 +1799,8 @@ int main(int argc, char *argv[]) {
 		gtk_window_set_decorated(GTK_WINDOW(window), FALSE);
 	}
 	#endif
+	gtk_window_set_icon(GTK_WINDOW(window),
+		gdk_pixbuf_new_from_inline(348, (const guint8 *)appIcon, FALSE, NULL));
 	gtk_widget_show(window);
 	fixed = gtk_fixed_new();
 	gtk_container_add(GTK_CONTAINER(window), fixed);

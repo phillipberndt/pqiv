@@ -8,6 +8,7 @@ OPTIONFLAGS= lib/strnatcmp.c
 # Fixed settings
 REQUIRED_PACKAGES=gtk+-2.0 gthread-2.0 pango glib-2.0
 SHELL=bash
+PACKAGE_VERSION:=$(shell awk '/RELEASE/ {print $$3}' pqiv.c | tr -d \" | head -n1)$(SUFFIX)
 
 # pqiv
 all: pqiv manpage
@@ -34,7 +35,7 @@ manpage:
 		if [ "$${MAT}" == "1" ]; then ACT=Stripping; else ACT=Ignoring; fi; \
 		echo "$${ACT} $${REQ}" >&2; \
 		IN=1; \
-	done < pqiv.1.template ) > qiv.1
+	done < pqiv.1.template ) | sed -e 's/$$PACKAGE_VERSION/$(PACKAGE_VERSION)/'  > qiv.1
 
 # Cleanup
 clean:
@@ -53,9 +54,23 @@ mininstall:
 	install -Ds qiv /usr/local/bin
 
 # Package generation
-PACKAGE_VERSION:=$(shell awk '/RELEASE/ {print $$3}' pqiv.c | tr -d \" | head -n1)$(SUFFIX)
 package: 
 	mkdir pqiv-$(PACKAGE_VERSION)/
 	cp -r lib *.c pqiv.1.template gpl.txt configure Makefile README pqiv-$(PACKAGE_VERSION)/
 	tar cjf pqiv-$(PACKAGE_VERSION).tbz pqiv-$(PACKAGE_VERSION)/
 	rm -rf pqiv-$(PACKAGE_VERSION)
+deb:
+	mkdir deb-pqiv-$(PACKAGE_VERSION)/
+	install -D qiv deb-pqiv-$(PACKAGE_VERSION)/$(PREFIX)/bin/qiv
+	install -D qiv.1 deb-pqiv-$(PACKAGE_VERSION)/$(PREFIX)/share/man/man1/pqiv.1
+	link deb-pqiv-$(PACKAGE_VERSION)/$(PREFIX)/share/man/man1/pqiv.1 deb-pqiv-$(PACKAGE_VERSION)/$(PREFIX)/share/man/man1/qiv.1
+	mkdir deb-pqiv-$(PACKAGE_VERSION)/DEBIAN
+	(echo -e "Package: pqiv\nVersion: $(PACKAGE_VERSION)\nSection: graphics\nPriority: optional"; \
+	 echo -ne "Architecture: "; uname -m | sed -e 's/686/386/'; echo -e "Essential: no"; \
+	 echo -e "Depends: libgtk2.0-0 (>= 2.12.0), libglib2.0-0 (>= 2.12.0)"; \
+	 echo -ne "Installed-Size: "; du -s 'deb-pqiv-$(PACKAGE_VERSION)' | awk '{print $$1}'; \
+	 echo -e "Maintainer: Phillip Berndt <mail at pberndt.com>\nConflicts: qiv"; \
+	 echo -e "Description: A minimalistic graphics viewer.\n Modern rewrite of qiv using gtk+-2.0"; \
+	 ) > deb-pqiv-$(PACKAGE_VERSION)/DEBIAN/control
+	dpkg -b deb-pqiv-$(PACKAGE_VERSION) pqiv-$(PACKAGE_VERSION).deb
+	rm -rf deb-pqiv-$(PACKAGE_VERSION)/

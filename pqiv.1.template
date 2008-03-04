@@ -1,18 +1,18 @@
 .\" vim:filetype=groff
-.TH qiv 1 "11 October 2007" "0.6" "qiv manual"
+.TH qiv 1 "04 March 2008" "$PACKAGE_VERSION" "qiv manual"
 .SH NAME
-pqiv \- quick image viewer
+PQIV \- quick image viewer
 .SH SYNOPSIS
 .B qiv [options] <file(s) or folder(s)>
 .SH DESCRIPTION
-pqiv is a really simple image viewer inspired by qiv.
+PQIV is a really simple image viewer inspired by qiv.
 .SH OPTIONS
 .TP
 .B -i
-Suppress the yellow info box in pqiv
+Suppress the yellow info box in PQIV
 .TP
 .B -f
-Start pqiv in fullscreen mode
+Start PQIV in fullscreen mode
 .\" unless NO_FADING
 .TP
 .B -F
@@ -21,6 +21,13 @@ Make qiv fade between images. Currently this does only work for images of equal 
 .TP
 .B -s
 Auto start slide show
+.TP
+.B -S
+Follow symlinks. PQIV will not traverse into symlinked directories by default
+as this tends to lead to recursion and other problems. If this option
+is active, PQIV will follow symlinks. An algorithm to prevent recursion is
+implemented. Checking for if a symlink points out of the current node (For
+example symlinks to /) is not.
 .\" unless NO_SORTING
 .TP
 .B -n
@@ -39,12 +46,12 @@ If used twice: Do not shrink image(s) larger than the screen to fit
 Read filename(s) from STDIN.
 .TP
 .B -c
-pqiv will draw this well-known chessboard background for transparent images per
+PQIV will draw this well-known chessboard background for transparent images per
 default. Use this option to deactivate this behaviour.
 .\" unless NO_COMPOSITING
 If you use this option twice (and your wm supports it), it will cause the window to be transparent.
 Use it three times to make the window stay in the background and use it for times to also disable
-controls. You can make pqiv behave like a desktop widget this way.
+controls. You can make PQIV behave like a desktop widget this way.
 .\" end
 .\" unless NO_INOTIFY
 .TP
@@ -79,7 +86,7 @@ in.
 .TP
 .B -<n>
 Use those options (n \in 0..9) to define a command, which will be executed when
-you press the corresponding key in pqiv.
+you press the corresponding key in PQIV.
 .br
 .po 5
 Prepend the command with
@@ -88,7 +95,7 @@ to show the command's output in a dialog window.
 .br
 Prepend the command with
 .B |
-to let pqiv pipe the displayed image to your command and read/reload it from
+to let PQIV pipe the displayed image to your command and read/reload it from
 the command's output.
 .po 0
 .br
@@ -103,25 +110,28 @@ and file by the name of the current image.
 .PP
 The contents of
 .B ~/.pqivrc
-will be prepended to pqiv's argv. So if you want to make an slideshow interval
-of 1 second the default for pqiv, put
+will be prepended to PQIV's argv. So if you want to make an slideshow interval
+of 1 second the default for PQIV, put
 .nf
 	-d1
 .fi
 into that file.
 .PP
 .\" end
-pqiv will display all files you specified on the command line. Directories will
+PQIV will display all files you specified on the command line. Directories will
 be searched recursively for files supported by gtk+
 (for example: bmp, gif, jpeg, png, wbmp, xpm, svg). Unless you specified
 .B -r
 the special file
 .B -
-will cause pqiv to read a file from stdin.
+will cause PQIV to read a file from stdin.
 .SH USAGE
-In pqiv, you can use both mouse and keyboard to navigate through the images. Execute
+In PQIV, you can use both mouse and keyboard to navigate through the images. Execute
 .B qiv -h
 to get more information on the key bindings.
+.PP
+If you call PQIV without a TTY on stdin (ie. from GUI) without parameters, PQIV
+will pop up an "open file" dialog.
 .SH AUTHOR
 .nf
 Phillip Berndt (mail at pberndt dot com)
