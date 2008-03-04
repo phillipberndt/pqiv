@@ -1740,7 +1740,7 @@ int main(int argc, char *argv[]) {
 	if(currentFile->fileName == NULL) {
 		if(options[optind] == 0) {
 			/* No images given */
-			if(isatty(0)) {
+			if(!isatty(0)) {
 				/* If stdin is no TTY, show GTK+ load file dialog */
 				fileChooser = gtk_file_chooser_dialog_new("Open image(s)..",
 					NULL,
@@ -1752,7 +1752,7 @@ int main(int argc, char *argv[]) {
 					fileFormatsFilter);
 				gtk_file_chooser_set_select_multiple(GTK_FILE_CHOOSER(fileChooser),
 					TRUE);
-				if(gtk_dialog_run(GTK_DIALOG(fileChooser)) == GTK_RESPONSE_CANCEL) {
+				if(gtk_dialog_run(GTK_DIALOG(fileChooser)) != GTK_RESPONSE_ACCEPT) {
 					return 0;
 				}
 				/* Reuse fileFormatsIterator for this file list,
