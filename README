@@ -92,8 +92,13 @@ it in pqiv code. Here's what I do:
 
 CHANGELOG
 
-pqiv 0.6.1
- * Fixed an array index overflow which led to a segfault (Tinoucas)
+pqiv 0.7
+ * Improved debian compatibility (ie. make deb)
+ * Added option -S ("Follow symlinks") and recursion checking code
+ * Added "open file" dialog (start qiv without a TTY in stdin &
+   without parameters)
+ * Fixed various bugs in sorting/directory traversal
+ * Added 'j' binding to jump to a file (search by name / number)
  
 pqiv 0.6
  * Added -q option
