@@ -1148,6 +1148,7 @@ inline void doJumpDialog() { /* {{{ */
 	GtkListStore *searchList;
 	GtkTreeModel *searchListFilter;
 	GtkTreeIter searchListIter;
+	GtkTreePath *gotoActivePath;
 	GtkCellRenderer *searchListRenderer0;
 	GtkCellRenderer *searchListRenderer1;
 	struct file *tmpFileIndex;
@@ -1227,6 +1228,17 @@ inline void doJumpDialog() { /* {{{ */
 		TRUE,
 		TRUE,
 		0);
+
+	/* Jump to active image */
+	gotoActivePath = gtk_tree_path_new_from_indices(currentFile->nr, -1);
+	gtk_tree_selection_select_path(
+		gtk_tree_view_get_selection(GTK_TREE_VIEW(searchListBox)),
+		gotoActivePath);
+	gtk_tree_view_scroll_to_cell(GTK_TREE_VIEW(searchListBox),
+		gotoActivePath,
+		NULL,
+		FALSE, 0, 0);
+	gtk_tree_path_free(gotoActivePath);
 
 	/* Show dialog */
 	g_signal_connect(searchEntry, "changed",
