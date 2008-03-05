@@ -24,6 +24,7 @@
 #include <stdio.h>
 #include <gtk/gtk.h>
 #include <glib/gconvert.h>
+#include <gdk/gdkkeysyms.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <signal.h>
@@ -243,7 +244,6 @@ void helpMessage(char claim) { /* {{{ */
                 " Escape         Quit \n"
                 " Cursor keys    Move (Fullscreen) \n"
                 " Space          Next image \n"
-                " j              Jump to image \n"
                 " f              Fullscreen \n"
                 " r              Reload \n"
                 " +              Zoom in \n"
@@ -491,7 +491,7 @@ void runProgram(char *command) { /*{{{*/
 		if(g_utf8_validate(infoString->str, infoString->len, NULL) == FALSE) {
 			buf4 = g_convert(infoString->str, infoString->len, "utf8", "iso8859-1", NULL, &uniTextLength, NULL);
 			gtk_text_buffer_set_text(gtk_text_view_get_buffer(GTK_TEXT_VIEW(tmpText)), buf4, uniTextLength);
-			free(buf4);
+			g_free(buf4);
 		}
 		else {
 			gtk_text_buffer_set_text(gtk_text_view_get_buffer(GTK_TEXT_VIEW(tmpText)), infoString->str,
@@ -1036,7 +1036,7 @@ char reloadImage() { /*{{{*/
 	return TRUE;
 } /*}}}*/
 /* }}} */
-/* Slideshow / Jump between images {{{ */
+/* Slideshow {{{ */
 gboolean slideshowCb(gpointer data) { /*{{{*/
 	GdkEventKey keyEvent;
 	DEBUG1("Slideshow next");
@@ -1069,36 +1069,57 @@ inline void slideshowDo() { /*{{{*/
 	}
 	slideshowID = g_timeout_add(slideshowInterval * 1000, slideshowCb, NULL);
 } /*}}}*/
-inline void doJumpDialog() { /* {{{ */
-	GtkWidget *dlgWindow;
-	GtkWidget *spinButton;
-	int jumpTo;
-	struct file *oldIndex;
-	DEBUG1("Jump dialog");
+/* }}} */
+/* Jump dialog {{{ */
+gboolean doJumpDialog_searchListFilter(GtkTreeModel *model, GtkTreeIter *iter, gpointer data) { /* {{{ */
+	GValue colData;
+	char *entryText = (char*)gtk_entry_get_text(GTK_ENTRY(data)); /* (Must not be freed here) */
+	char *compareIn, *compareSearch;
+	gboolean retVal;
 
-	/* Ask the user which image to jump to */
-	dlgWindow = gtk_dialog_new_with_buttons("pqiv: Jump to image",
-		GTK_WINDOW(window),
-		GTK_DIALOG_DESTROY_WITH_PARENT | GTK_DIALOG_MODAL,
-		GTK_STOCK_OK,
-		GTK_RESPONSE_ACCEPT,
-		NULL);
-	spinButton = gtk_spin_button_new_with_range(1, lastFile->nr + 1, 1);
-	gtk_spin_button_set_value(GTK_SPIN_BUTTON(spinButton), currentFile->nr);
-	gtk_container_add(GTK_CONTAINER(GTK_DIALOG(dlgWindow)->vbox),
-		spinButton);
-
-	gtk_widget_set_size_request(dlgWindow, 180, 100);
-	gtk_widget_show_all(dlgWindow);
-	if(gtk_dialog_run(GTK_DIALOG(dlgWindow)) != GTK_RESPONSE_ACCEPT) {
-		gtk_widget_destroy(spinButton);
-		gtk_widget_destroy(dlgWindow);
-		return;
+	if(entryText[0] == 0) {
+		return TRUE;
 	}
-	jumpTo = (int)gtk_spin_button_get_value(GTK_SPIN_BUTTON(spinButton));
-	gtk_widget_destroy(spinButton);
-	gtk_widget_destroy(dlgWindow);
-	
+
+	memset(&colData, 0, sizeof(GValue));
+	gtk_tree_model_get_value(model, iter, 1, &colData);
+	compareIn = (char*)g_value_get_string(&colData); /* (Must not be freed here) */
+	compareIn = (char*)g_ascii_strdown(compareIn, strlen(compareIn));
+	compareSearch = (char*)g_ascii_strdown(entryText, strlen(entryText));
+	retVal = strstr(compareIn, compareSearch) != NULL;
+	g_free(compareIn);
+	g_free(compareSearch);
+	g_value_unset(&colData);
+
+	return retVal;
+} /* }}} */
+gint doJumpDialog_entryChangedCallback(GtkWidget *entry, gpointer data) { /*{{{*/
+	gtk_tree_model_filter_refilter(GTK_TREE_MODEL_FILTER(data));
+} /* }}} */
+gint doJumpDialog_exitOnEnter(GtkWidget *widget, GdkEventKey *event, gpointer data) { /*{{{*/
+	if(event->keyval == GDK_Return) {
+		gtk_dialog_response(GTK_DIALOG(data), GTK_RESPONSE_ACCEPT);
+		return TRUE;
+	}
+	return FALSE;
+} /* }}} */
+gint doJumpDialog_exitOnDblClk(GtkWidget *widget, GdkEventButton *event, gpointer data) { /*{{{*/
+	if(event->button == 1 && event->type == GDK_2BUTTON_PRESS) {
+		gtk_dialog_response(GTK_DIALOG(data), GTK_RESPONSE_ACCEPT);
+		return TRUE;
+	}
+	return FALSE;
+} /* }}} */
+void doJumpDialog_openImage(GtkTreeModel *model, GtkTreePath *path, GtkTreeIter *iter, gpointer data) { /* {{{ */
+	GValue colData;
+	GtkWidget *dlgWindow;
+	struct file *oldIndex;
+	int jumpTo;
+	memset(&colData, 0, sizeof(GValue));
+	gtk_tree_model_get_value(model, iter, 0, &colData);
+	jumpTo = g_value_get_int(&colData); /* (Must not be freed here) */
+	g_value_unset(&colData);
+
 	/* Jump to that image */
 	oldIndex = currentFile;
 	currentFile = &firstFile;
@@ -1118,6 +1139,118 @@ inline void doJumpDialog() { /* {{{ */
 		gtk_dialog_run(GTK_DIALOG(dlgWindow));
 		gtk_widget_destroy(dlgWindow);
 	}
+} /* }}} */
+inline void doJumpDialog() { /* {{{ */
+	GtkWidget *dlgWindow;
+	GtkWidget *searchEntry;
+	GtkWidget *searchListBox;
+	GtkWidget *scrollBar;
+	GtkListStore *searchList;
+	GtkTreeModel *searchListFilter;
+	GtkTreeIter searchListIter;
+	GtkCellRenderer *searchListRenderer0;
+	GtkCellRenderer *searchListRenderer1;
+	struct file *tmpFileIndex;
+	char *tmpStr;
+	gsize tmpStrLen;
+	DEBUG1("Jump dialog");
+
+	/* Create dialog box */
+	dlgWindow = gtk_dialog_new_with_buttons("pqiv: Jump to image",
+		GTK_WINDOW(window),
+		GTK_DIALOG_DESTROY_WITH_PARENT | GTK_DIALOG_MODAL,
+		GTK_STOCK_OK,
+		GTK_RESPONSE_ACCEPT,
+		NULL);
+	
+	searchEntry = gtk_entry_new();
+	gtk_box_pack_start(GTK_BOX(GTK_DIALOG(dlgWindow)->vbox),
+		searchEntry,
+		FALSE,
+		TRUE,
+		0);
+
+	/* Build list for searching */
+	searchList = gtk_list_store_new(2, G_TYPE_INT, G_TYPE_STRING);
+	tmpFileIndex = &firstFile;
+	do {
+		gtk_list_store_append(searchList, &searchListIter);
+		if(g_utf8_validate(tmpFileIndex->fileName,
+			strlen(tmpFileIndex->fileName), NULL) == FALSE) {
+			tmpStr = g_convert(tmpFileIndex->fileName,
+				strlen(tmpFileIndex->fileName), "utf8",
+				"iso8859-1", NULL, &tmpStrLen, NULL);
+			tmpStr[tmpStrLen] = 0;
+			gtk_list_store_set(searchList, &searchListIter,
+				0, tmpFileIndex->nr + 1,
+				1, tmpStr,
+				-1);
+			g_free(tmpStr);
+		}
+		else {
+			gtk_list_store_set(searchList, &searchListIter,
+				0, tmpFileIndex->nr + 1,
+				1, tmpFileIndex->fileName,
+				-1);
+		}
+	} while((tmpFileIndex = tmpFileIndex->next) != NULL);
+
+	searchListFilter = gtk_tree_model_filter_new(GTK_TREE_MODEL(searchList), NULL);
+	gtk_tree_model_filter_set_visible_func(GTK_TREE_MODEL_FILTER(searchListFilter),
+		doJumpDialog_searchListFilter,
+		searchEntry,
+		NULL);
+	
+	/* Create tree view */
+	searchListBox = gtk_tree_view_new_with_model(GTK_TREE_MODEL(searchListFilter));
+	gtk_tree_view_set_search_column(GTK_TREE_VIEW(searchListBox), 0);
+	gtk_tree_view_set_enable_search(GTK_TREE_VIEW(searchListBox), TRUE);
+	searchListRenderer0 = gtk_cell_renderer_text_new();
+	gtk_tree_view_insert_column_with_attributes(GTK_TREE_VIEW(searchListBox),
+		-1,
+		"#",
+		searchListRenderer0,
+		"text", 0,
+		NULL);
+	searchListRenderer1 = gtk_cell_renderer_text_new();
+	gtk_tree_view_insert_column_with_attributes(GTK_TREE_VIEW(searchListBox),
+		-1,
+		"File name",
+		searchListRenderer1,
+		"text", 1,
+		NULL);
+	scrollBar = gtk_scrolled_window_new(NULL, NULL);
+	gtk_container_add(GTK_CONTAINER(scrollBar),
+		searchListBox);
+	gtk_box_pack_end(GTK_BOX(GTK_DIALOG(dlgWindow)->vbox),
+		scrollBar,
+		TRUE,
+		TRUE,
+		0);
+
+	/* Show dialog */
+	g_signal_connect(searchEntry, "changed",
+		G_CALLBACK(doJumpDialog_entryChangedCallback), searchListFilter);
+	g_signal_connect(searchListBox, "key-press-event",
+		G_CALLBACK(doJumpDialog_exitOnEnter), dlgWindow);
+	g_signal_connect(searchListBox, "button-press-event",
+		G_CALLBACK(doJumpDialog_exitOnDblClk), dlgWindow);
+	gtk_widget_set_size_request(dlgWindow, 640, 480);
+	gtk_widget_show_all(dlgWindow);
+
+	if(gtk_dialog_run(GTK_DIALOG(dlgWindow)) == GTK_RESPONSE_ACCEPT) {
+		gtk_tree_selection_selected_foreach(
+			gtk_tree_view_get_selection(GTK_TREE_VIEW(searchListBox)),
+			doJumpDialog_openImage,
+			NULL);
+	}
+
+	/* What about searchListRenderern? I don't
+	 * know how (and whether) to free them :/ */
+	gtk_widget_destroy(dlgWindow);
+	g_object_unref(searchList);
+	g_object_unref(searchListFilter);
+	
 } /* }}} */
 /* }}} */
 /* Keyboard & mouse event handlers {{{ */
