@@ -243,6 +243,7 @@ void helpMessage(char claim) { /* {{{ */
                 " Escape         Quit \n"
                 " Cursor keys    Move (Fullscreen) \n"
                 " Space          Next image \n"
+                " j              Jump to image \n"
                 " f              Fullscreen \n"
                 " r              Reload \n"
                 " +              Zoom in \n"
@@ -1035,7 +1036,7 @@ char reloadImage() { /*{{{*/
 	return TRUE;
 } /*}}}*/
 /* }}} */
-/* Slideshow {{{ */
+/* Slideshow / Jump between images {{{ */
 gboolean slideshowCb(gpointer data) { /*{{{*/
 	GdkEventKey keyEvent;
 	DEBUG1("Slideshow next");
@@ -1068,6 +1069,56 @@ inline void slideshowDo() { /*{{{*/
 	}
 	slideshowID = g_timeout_add(slideshowInterval * 1000, slideshowCb, NULL);
 } /*}}}*/
+inline void doJumpDialog() { /* {{{ */
+	GtkWidget *dlgWindow;
+	GtkWidget *spinButton;
+	int jumpTo;
+	struct file *oldIndex;
+	DEBUG1("Jump dialog");
+
+	/* Ask the user which image to jump to */
+	dlgWindow = gtk_dialog_new_with_buttons("pqiv: Jump to image",
+		GTK_WINDOW(window),
+		GTK_DIALOG_DESTROY_WITH_PARENT | GTK_DIALOG_MODAL,
+		GTK_STOCK_OK,
+		GTK_RESPONSE_ACCEPT,
+		NULL);
+	spinButton = gtk_spin_button_new_with_range(1, lastFile->nr + 1, 1);
+	gtk_spin_button_set_value(GTK_SPIN_BUTTON(spinButton), currentFile->nr);
+	gtk_container_add(GTK_CONTAINER(GTK_DIALOG(dlgWindow)->vbox),
+		spinButton);
+
+	gtk_widget_set_size_request(dlgWindow, 180, 100);
+	gtk_widget_show_all(dlgWindow);
+	if(gtk_dialog_run(GTK_DIALOG(dlgWindow)) != GTK_RESPONSE_ACCEPT) {
+		gtk_widget_destroy(spinButton);
+		gtk_widget_destroy(dlgWindow);
+		return;
+	}
+	jumpTo = (int)gtk_spin_button_get_value(GTK_SPIN_BUTTON(spinButton));
+	gtk_widget_destroy(spinButton);
+	gtk_widget_destroy(dlgWindow);
+	
+	/* Jump to that image */
+	oldIndex = currentFile;
+	currentFile = &firstFile;
+	while(jumpTo-- > 1) {
+		currentFile = currentFile->next;
+	}
+	if(!reloadImage()) {
+		dlgWindow = gtk_message_dialog_new(
+			GTK_WINDOW(window),
+			GTK_DIALOG_DESTROY_WITH_PARENT | GTK_DIALOG_MODAL,
+			GTK_MESSAGE_ERROR,
+			GTK_BUTTONS_OK,
+			"Error jumping to image %s",
+			currentFile->fileName);
+		gtk_window_set_title(GTK_WINDOW(dlgWindow), "pqiv: Error");
+		currentFile = oldIndex;
+		gtk_dialog_run(GTK_DIALOG(dlgWindow));
+		gtk_widget_destroy(dlgWindow);
+	}
+} /* }}} */
 /* }}} */
 /* Keyboard & mouse event handlers {{{ */
 char mouseScrollEnabled = FALSE;
@@ -1180,6 +1231,11 @@ gint keyboardCb(GtkWidget *widget, GdkEventKey *event, gpointer data) { /*{{{*/
 				 */
 				slideshowDo();
 			}
+			break;
+			/* }}} */
+		/* BIND: j: Jump to image {{{ */
+		case 'j':
+			doJumpDialog();
 			break;
 			/* }}} */
 		/* BIND: f: Fullscreen {{{ */
