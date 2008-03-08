@@ -23,7 +23,9 @@
 /* Includes {{{ */
 #include <stdio.h>
 #include <gtk/gtk.h>
+#include <glib.h>
 #include <glib/gconvert.h>
+#include <glib/gstdio.h>
 #include <gdk/gdkkeysyms.h>
 #include <sys/types.h>
 #include <sys/wait.h>
@@ -685,7 +687,6 @@ void inotifyCb(gpointer data, gint source_fd, GdkInputCondition condition) { /*{
 	 * has been modified
 	 */
 	GdkEventKey keyEvent;
-	char *fileName;
 	struct inotify_event *event = g_new(struct inotify_event, 1);
 	DEBUG1("Inotify cb");
 
@@ -1279,6 +1280,7 @@ gint doJumpDialog_entryChangedCallback(GtkWidget *entry, gpointer data) { /*{{{*
 	 * Refilter the list when the entry text is changed
 	 */
 	gtk_tree_model_filter_refilter(GTK_TREE_MODEL_FILTER(data));
+	return FALSE;
 } /* }}} */
 gint doJumpDialog_exitOnEnter(GtkWidget *widget, GdkEventKey *event, gpointer data) { /*{{{*/
 	/**
@@ -1353,7 +1355,6 @@ inline void doJumpDialog() { /* {{{ */
 	GtkCellRenderer *searchListRenderer1;
 	struct file *tmpFileIndex;
 	char *tmpStr;
-	gsize tmpStrLen;
 	DEBUG1("Jump dialog");
 
 	/* Create dialog box */
@@ -1506,11 +1507,11 @@ gint keyboardCb(GtkWidget *widget, GdkEventKey *event, gpointer data) { /*{{{*/
 			do {
 				for(n=0; n<10; n++) {
 					currentFile = currentFile->next;
-					if(i == currentFile->nr) {
-						break;
-					}
 					if(currentFile == NULL) {
 						currentFile = &firstFile;
+					}
+					if(i == currentFile->nr) {
+						break;
 					}
 				}
 			} while((!reloadImage()) && i != currentFile->nr);
@@ -1522,11 +1523,11 @@ gint keyboardCb(GtkWidget *widget, GdkEventKey *event, gpointer data) { /*{{{*/
 			do {
 				for(n=0; n<10; n++) {
 					currentFile = currentFile->prev;
-					if(i == currentFile->nr) {
-						break;
-					}
 					if(currentFile == NULL) {
 						currentFile = lastFile;
+					}
+					if(i == currentFile->nr) {
+						break;
 					}
 				}
 			} while((!reloadImage()) && i != currentFile->nr);
