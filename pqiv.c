@@ -51,6 +51,7 @@
 /* Definitions {{{ */
 /* Compile time settings */
 #define DRAG_MAX_TIME 150
+#define SECONDS_TILL_LOADING_INFO 5 /* Undef to disable */
 
 /* libc stuff */
 extern char *optarg;
@@ -107,6 +108,11 @@ static struct file *currentFile = &firstFile;
 static struct file *lastFile = &firstFile;
 GtkFileFilter *fileFormatsFilter;
 GTree* recursionCheckTree = NULL;
+
+static GTimeVal  programStart;
+#ifdef SECONDS_TILL_LOADING_INFO
+static int       loadFilesChecked = 0;
+#endif
 
 /* Program settings */
 static char isFullscreen = FALSE;
@@ -343,6 +349,9 @@ void loadFilesHelper(DIR *cwd) { /*{{{*/
 	 * this function keep in mind that you should chdir
 	 * to the directory cwd before calling this function.
 	 */
+	#ifdef SECONDS_TILL_LOADING_INFO
+	GTimeVal currentTime;
+	#endif
 	struct dirent *dirp;
 	GtkFileFilterInfo validFileTester;
 	DIR *ncwd;
@@ -359,6 +368,26 @@ void loadFilesHelper(DIR *cwd) { /*{{{*/
 		}
 		g_tree_insert(recursionCheckTree, cwdName, (void*)1);
 	}
+
+	/* Display information message */
+	#ifdef SECONDS_TILL_LOADING_INFO
+	if(loadFilesChecked == 0) {
+		if(!isatty(1)) {
+			loadFilesChecked = 1;
+		}
+		else {
+			g_get_current_time(&currentTime);
+			if(programStart.tv_sec + SECONDS_TILL_LOADING_INFO < currentTime.tv_sec) {
+				loadFilesChecked = 2;
+				g_print("\033" "7");
+			}
+		}
+	}
+	else if(loadFilesChecked == 2) {
+		g_print("\033" "8\033" "7\033[2K\r%08d images so far, browsing %s", lastFile->nr, cwdName);
+	}
+	#endif
+
 	validFileTester.contains = GTK_FILE_FILTER_FILENAME | GTK_FILE_FILTER_DISPLAY_NAME;
 	while((dirp = readdir(cwd)) != NULL) {
 		if(strcmp(dirp->d_name, ".") == 0 || strcmp(dirp->d_name, "..") == 0) {
@@ -372,6 +401,7 @@ void loadFilesHelper(DIR *cwd) { /*{{{*/
 			if(optionFollowSymlinks == FALSE &&
 				g_file_test(dirp->d_name, G_FILE_TEST_IS_SYMLINK)) {
 				DEBUG2("Will not traverse into symlinked directory %s\n", dirp->d_name);
+				closedir(ncwd);
 				continue;
 			}
 			/* Call this function recursive on the subdirectory */
@@ -405,7 +435,7 @@ void loadFilesHelper(DIR *cwd) { /*{{{*/
 		g_free(cwdName);
 	}
 } /*}}}*/
-void loadFiles(char **iterator) { /*{{{*/
+gboolean loadFiles(char **iterator) { /*{{{*/
 	/**
 	 * Load all files. The parameter "iterator"
 	 * is an array of char*-filenames.
@@ -485,6 +515,7 @@ void loadFiles(char **iterator) { /*{{{*/
 		}
 		iterator++;
 	}
+	return FALSE;
 } /*}}}*/
 gint windowCloseOnlyCb(GtkWidget *widget, GdkEventKey *event, gpointer data) { /*{{{*/
 	/**
@@ -783,6 +814,7 @@ char loadImage() { /*{{{*/
 	 */
 	GdkPixbuf *tmpImage;
 	GdkPixbuf *chessBoardBuf;
+	GError *error = NULL;
 	int i, n, o, p;
 
 	DEBUG2("loadImage", currentFile->fileName);
@@ -795,9 +827,10 @@ char loadImage() { /*{{{*/
 	}
 	else {
 		/* Load from file */
-		tmpImage = gdk_pixbuf_new_from_file(currentFile->fileName, NULL);
+		tmpImage = gdk_pixbuf_new_from_file(currentFile->fileName, &error);
 		if(!tmpImage) {
-			g_printerr("Failed to load %s\n", currentFile->fileName);
+			g_printerr("Failed to load %s: %s\n", currentFile->fileName, error->message);
+			g_error_free(error);
 			return FALSE;
 		}
 	}
@@ -1924,6 +1957,7 @@ int main(int argc, char *argv[]) {
 	if(gtk_init_check(&argc, &argv) == FALSE) {
 		die("Failed to open X11 Display.");
 	}
+	g_get_current_time(&programStart);
 /* }}} */
 	/* Command line and configuration parsing {{{ */
 	envP = environ;
@@ -2147,6 +2181,11 @@ int main(int argc, char *argv[]) {
 				 */
 		}
 		loadFiles(parameterIterator);
+		#ifdef SECONDS_TILL_LOADING_INFO
+		if(loadFilesChecked == 2) {
+			g_print("\033[2K\r");
+		}
+		#endif
 		if(optionFollowSymlinks == TRUE) {
 			/* Destroy it again */
 			g_tree_destroy(recursionCheckTree);
