@@ -11,7 +11,7 @@ OPTIONS=( "no-sorting"		"Disable sorting of loaded files"		"-DNO_SORTING"		"lib/
 	)
 
 # Load settings from Makefile
-eval $(head -n 10 Makefile | egrep '^[A-Z_]+=' | sed -re 's/=(.+)/="\1"/')
+eval $(head -n 10 Makefile | grep -E '^[A-Z_]+=' | sed -re 's/=(.+)/="\1"/')
 
 # Handle parameters
 help() {
@@ -107,6 +107,32 @@ for PACKAGE in ${REQUIRED_PACKAGES}; do
 		exit 1
 	fi
 done
+
+# Check headers
+echo -n "Checking for headers...        "
+TEST_INCLUDES=$(tempfile -s .c)
+TEST_INCLUDES_EXEC=$(tempfile)
+TEST_ERROR_FILE=$(tempfile)
+sed -e '/}}}/q' pqiv.c > ${TEST_INCLUDES}
+cat >> ${TEST_INCLUDES} <<EOF
+int main(int argc, char* argv[]) { return 0; }
+EOF
+if
+(
+	cc "-I$(pwd)" ${CFLAGS} $(pkg-config --libs --cflags ${REQUIRED_PACKAGES}) ${OPTIONFLAGS} -o ${TEST_INCLUDES_EXEC} ${TEST_INCLUDES} 2>&1 && \
+	${TEST_INCLUDES_EXEC} 2>&1
+) > ${TEST_ERROR_FILE}
+then
+	echo "ok"
+else
+	echo "failed"
+	echo
+	echo "Error message:"
+	cat ${TEST_ERROR_FILE}
+	rm -f ${TEST_INCLUDES} ${TEST_INCLUDES_EXEC} ${TEST_ERROR_FILE}
+	exit 1
+fi
+rm -f ${TEST_INCLUDES} ${TEST_INCLUDES_EXEC} ${TEST_ERROR_FILE}
 
 # Change stuff in Makefile
 if [ "${CHANGES}" != "" ]; then
