@@ -1961,7 +1961,7 @@ int main(int argc, char *argv[]) {
 /* }}} */
 	/* Command line and configuration parsing {{{ */
 	envP = environ;
-	options = (char**)g_malloc((argc + 250) * sizeof(char*));
+	options = (char**)g_malloc((argc + 251) * sizeof(char*));
 	options[0] = argv[0];
 	#ifndef NO_CONFIG_FILE
 	while((buf = *envP++) != NULL) {
@@ -2008,6 +2008,7 @@ int main(int argc, char *argv[]) {
 		options[optionCount] = argv[i];
 		optionCount++;
 	}
+	options[optionCount] = 0;
 
 	memset(aliases, 0, sizeof(aliases));
 	opterr = 0;
