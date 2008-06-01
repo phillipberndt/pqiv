@@ -18,7 +18,7 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  * 
  */
-#define RELEASE "0.7"
+#define RELEASE "0.8"
 
 /* Includes {{{ */
 #include <stdio.h>
@@ -137,7 +137,7 @@ static char optionUseInotify = FALSE;
 #endif
 static char optionFollowSymlinks = FALSE;
 static float optionInitialZoom = 1;
-static int optionWindowPosition[2] = {-1, -1};
+static int optionWindowPosition[3] = {-1, -1, -1};
 static char optionHideChessboardLevel = 0;
 #ifndef NO_COMMANDS
 static char *optionCommands[] = { NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL };
@@ -261,7 +261,10 @@ void helpMessage(char claim) { /* {{{ */
                 #endif
                 " -z n           Set initial zoom level \n"
                 " -p             Interpolation quality level (1-4, defaults to 3) \n"
-                " -P             Set initial window position (syntax: left,top) \n"
+                " -P             Set initial window position. Use: \n"
+                "                x,y   to place the window \n"
+                "                'off' will deactivate window positioning \n"
+                "                Default behaviour is to center the window \n"
                 " -a nf          Define n as a keyboard alias for f \n"
                 #ifndef NO_COMMANDS
                 " -<n> s         Set command number n (1-9) to s \n"
@@ -1109,9 +1112,13 @@ void setFullscreen(char fullscreen) { /*{{{*/
 		scrx = gdk_screen_get_width(screen);
 		scry = gdk_screen_get_height(screen);
 		gtk_window_set_resizable(GTK_WINDOW(window), TRUE);
-		gtk_main_iteration();
+		while(gtk_events_pending()) {
+			gtk_main_iteration();
+		}
 		gdk_window_fullscreen(window->window);
-		gtk_main_iteration();
+		while(gtk_events_pending()) {
+			gtk_main_iteration();
+		}
 		gtk_widget_set_size_request(window, scrx, scry);
 		gtk_window_set_resizable(GTK_WINDOW(window), FALSE);
 
@@ -1126,9 +1133,13 @@ void setFullscreen(char fullscreen) { /*{{{*/
 	}
 	else {
 		gtk_window_set_resizable(GTK_WINDOW(window), TRUE);
-		gtk_main_iteration();
+		while(gtk_events_pending()) {
+			gtk_main_iteration();
+		}
 		gdk_window_unfullscreen(window->window);
-		gtk_main_iteration();
+		while(gtk_events_pending()) {
+			gtk_main_iteration();
+		}
 		gtk_window_set_resizable(GTK_WINDOW(window), FALSE);
 		gdk_window_set_cursor(window->window, NULL);
 	}
@@ -1178,14 +1189,18 @@ void resizeAndPosWindow() { /*{{{*/
 		/* In window mode, resize and reposition window */
 		gtk_widget_set_size_request(mouseEventBox, imgx, imgy);
 		gtk_window_set_resizable(GTK_WINDOW(window), TRUE);
-		gtk_main_iteration();
+		while(gtk_events_pending()) {
+			gtk_main_iteration();
+		}
 		gtk_widget_set_size_request(window, imgx, imgy);
-		gtk_main_iteration();
+		while(gtk_events_pending()) {
+			gtk_main_iteration();
+		}
 		gtk_window_set_resizable(GTK_WINDOW(window), FALSE);
-		if(optionWindowPosition[0] == -1) {
+		if(optionWindowPosition[2] == -1) {
 			gtk_window_move(GTK_WINDOW(window), (scrx - imgx) / 2, (scry - imgy) / 2);
 		}
-		else {
+		else if(optionWindowPosition[2] == 1) {
 			gtk_window_move(GTK_WINDOW(window), optionWindowPosition[0], 
 				optionWindowPosition[1]);
 		}
@@ -1778,7 +1793,9 @@ gint keyboardCb(GtkWidget *widget, GdkEventKey *event, gpointer data) { /*{{{*/
 				buf = (char*)g_malloc(15);
 				sprintf(buf, "Run command %c", event->keyval);
 				setInfoText(buf);
-				gtk_main_iteration();
+				while(gtk_events_pending()) {
+					gtk_main_iteration();
+				}
 				g_free(buf);
 				runProgram(optionCommands[i]);
 			}
@@ -2099,17 +2116,26 @@ int main(int argc, char *argv[]) {
 					default:  helpMessage(0);
 				}
 				break;
-			/* OPTION: -P: Set initial window position (syntax: left,top) */
+			/* OPTION: -P: Set initial window position. Use: */
+			/* ADD: x,y   to place the window */
+			/* ADD: 'off' will deactivate window positioning */
+			/* ADD: Default behaviour is to center the window */
 			case 'P':
-				buf = index(optarg, ',');
-				if(buf == NULL) {
-					die("Syntax for -P is 'left,top'");
+				if(strncmp(optarg, "off", 4) == 0) {
+					optionWindowPosition[2] = 0;
 				}
-				*buf = 0;
-				buf++;
-				optionWindowPosition[0] = atoi(optarg);
-				optionWindowPosition[1] = atoi(buf);
-				buf = NULL;
+				else {
+					buf = index(optarg, ',');
+					if(buf == NULL) {
+						die("Syntax for -P is 'left,top'");
+					}
+					*buf = 0;
+					buf++;
+					optionWindowPosition[0] = atoi(optarg);
+					optionWindowPosition[1] = atoi(buf);
+					optionWindowPosition[2] = 1;
+					buf = NULL;
+				}
 				break;
 			/* OPTION: -a nf: Define n as a keyboard alias for f */
 			case 'a':

@@ -61,6 +61,7 @@ CONTRIBUTORS
  * Yaakov (Cygwin Ports)
  * David Lindquist
  * Tinoucas
+ * John Keeping
 
 
 KNOWN PROBLEMS
@@ -92,6 +93,9 @@ it in pqiv code. Here's what I do:
 
 CHANGELOG
 
+pqiv 0.8 (WIP)
+ * Added `off' as an parameter for -P
+ 
 pqiv 0.7
  * Improved debian compatibility (ie. make deb)
  * Added option -S ("Follow symlinks") and recursion checking code

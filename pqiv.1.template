@@ -76,8 +76,17 @@ Select interpolation type for resizing operations. Valid values for n:
 .br
 .po 0
 .TP
-.B -P left,top
-Set initial window position. Defaults to center of screen.
+.B -P 
+Set window position.
+.br
+.po 5
+left,top: Set initial window position
+.br
+.po 5
+off:      Deactivate positioning
+.br
+.po 0
+Defaults to center of screen.
 .TP
 .B -a <key><new-key>
 Maps <key> to <new-key>. For example, "-a=+" will make "=" an alias for zooming
@@ -93,6 +102,7 @@ Prepend the command with
 .B >
 to show the command's output in a dialog window.
 .br
+.po 5
 Prepend the command with
 .B |
 to let PQIV pipe the displayed image to your command and read/reload it from
