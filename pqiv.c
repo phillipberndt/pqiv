@@ -139,6 +139,7 @@ static char optionFollowSymlinks = FALSE;
 static float optionInitialZoom = 1;
 static int optionWindowPosition[3] = {-1, -1, -1};
 static char optionHideChessboardLevel = 0;
+static char optionReverseMovement = FALSE;
 #ifndef NO_COMMANDS
 static char *optionCommands[] = { NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL };
 #endif
@@ -173,7 +174,7 @@ void displayImage();
 #endif
 #define die(text) g_printerr("%s\n", text); exit(1);
 /* }}} */
-/* Info text (Yellow lable & title) {{{ */
+/* Info text (Yellow label & title) {{{ */
 char *infoText;
 void setInfoText(char *text) {
 	/**
@@ -265,6 +266,7 @@ void helpMessage(char claim) { /* {{{ */
                 "                x,y   to place the window \n"
                 "                'off' will deactivate window positioning \n"
                 "                Default behaviour is to center the window \n"
+		" -R             Reverse meaning of cursor keys and Page Up/Down \n"
                 " -a nf          Define n as a keyboard alias for f \n"
                 #ifndef NO_COMMANDS
                 " -<n> s         Set command number n (1-9) to s \n"
@@ -865,6 +867,17 @@ char loadImage() { /*{{{*/
 		/* If the image has no alpha channel, just display the image */
 		currentImage = tmpImage;
 	}
+
+	/* Rotate image */
+	#if GDK_PIXBUF_MAJOR >= 2 && GDK_PIXBUF_MINOR >= 12
+	if(gdk_pixbuf_get_option(currentImage, "orientation") != NULL) {
+		tmpImage = gdk_pixbuf_apply_embedded_orientation(currentImage);
+		g_object_unref(currentImage);
+		currentImage = tmpImage;
+	}
+	#else
+		#warning "Automatic image rotation requires GDK Pixbuf >= 2.12. Feature disabled!"
+	#endif
 
 	#ifndef NO_INOTIFY
 	/* Update inotify watch to manage automatic reloading {{{ */ 
@@ -1502,6 +1515,37 @@ inline void doJumpDialog() { /* {{{ */
 	g_object_unref(searchListFilter);
 	
 } /* }}} */
+void jumpFiles(int num) { /* {{{ */
+	int i, n, count, forwards;
+
+	if(num < 0) {
+		count = -num;
+		forwards = FALSE;
+	} else {
+		count = num;
+		forwards = TRUE;
+	}
+
+	i = currentFile->nr;
+	do {
+		for(n=0; n<count; n++) {
+			if(forwards) {
+				currentFile = currentFile->next;
+				if(currentFile == NULL) {
+					currentFile = &firstFile;
+				}
+			} else {
+				currentFile = currentFile->prev;
+				if(currentFile == NULL) {
+					currentFile = lastFile;
+				}
+			}
+			if(i == currentFile->nr) {
+				break;
+			}
+		}
+	} while((!reloadImage()) && i != currentFile->nr);
+} /* }}} */
 /* }}} */
 /* Keyboard & mouse event handlers {{{ */
 char mouseScrollEnabled = FALSE;
@@ -1549,36 +1593,14 @@ gint keyboardCb(GtkWidget *widget, GdkEventKey *event, gpointer data) { /*{{{*/
 			} while((!reloadImage()) && i != currentFile->nr);
 			break;
 			/* }}} */
-		/* BIND: PgUp: Jump 10 images forewards {{{ */
+		/* BIND: PgUp: Jump 10 images forwards {{{ */
 		case GDK_Page_Up:
-			i = currentFile->nr;
-			do {
-				for(n=0; n<10; n++) {
-					currentFile = currentFile->next;
-					if(currentFile == NULL) {
-						currentFile = &firstFile;
-					}
-					if(i == currentFile->nr) {
-						break;
-					}
-				}
-			} while((!reloadImage()) && i != currentFile->nr);
+			jumpFiles(optionReverseMovement ? -10 : 10);
 			break;
 			/* }}} */
 		/* BIND: PgDn: Jump 10 images backwards {{{ */
 		case GDK_Page_Down:
-			i = currentFile->nr;
-			do {
-				for(n=0; n<10; n++) {
-					currentFile = currentFile->prev;
-					if(currentFile == NULL) {
-						currentFile = lastFile;
-					}
-					if(i == currentFile->nr) {
-						break;
-					}
-				}
-			} while((!reloadImage()) && i != currentFile->nr);
+			jumpFiles(optionReverseMovement ? 10: -10);
 			break;
 			/* }}} */
 		/* BIND: Escape: Quit {{{ */
@@ -1602,8 +1624,15 @@ gint keyboardCb(GtkWidget *widget, GdkEventKey *event, gpointer data) { /*{{{*/
 					n = -(event->state & GDK_CONTROL_MASK ? 50 : 10);
 				}
 
-				moveX += n;
-				moveY += i;
+				if(optionReverseMovement) {
+					moveX -= n;
+					moveY -= i;
+				}
+				else {
+					moveX += n;
+					moveY += i;
+				}
+
 				resizeAndPosWindow();
 				displayImage();
 			}
@@ -2029,7 +2058,7 @@ int main(int argc, char *argv[]) {
 
 	memset(aliases, 0, sizeof(aliases));
 	opterr = 0;
-	while((option = getopt(optionCount, options, "ifFsSnthrcwqz:P:p:d:a:1:2:3:4:5:6:7:8:9:")) > 0) {
+	while((option = getopt(optionCount, options, "ifFsSRnthrcwqz:P:p:d:a:1:2:3:4:5:6:7:8:9:")) > 0) {
 		switch(option) {
 			/* OPTION: -i: Hide info box */
 			case 'i':
@@ -2052,6 +2081,10 @@ int main(int argc, char *argv[]) {
 			/* OPTION: -S: Follow symlinks */
 			case 'S':
 				optionFollowSymlinks = TRUE;
+				break;
+			/* OPTION: -R: Reverse meaning of cursor keys and Page Up/Down */
+			case 'R':
+				optionReverseMovement = TRUE;
 				break;
 			#ifndef NO_SORTING
 			/* OPTION: -n: Sort all files in natural order */

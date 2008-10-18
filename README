@@ -62,6 +62,7 @@ CONTRIBUTORS
  * David Lindquist
  * Tinoucas
  * John Keeping
+ * Alexandros Diamantidis (Reverse-movement-direction code, fixed code typos)
 
 
 KNOWN PROBLEMS
@@ -95,6 +96,7 @@ CHANGELOG
 
 pqiv 0.8 (WIP)
  * Added `off' as an parameter for -P
+ * Added -R (reverse movement direction)
  
 pqiv 0.7
  * Improved debian compatibility (ie. make deb)

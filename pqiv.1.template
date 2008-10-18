@@ -91,6 +91,11 @@ Defaults to center of screen.
 .B -a <key><new-key>
 Maps <key> to <new-key>. For example, "-a=+" will make "=" an alias for zooming
 in.
+.TP
+.B -R
+Reverse the meaning of the cursor and Page Up/Down keys. For example, pressing
+the "down" cursor key will normally make the image move down. With this option,
+the image will instead move up.
 .\" unless NO_COMMANDS
 .TP
 .B -<n>
