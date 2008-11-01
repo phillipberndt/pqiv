@@ -41,6 +41,7 @@
 #include <errno.h>
 #include <sys/stat.h>
 #include <time.h>
+#include <sys/mman.h>
 #ifndef NO_SORTING
 #include "lib/strnatcmp.h"
 #endif
@@ -542,6 +543,32 @@ gboolean storeImageCb(const char *buf, gsize count, GError **error, gpointer dat
 	else {
 		return FALSE;
 	}
+} /*}}}*/
+int copyFile(char *src, char *dst) { /*{{{*/
+	int fsrc, fdst, rds;
+	char buffer[1024];
+
+	fsrc = open(src, O_RDONLY);
+	if(fsrc == -1) {
+		return -1;
+	}
+	fdst = open(dst, O_RDWR | O_CREAT | O_TRUNC, 0666);
+	if(fdst == -1) {
+		close(fsrc);
+		return -1;
+	}
+
+	while( ((rds = read(fsrc, buffer, 1024)) > 0) &&
+		(rds = write(fdst, buffer, rds) != -1));
+	
+	close(fsrc);
+	close(fdst);
+
+	if(rds == -1) {
+		unlink(dst);
+	}
+
+	return rds;
 } /*}}}*/
 #ifndef NO_COMMANDS
 void runProgram(char *command) { /*{{{*/
@@ -1803,7 +1830,13 @@ gint keyboardCb(GtkWidget *widget, GdkEventKey *event, gpointer data) { /*{{{*/
 			buf = (char*)g_malloc(strlen(buf2) + 15);
 			sprintf(buf, "./.qiv-select/%s", buf2);
 			if(link(currentFile->fileName, buf) != 0) {
-				setInfoText("Failed to save hardlink");
+				/* Failed to link image, try copying it */
+				if(copyFile(currentFile->fileName, buf) != 0) {
+					setInfoText("Failed to save hardlink");
+				}
+				else {
+					setInfoText("Hardlink failed, but copied file");
+				}
 			}
 			else {
 				setInfoText("Hardlink saved");
