@@ -13,7 +13,7 @@ PACKAGE_VERSION:=$(shell awk '/RELEASE/ {print $$3}' pqiv.c | tr -d \" | head -n
 # pqiv
 all: pqiv manpage
 pqiv: 
-	$(CC) $(CFLAGS) `pkg-config --libs --cflags $(REQUIRED_PACKAGES)` -o qiv $(OPTIONFLAGS) pqiv.c
+	$(CC) $(CFLAGS) `pkg-config --cflags $(REQUIRED_PACKAGES)` $(OPTIONFLAGS) pqiv.c `pkg-config --libs $(REQUIRED_PACKAGES)` -o qiv
 debug: 
 	$(CC) $(CGLAGS) -Wall -ggdb -DDEBUG `pkg-config --libs --cflags $(REQUIRED_PACKAGES)` $(OPTIONFLAGS) -o qiv pqiv.c
 
