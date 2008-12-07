@@ -94,7 +94,8 @@ it in pqiv code. Here's what I do:
 
 CHANGELOG
 
-pqiv 0.8 (WIP)
+pqiv 0.8
+ * Added autorotation for digicam images
  * Added `off' as an parameter for -P
  * Added -R (reverse movement direction)
  

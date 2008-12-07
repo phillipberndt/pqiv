@@ -1,5 +1,5 @@
 .\" vim:filetype=groff
-.TH qiv 1 "04 March 2008" "$PACKAGE_VERSION" "qiv manual"
+.TH qiv 1 "07 December 2008" "$PACKAGE_VERSION" "qiv manual"
 .SH NAME
 PQIV \- quick image viewer
 .SH SYNOPSIS
