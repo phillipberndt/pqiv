@@ -44,10 +44,8 @@ INSTALLATION
 
 Usual stuff. ./configure && make && make install
 You'll need
- * gtk+-2.0
- * gthread-2.0
- * pango
- * glib
+ * gtk+-2.0 >= 2.12
+ * Corresponding glib, gthread, gpixbuf versions
 
 
 THANKS
@@ -93,6 +91,8 @@ it in pqiv code. Here's what I do:
 
 
 CHANGELOG
+
+pqiv 0.9 (WIP)
 
 pqiv 0.8
  * Added autorotation for digicam images
