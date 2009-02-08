@@ -942,8 +942,8 @@ inline void scale() { /*{{{*/
 			g_object_unref(scaledImage);
 			scaledImage = NULL;
 		}
-		if(imgx * zoom < 10 || imgy * zoom < 10) {
-			/* Don't zoom below 10x10 pixels */
+		if(imgx > 10 && imgy > 10 && (imgx * zoom < 10 || imgy * zoom < 10)) {
+			/* Don't zoom below 10x10 pixels (except for images that actually are that small) */
 			scaledImage = gdk_pixbuf_scale_simple(currentImage, 10, 10,
 				GDK_INTERP_BILINEAR);
 		}
