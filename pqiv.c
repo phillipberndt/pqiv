@@ -1066,7 +1066,7 @@ gint exposeCb(GtkWidget *widget, GdkEventExpose *event, gpointer data) { /*{{{*/
 	return FALSE;
 } /*}}}*/
 /* Screen changed callback (for transparent window) {{{ */
-static void screenChangeCb(GtkWidget *widget, GdkScreen *old_screen, gpointer userdata) {
+static void alphaScreenChangedCb(GtkWidget *widget, GdkScreen *old_screen, gpointer userdata) {
 	GdkScreen *screen;
 	GdkColormap *colormap;
 	DEBUG1("Screen changed");
@@ -1160,7 +1160,8 @@ void setFullscreen(char fullscreen) { /*{{{*/
 			gtk_main_iteration();
 		}
 		gtk_widget_set_size_request(window, scrx, scry);
-		gtk_window_set_resizable(GTK_WINDOW(window), FALSE);
+		/* This is done by event cb now
+		 * gtk_window_set_resizable(GTK_WINDOW(window), FALSE);*/
 
 		/* Hide cursor */
 		source = gdk_bitmap_create_from_data (NULL, emptyCursor,
@@ -1180,7 +1181,7 @@ void setFullscreen(char fullscreen) { /*{{{*/
 		while(gtk_events_pending()) {
 			gtk_main_iteration();
 		}
-		gtk_window_set_resizable(GTK_WINDOW(window), FALSE);
+		/*gtk_window_set_resizable(GTK_WINDOW(window), FALSE);*/
 		gdk_window_set_cursor(window->window, NULL);
 	}
 	scaledAt = -1;
@@ -1236,7 +1237,7 @@ void resizeAndPosWindow() { /*{{{*/
 		while(gtk_events_pending()) {
 			gtk_main_iteration();
 		}
-		gtk_window_set_resizable(GTK_WINDOW(window), FALSE);
+		/*gtk_window_set_resizable(GTK_WINDOW(window), FALSE);*/
 		if(optionWindowPosition[2] == -1) {
 			gtk_window_move(GTK_WINDOW(window), (scrx - imgx) / 2, (scry - imgy) / 2);
 		}
@@ -1576,7 +1577,7 @@ void jumpFiles(int num) { /* {{{ */
 /* }}} */
 /* Keyboard & mouse event handlers {{{ */
 char mouseScrollEnabled = FALSE;
-gint keyboardCb(GtkWidget *widget, GdkEventKey *event, gpointer data) { /*{{{*/
+gboolean keyboardCb(GtkWidget *widget, GdkEventKey *event, gpointer data) { /*{{{*/
 	/**
 	 * Callback for keyboard events
 	 */
@@ -1692,9 +1693,9 @@ gint keyboardCb(GtkWidget *widget, GdkEventKey *event, gpointer data) { /*{{{*/
 			if(optionHideChessboardLevel < 2) {
 				moveX = moveY = 0;
 				setFullscreen(!isFullscreen);
-				autoScaleFactor();
+				/*autoScaleFactor();
 				resizeAndPosWindow();
-				displayImage();
+				displayImage();*/
 			}
 			break;
 			/* }}} */
@@ -1868,7 +1869,7 @@ gint keyboardCb(GtkWidget *widget, GdkEventKey *event, gpointer data) { /*{{{*/
 	return 0;
 } /*}}}*/
 /* BIND: Drag & Drop: Move image (Fullscreen) and decoration switch {{{ */
-gint mouseButtonCb(GtkWidget *widget, GdkEventButton *event, gpointer data) {
+gboolean mouseButtonCb(GtkWidget *widget, GdkEventButton *event, gpointer data) {
 	/**
 	 * Callback for mouse events
 	 */
@@ -1991,7 +1992,7 @@ gint mouseMotionCb(GtkWidget *widget, GdkEventMotion *event, gpointer data) {
 }
 /* }}} */
 /* BIND: Scroll: Next/previous image {{{ */
-gint mouseScrollCb(GtkWidget *widget, GdkEventScroll *event, gpointer data) {
+gboolean mouseScrollCb(GtkWidget *widget, GdkEventScroll *event, gpointer data) {
 	/**
 	 * Callback for scroll wheel of the mouse
 	 */
@@ -2010,6 +2011,30 @@ gint mouseScrollCb(GtkWidget *widget, GdkEventScroll *event, gpointer data) {
 	return FALSE;
 }
 /* }}} */
+/* }}} */
+/* Event handlers for resize stuff {{{ */
+gboolean configureCb(GtkWidget *widget, GdkEventConfigure *event, gpointer data) {
+	DEBUG1("Received configure-event");
+	gtk_window_set_resizable(GTK_WINDOW(window), FALSE);
+	return FALSE;
+}
+gboolean screenChangedCb(GtkWidget *widget, GdkScreen *previous_screen, gpointer data) {
+	DEBUG1("Received screen-changed-event");
+	autoScaleFactor();
+	resizeAndPosWindow();
+	displayImage();
+	return FALSE;
+}
+gboolean windowStateCb(GtkWidget *widget, GdkEventWindowState *event, gpointer data) {
+	DEBUG1("Received window-state-event");
+	if(event->changed_mask & GDK_WINDOW_STATE_FULLSCREEN) {
+		autoScaleFactor();
+		resizeAndPosWindow();
+		displayImage();
+	}
+	return FALSE;
+}
+
 /* }}} */
 
 int main(int argc, char *argv[]) {
@@ -2367,7 +2392,7 @@ int main(int argc, char *argv[]) {
 	#ifndef NO_COMPOSITING
 	if(optionHideChessboardLevel > 1) {
 		gtk_widget_set_app_paintable(window, TRUE);
-		screenChangeCb(window, NULL, NULL);
+		alphaScreenChangedCb(window, NULL, NULL);
 		gtk_window_set_decorated(GTK_WINDOW(window), FALSE);
 	}
 	#endif
@@ -2385,7 +2410,7 @@ int main(int argc, char *argv[]) {
 	#ifndef NO_COMPOSITING
 	if(optionHideChessboardLevel > 1) {
 		gtk_widget_set_app_paintable(imageWidget, TRUE);
-		screenChangeCb(imageWidget, NULL, NULL);
+		alphaScreenChangedCb(imageWidget, NULL, NULL);
 	}
 	#endif
 	gtk_fixed_put(GTK_FIXED(fixed), imageWidget, 0, 0);
@@ -2419,11 +2444,11 @@ int main(int argc, char *argv[]) {
 		g_signal_connect(window, "expose-event",
 			G_CALLBACK(exposeCb), NULL);
 		g_signal_connect(window, "screen-changed",
-			G_CALLBACK(screenChangeCb), NULL);
+			G_CALLBACK(alphaScreenChangedCb), NULL);
 		g_signal_connect(imageWidget, "expose-event",
 			G_CALLBACK(exposeCb), NULL);
 		g_signal_connect(imageWidget, "screen-changed",
-			G_CALLBACK(screenChangeCb), NULL);
+			G_CALLBACK(alphaScreenChangedCb), NULL);
 	}
 	#endif
 	g_signal_connect(window, "key-press-event",
@@ -2436,9 +2461,15 @@ int main(int argc, char *argv[]) {
 		G_CALLBACK(mouseScrollCb), NULL);
 	g_signal_connect(mouseEventBox, "motion-notify-event",
 		G_CALLBACK(mouseMotionCb), NULL);
-	g_signal_connect (window, "destroy",
+	g_signal_connect(window, "destroy",
 		G_CALLBACK(gtk_main_quit),
 	        &window);
+	g_signal_connect(window, "configure-event",
+		G_CALLBACK(configureCb), NULL);
+	g_signal_connect(window, "screen-changed",
+		G_CALLBACK(screenChangedCb), NULL);
+	g_signal_connect(window, "window-state-event",
+		G_CALLBACK(windowStateCb), NULL);
 	/* }}} */
 	/* Initialize other stuff {{{ */
 	#ifndef NO_INOTIFY

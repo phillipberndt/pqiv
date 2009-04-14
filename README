@@ -68,6 +68,7 @@ KNOWN PROBLEMS
  * Some window managers, especially Beryl, have problems with many commands in
    short intervals. As a resize follows the unfullscreen command immediately,
    the main window could be too big/small upon the unfullscreen command
+   -> This should be fixed with 0.9
  * If you experience problems with file encodings, try setting the environment
    variable G_FILENAME_ENCODING to match your file system's encoding
  * It seems that GTK buffers images in memory even after they are freed. If you
@@ -93,6 +94,9 @@ it in pqiv code. Here's what I do:
 CHANGELOG
 
 pqiv 0.9 (WIP)
+ * Improved reliability in resize/reshape code. Switching to/from fullscreen with
+   Beryl should no longer raise problems
+ * Improved image translation code in fullscreen (Moving the image with the mouse)
 
 pqiv 0.8
  * Added autorotation for digicam images
