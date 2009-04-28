@@ -140,7 +140,7 @@ static char optionFollowSymlinks = FALSE;
 static float optionInitialZoom = 1;
 static int optionWindowPosition[3] = {-1, -1, -1};
 static char optionHideChessboardLevel = 0;
-static char optionReverseMovement = FALSE;
+static char optionReverseMovement = TRUE;
 #ifndef NO_COMMANDS
 static char *optionCommands[] = { NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL };
 #endif
@@ -2147,7 +2147,7 @@ int main(int argc, char *argv[]) {
 				break;
 			/* OPTION: -R: Reverse meaning of cursor keys and Page Up/Down */
 			case 'R':
-				optionReverseMovement = TRUE;
+				optionReverseMovement = !optionReverseMovement;
 				break;
 			#ifndef NO_SORTING
 			/* OPTION: -n: Sort all files in natural order */
