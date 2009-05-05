@@ -4,6 +4,7 @@
 DESTDIR="/"
 PREFIX="/usr"
 OPTIONFLAGS= lib/strnatcmp.c      
+BINARY_NAME="qiv"
 
 # Fixed settings
 REQUIRED_PACKAGES=gtk+-2.0 gthread-2.0 pango glib-2.0
@@ -35,7 +36,7 @@ manpage:
 		if [ "$${MAT}" == "1" ]; then ACT=Stripping; else ACT=Ignoring; fi; \
 		echo "$${ACT} $${REQ}" >&2; \
 		IN=1; \
-	done < pqiv.1.template ) | sed -e 's/$$PACKAGE_VERSION/$(PACKAGE_VERSION)/'  > qiv.1
+	done < pqiv.1.template ) | sed -e 's/$$PACKAGE_VERSION/$(PACKAGE_VERSION)/' -e 's/$$BINARY_NAME/$(BINARY_NAME)/' > qiv.1
 
 # Cleanup
 clean:
@@ -43,13 +44,11 @@ clean:
 
 # Installation and uninstallation
 install:
-	install -D qiv $(DESTDIR)$(PREFIX)/bin/qiv
-	install -D qiv.1 $(DESTDIR)$(PREFIX)/share/man/man1/pqiv.1
-	link $(DESTDIR)$(PREFIX)/share/man/man1/pqiv.1 $(DESTDIR)$(PREFIX)/share/man/man1/qiv.1
+	install -D qiv $(DESTDIR)$(PREFIX)/bin/$(BINARY_NAME)
+	install -D qiv.1 $(DESTDIR)$(PREFIX)/share/man/man1/$(BINARY_NAME).1
 uninstall:
-	rm $(DESTDIR)$(PREFIX)/bin/qiv
-	rm $(DESTDIR)$(PREFIX)/share/man/man1/qiv.1
-	rm $(DESTDIR)$(PREFIX)/share/man/man1/pqiv.1
+	rm $(DESTDIR)$(PREFIX)/bin/$(BINARY_NAME)
+	rm $(DESTDIR)$(PREFIX)/share/man/man1/$(BINARY_NAME).1
 mininstall:
 	install -Ds qiv /usr/local/bin
 
@@ -61,9 +60,8 @@ package:
 	rm -rf pqiv-$(PACKAGE_VERSION)
 deb:
 	mkdir deb-pqiv-$(PACKAGE_VERSION)/
-	install -D qiv deb-pqiv-$(PACKAGE_VERSION)/$(PREFIX)/bin/qiv
-	install -D qiv.1 deb-pqiv-$(PACKAGE_VERSION)/$(PREFIX)/share/man/man1/pqiv.1
-	link deb-pqiv-$(PACKAGE_VERSION)/$(PREFIX)/share/man/man1/pqiv.1 deb-pqiv-$(PACKAGE_VERSION)/$(PREFIX)/share/man/man1/qiv.1
+	install -D qiv deb-pqiv-$(PACKAGE_VERSION)/$(PREFIX)/bin/$(BINARY_NAME)
+	install -D qiv.1 deb-pqiv-$(PACKAGE_VERSION)/$(PREFIX)/share/man/man1/$(BINARY_NAME).1
 	mkdir deb-pqiv-$(PACKAGE_VERSION)/DEBIAN
 	(echo -e "Package: pqiv\nVersion: $(PACKAGE_VERSION)\nSection: graphics\nPriority: optional"; \
 	 echo -ne "Architecture: "; uname -m | sed -e 's/686/386/'; echo -e "Essential: no"; \

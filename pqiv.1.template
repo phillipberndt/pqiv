@@ -3,7 +3,7 @@
 .SH NAME
 PQIV \- quick image viewer
 .SH SYNOPSIS
-.B qiv [options] <file(s) or folder(s)>
+.B $BINARY_NAME [options] <file(s) or folder(s)>
 .SH DESCRIPTION
 PQIV is a really simple image viewer inspired by qiv.
 .SH OPTIONS

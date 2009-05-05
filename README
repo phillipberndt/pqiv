@@ -93,11 +93,14 @@ it in pqiv code. Here's what I do:
 
 CHANGELOG
 
-pqiv 0.9 (WIP)
+pqiv 0.9
  * Improved reliability in resize/reshape code. Switching to/from fullscreen with
    Beryl should no longer raise problems
  * Improved image translation code in fullscreen (Moving the image with the mouse)
- * Made -R default, as many people complained. Use -R to get pre-0.9 behaviour.
+ * Made -R default, as many people complained about the movement direction. Use
+   -R to get pre-0.9 behaviour.
+ * Added a configure option to name the binary "pqiv" and remove "qiv" stuff
+   (to simplify life for Debian maintainers :-)
 
 pqiv 0.8
  * Added autorotation for digicam images
