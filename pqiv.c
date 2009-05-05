@@ -1971,8 +1971,14 @@ gint mouseMotionCb(GtkWidget *widget, GdkEventMotion *event, gpointer data) {
 			return 0;
 		}
 
-		moveX += event->x - scrx;
-		moveY += event->y - scry;
+		if(optionReverseMovement) {
+			moveX -= event->x - scrx;
+			moveY -= event->y - scry;
+		}
+		else {
+			moveX += event->x - scrx;
+			moveY += event->y - scry;
+		}
 		gdk_display_warp_pointer(gdk_display_get_default(),
 			gdk_display_get_default_screen(gdk_display_get_default()), scrx, scry);
 
