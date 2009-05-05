@@ -94,8 +94,8 @@ in.
 .TP
 .B -R
 Reverse the meaning of the cursor and Page Up/Down keys. For example, pressing
-the "down" cursor key will normally make the image move down. With this option,
-the image will instead move up.
+the "down" cursor key will normally make the image move up. With this option,
+the image will instead move down.
 .\" unless NO_COMMANDS
 .TP
 .B -<n>
