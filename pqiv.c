@@ -1155,6 +1155,8 @@ void setFullscreen(char fullscreen) { /*{{{*/
 		while(gtk_events_pending()) {
 			gtk_main_iteration();
 		}
+		/* For users without window managers */
+		gtk_window_move(GTK_WINDOW(window), 0, 0);
 		gdk_window_fullscreen(window->window);
 		while(gtk_events_pending()) {
 			gtk_main_iteration();
@@ -1193,21 +1195,35 @@ gboolean toFullscreenCb(gpointer data) { /*{{{*/
 	 * function (which must be called a few ms. after
 	 * starting the program oO)
 	 */
+	static int callNumber = 0;
 	GdkEventKey keyEvent;
-	DEBUG1("Switch to fullscreen (callback)");
 
-	/* We have to emulate a keypress because of some buggy wms */
-	memset(&keyEvent, 0, sizeof(GdkEventKey));
-	keyEvent.type = GDK_KEY_PRESS;
-	keyEvent.window = window->window;
-	keyEvent.time = time(NULL);
-	keyEvent.keyval = 102;
-	keyEvent.hardware_keycode = 41;
-	keyEvent.length = 1;
-	keyEvent.string = "f";
-	gdk_event_put((GdkEvent*)(&keyEvent));
+	if(callNumber++ == 0) {
+		DEBUG1("Switch to fullscreen (callback)");
 
-	return FALSE;
+		/* We have to emulate a keypress because of some buggy wms */
+		memset(&keyEvent, 0, sizeof(GdkEventKey));
+		keyEvent.type = GDK_KEY_PRESS;
+		keyEvent.window = window->window;
+		keyEvent.time = time(NULL);
+		keyEvent.keyval = 102;
+		keyEvent.hardware_keycode = 41;
+		keyEvent.length = 1;
+		keyEvent.string = "f";
+		gdk_event_put((GdkEvent*)(&keyEvent));
+
+		return TRUE;
+	}
+	else {
+		/* Second call: Needed if window-state-event won't be fired, which
+		 * is the case for X11 screens without WMs.
+		 */
+		autoScaleFactor();
+		resizeAndPosWindow();
+		displayImage();
+
+		return FALSE;
+	}
 } /* }}} */
 void resizeAndPosWindow() { /*{{{*/
 	/**
