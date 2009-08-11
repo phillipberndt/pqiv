@@ -94,6 +94,7 @@ it in pqiv code. Here's what I do:
 CHANGELOG
 
  * Improved compatibility with systems not using a WM
+ * Improved handling of ~/.pqivrc
 
 pqiv 0.9
  * Improved reliability in resize/reshape code. Switching to/from fullscreen with

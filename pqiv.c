@@ -2072,13 +2072,14 @@ int main(int argc, char *argv[]) {
 	char optionSortFiles = FALSE;
 	#endif
 	char optionReadStdin = FALSE;
-	FILE *optionsFile;
 	char **options;
 	char **parameterIterator;
 	int optionCount = 1, i;
 	char **fileFormatExtensionsIterator;
 	GSList *fileFormatsIterator;
 	GString *stdinReader;
+	gint optionFileArgc;
+	gchar **optionFileArgv;
 /* }}} */
 /* glib & threads initialization {{{ */
 	DEBUG1("Debug mode enabled");
@@ -2101,35 +2102,25 @@ int main(int argc, char *argv[]) {
 		}
 		fileName = (char*)g_malloc(strlen(buf + 5) + 9);
 		sprintf(fileName, "%s/.pqivrc", buf + 5);
-		optionsFile = fopen(fileName, "r");
-		
-		if(optionsFile) {
-			while((option = fgetc(optionsFile)) != EOF) {
-				if(optionCount > 250) {
+
+		if(g_file_get_contents(fileName, &buf, NULL, NULL)) {
+			if(!g_shell_parse_argv(buf, &optionFileArgc, &optionFileArgv, NULL)) {
+				die("Failed to parse the options file ~/.pqivrc");
+			}
+			for(i=0; i < optionFileArgc; i++) {
+				options[optionCount] = (char*)malloc(strlen(optionFileArgv[i]));
+				g_stpcpy(options[optionCount], optionFileArgv[i]);
+				if(++optionCount > 250) {
 					die("Too many options; your configuration file "
 						"is restricted to 250 options");
 				}
-				if(option < 33) {
-					/* Ignore control characters / whitespace */
-					continue;
-				}
-				options[optionCount] = (char*)g_malloc(1024);
-				i = 0;
-				do {
-					if(option < 33) {
-						break;
-					}
-					options[optionCount][i++] = option;
-					if(i == 1024) {
-						die("An option in ~/.pqivrc is too long");
-					}
-				} while((option = fgetc(optionsFile)) != EOF);
-				options[optionCount][i] = 0;
-				options[optionCount] = g_realloc(options[optionCount], i);
-				optionCount++;
 			}
-			fclose(optionsFile);
+			// We can't free due to a bug in ubuntu's GTK version
+			// g_strfreev(optionFileArgv);
+			// try ~/.pqivrc = -1 "echo foo bar" to test it
+			buf = NULL;
 		}
+		
 		g_free(fileName);
 		break;
 	}
