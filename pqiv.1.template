@@ -100,7 +100,8 @@ the image will instead move down.
 .TP
 .B -<n>
 Use those options (n \in 0..9) to define a command, which will be executed when
-you press the corresponding key in PQIV.
+you press the corresponding key in PQIV. The last occurance of "$1" will be replaced
+by the current file's name.
 .br
 .po 5
 Prepend the command with

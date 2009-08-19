@@ -571,6 +571,25 @@ int copyFile(char *src, char *dst) { /*{{{*/
 	return rds;
 } /*}}}*/
 #ifndef NO_COMMANDS
+char *prepareCommandCmdline(char *command) { /*{{{*/
+	char *buf, *buf2, *insPos;
+
+	buf2 = g_shell_quote(currentFile->fileName);
+	if((insPos = g_strrstr(command, "$1")) != NULL) {
+		buf = (char*)g_malloc(strlen(command) + strlen(buf2) + 2);
+
+		memcpy(buf, command, insPos - command);
+		sprintf(buf + (insPos - command), "%s%s", buf2, insPos + 2);
+		DEBUG2("Cmd prepared:", buf);
+	}
+	else {
+		buf = (char*)g_malloc(strlen(command) + 2 + strlen(buf2));
+		sprintf(buf, "%s %s", command, buf2);
+	}
+	g_free(buf2);
+
+	return buf;
+} /*}}}*/
 void runProgram(char *command) { /*{{{*/
 	/**
 	 * Execute program "command" on the current
@@ -578,7 +597,7 @@ void runProgram(char *command) { /*{{{*/
 	 * behaves differently, you should read through
 	 * the code before using this function ;)
 	 */
-	char *buf4, *buf3, *buf2, *buf;
+	char *buf4, *buf3, *buf;
 	GtkWidget *tmpWindow, *tmpScroller, *tmpText;
 	FILE *readInformation;
 	GString *infoString;
@@ -592,14 +611,11 @@ void runProgram(char *command) { /*{{{*/
 	if(command[0] == '>') {
 		/* Pipe information {{{ */
 		command = &command[1]; /* Does always exist as command is at least ">\0" */
-		buf2 = g_shell_quote(currentFile->fileName);
-		buf = (char*)g_malloc(strlen(command) + 2 + strlen(buf2));
-		sprintf(buf, "%s %s", command, buf2);
+		buf = prepareCommandCmdline(command);
 		readInformation = popen(buf, "r");
 		if(readInformation == NULL) {
 			g_printerr("Command execution failed for %s\n", command);
 			g_free(buf);
-			g_free(buf2);
 			return;
 		}
 		infoString = g_string_new(NULL);
@@ -609,7 +625,6 @@ void runProgram(char *command) { /*{{{*/
 		}
 		pclose(readInformation);
 		g_free(buf);
-		g_free(buf2);
 		g_free(buf3);
 	
 		/* Display information in a window */
@@ -732,12 +747,9 @@ void runProgram(char *command) { /*{{{*/
 	else {
 		/* Run program {{{ */
 		if(fork() == 0) {
-			buf2 = g_shell_quote(currentFile->fileName);
-			buf = (char*)g_malloc(strlen(command) + 2 + strlen(buf2));
-			sprintf(buf, "%s %s", command, buf2);
+			buf = prepareCommandCmdline(command);
 			system(buf);
 			g_free(buf);
-			g_free(buf2);
 			exit(0);
 		} /* }}} */
 	}
