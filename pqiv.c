@@ -438,7 +438,7 @@ gboolean loadFiles(gchar **iterator) { /*{{{*/
 				continue;
 			}
 			memoryImageLoader = gdk_pixbuf_loader_new();
-			buf = (gchar*)g_malloc(1024);
+			buf = (guchar*)g_malloc(1024);
 			while(TRUE) {
 				i = fread(buf, 1, 1024, stdin);
 				if(i == 0) {
@@ -554,36 +554,29 @@ void runProgram(gchar *command) { /*{{{*/
 	 * behaves differently, you should read through
 	 * the code before using this function ;)
 	 */
-	/* TODO Convert to Glib Pipes */
-	gchar *buf4, *buf3, *buf;
+	gchar *buf3, *buf, *buf2;
 	GtkWidget *tmpWindow, *tmpScroller, *tmpText;
-	FILE *readInformation;
-	GString *infoString;
 	gsize uniTextLength;
 	GdkPixbufLoader *memoryImageLoader = NULL;
 	GdkPixbuf *tmpImage = NULL;
-	gint i, child;
+	gint i;
 	GError *loadError = NULL;
-	gint tmpFileDescriptorsTo[] = {0, 0};
-	gint tmpFileDescriptorsFrom[] = {0, 0};
+	gchar *childArgv[3];
+	gint childStdin; gint childStdout;
+
 	if(command[0] == '>') {
 		/* Pipe information {{{ */
 		command = &command[1]; /* Does always exist as command is at least ">\0" */
-		buf = prepareCommandCmdline(command);
-		readInformation = popen(buf, "r");
-		if(readInformation == NULL) {
-			g_printerr("Command execution failed for %s\n", command);
-			g_free(buf);
+		childArgv[0] = "/bin/sh";
+		childArgv[1] = "-c";
+		childArgv[2] = prepareCommandCmdline(command);
+		childArgv[3] = 0;
+		if(!g_spawn_sync(NULL, childArgv, NULL, 0, NULL, NULL, &buf, &buf2, NULL, NULL)) {
+			g_printerr("Command execution failed for %s:\n", command);
 			return;
 		}
-		infoString = g_string_new(NULL);
-		buf3 = (gchar*)g_malloc(1024);
-		while(fgets(buf3, 1024, readInformation) != NULL) {
-			g_string_append(infoString, buf3);
-		}
-		pclose(readInformation);
-		g_free(buf);
-		g_free(buf3);
+		g_printerr(buf2);
+		g_free(childArgv[2]);
 	
 		/* Display information in a window */
 		tmpWindow = gtk_window_new(GTK_WINDOW_TOPLEVEL);
@@ -602,87 +595,68 @@ void runProgram(gchar *command) { /*{{{*/
 		tmpText = gtk_text_view_new();
 		gtk_container_add(GTK_CONTAINER(tmpScroller), tmpText); 
 		gtk_text_view_set_editable(GTK_TEXT_VIEW(tmpText), FALSE);
-		/* TODO Allow other encodings as well */
-		if(g_utf8_validate(infoString->str, infoString->len, NULL) == FALSE) {
-			buf4 = g_convert(infoString->str, infoString->len, "utf8", "iso8859-1",
-				NULL, &uniTextLength, NULL);
-			gtk_text_buffer_set_text(gtk_text_view_get_buffer(GTK_TEXT_VIEW(tmpText)),
-				buf4, uniTextLength);
-			g_free(buf4);
-		}
-		else {
-			gtk_text_buffer_set_text(gtk_text_view_get_buffer(GTK_TEXT_VIEW(tmpText)),
-				infoString->str, infoString->len);
-		}
+		buf3 = g_locale_to_utf8(buf, strlen(buf), NULL, &uniTextLength, NULL);
+		gtk_text_buffer_set_text(gtk_text_view_get_buffer(GTK_TEXT_VIEW(tmpText)),
+			buf3, uniTextLength);
+		g_free(buf3);
 		gtk_widget_show(tmpText);
 		gtk_widget_show(tmpScroller);
 		gtk_widget_show(tmpWindow);
-		g_string_free(infoString, TRUE);
+		g_free(buf);
 		/* }}} */
 	}
 	else if(command[0] == '|') {
 		/* Pipe data {{{ */
-		command = &command[1];
-		/* Create a pipe */
-		if(pipe(tmpFileDescriptorsTo) == -1) {
-			g_printerr("Failed to create pipes for data exchange\n");
+		childArgv[0] = "/bin/sh";
+		childArgv[1] = "-c";
+		childArgv[2] = &command[1];
+		childArgv[3] = 0;
+
+		if(!g_spawn_async_with_pipes(NULL, childArgv, NULL, G_SPAWN_STDERR_TO_DEV_NULL, NULL, NULL, NULL,
+			&childStdin, &childStdout, NULL, NULL)) {
+			g_printerr("Failed to spawn process %s\n", childArgv[2]);
 			setInfoText("Failure");
 			return;
 		}
-		if(pipe(tmpFileDescriptorsFrom) == -1) {
-			g_printerr("Failed to create pipes for data exchange\n");
-			setInfoText("Failure");
-			close(tmpFileDescriptorsTo[0]);
-			close(tmpFileDescriptorsTo[1]);
-			return;
-		}
-		/* Spawn child process */
-		if((child = fork()) == 0) {
-			dup2(tmpFileDescriptorsFrom[1], STDOUT_FILENO);
-			dup2(tmpFileDescriptorsTo[0], STDIN_FILENO);
-			close(tmpFileDescriptorsFrom[0]); close(tmpFileDescriptorsFrom[1]);
-			close(tmpFileDescriptorsTo[0]); close(tmpFileDescriptorsTo[1]);
-			exit(system(command));
-		}
+
+		// TODO Read and write using Glib IO
+		//
 		/* Store currentImage to the child process'es stdin */
 		if(fork() == 0) {
-			close(tmpFileDescriptorsFrom[0]); close(tmpFileDescriptorsFrom[1]);
-			close(tmpFileDescriptorsTo[0]); 
+			close(childStdout);
 			if(gdk_pixbuf_save_to_callback(currentImage, storeImageCb,
-					&tmpFileDescriptorsTo[1],
+					&childStdin,
 					"png", NULL, NULL) == FALSE) {
 				g_printerr("Failed to save image\n");
-				close(tmpFileDescriptorsFrom[0]); close(tmpFileDescriptorsFrom[1]);
-				close(tmpFileDescriptorsTo[0]); close(tmpFileDescriptorsTo[1]);
+				close(childStdin);
 				setInfoText("Failure");
 				exit(1);
 			}
-			close(tmpFileDescriptorsTo[1]);
+			close(childStdin);
 			exit(0);
 		}
-		fsync(tmpFileDescriptorsTo[1]);
-		close(tmpFileDescriptorsFrom[1]); close(tmpFileDescriptorsTo[0]);
-		close(tmpFileDescriptorsTo[1]);
+		close(childStdin);
+
 		/* Load new image from the child processes stdout */
 		memoryImageLoader = gdk_pixbuf_loader_new();
 		buf = (gchar*)g_malloc(1024);
 		while(TRUE) {
-			if((i = read(tmpFileDescriptorsFrom[0], buf, 1024)) < 1) {
+			if((i = read(childStdout, buf, 1024)) < 1) {
 				break;
 			}
 			if(gdk_pixbuf_loader_write(memoryImageLoader, (guchar*)buf,
 				i, &loadError) == FALSE) {
-				kill(child, SIGTERM);
+				// TODO Kill child
 				g_printerr("Failed to load output image: %s\n", loadError->message);
 				g_error_free(loadError);
 				g_object_unref(memoryImageLoader);
-				close(tmpFileDescriptorsFrom[0]);
+				close(childStdout);
 				g_free(buf);
 				setInfoText("Failure");
 				return;
 			}
 		}
-		close(tmpFileDescriptorsFrom[0]);
+		close(childStdout);
 		g_free(buf);
 		wait(NULL);
 
@@ -712,7 +686,6 @@ void runProgram(gchar *command) { /*{{{*/
 			exit(0);
 		} /* }}} */
 	}
-	/* TODO Are all children terminated or do we have remaining zombies? */
 } /*}}}*/
 #endif
 #ifndef NO_INOTIFY
