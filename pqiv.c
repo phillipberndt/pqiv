@@ -517,32 +517,15 @@ gboolean storeImageCb(const gchar *buf, gsize count, GError **error, gpointer da
 		return FALSE;
 	}
 } /*}}}*/
-int copyFile(gchar *src, gchar *dst) { /*{{{*/
-	/* Standard C function, porting to Glib is currently TODO */
-	int fsrc, fdst, rds;
-	char buffer[1024];
+gboolean copyFile(gchar *src, gchar *dst) { /*{{{*/
+	GMappedFile *sourceFile;
+	gboolean retval;
 
-	fsrc = open(src, O_RDONLY);
-	if(fsrc == -1) {
-		return -1;
-	}
-	fdst = open(dst, O_RDWR | O_CREAT | O_TRUNC, 0666);
-	if(fdst == -1) {
-		close(fsrc);
-		return -1;
-	}
-
-	while( ((rds = read(fsrc, buffer, 1024)) > 0) &&
-		(rds = write(fdst, buffer, rds) != -1));
+	if((sourceFile = g_mapped_file_new(src, FALSE, NULL)) == NULL) return FALSE;
+	retval = g_file_set_contents(dst, g_mapped_file_get_contents(sourceFile), g_mapped_file_get_length(sourceFile), NULL);
+	g_mapped_file_free(sourceFile);
 	
-	close(fsrc);
-	close(fdst);
-
-	if(rds == -1) {
-		unlink(dst);
-	}
-
-	return rds;
+	return retval;
 } /*}}}*/
 #ifndef NO_COMMANDS
 gchar *prepareCommandCmdline(gchar *command) { /*{{{*/
@@ -1837,7 +1820,7 @@ gboolean keyboardCb(GtkWidget *widget, GdkEventKey *event, gpointer data) { /*{{
 			sprintf(buf, "./.qiv-select/%s", buf2);
 			if(link(currentFile->fileName, buf) != 0) {
 				/* Failed to link image, try copying it */
-				if(copyFile(currentFile->fileName, buf) != 0) {
+				if(copyFile(currentFile->fileName, buf) != TRUE) {
 					setInfoText("Failed to save hardlink");
 				}
 				else {
