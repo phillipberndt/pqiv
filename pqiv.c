@@ -547,6 +547,20 @@ gchar *prepareCommandCmdline(gchar *command) { /*{{{*/
 
 	return buf;
 } /*}}}*/
+void _g_kill(GPid pid) { /*{{{*/
+	/* Taken from GNUCash, Copyright 2001-2009 The GnuCash Project, GPL'ed code */
+	#ifdef G_OS_WIN32
+	if (!TerminateProcess((HANDLE) pid, 0)) {
+		gchar *msg = g_win32_error_message(GetLastError());
+		g_warning("Could not kill child process: %s", msg ? msg : "(null)");
+		g_free(msg);
+	}
+	#else /* !G_OS_WIN32 */
+	if (kill(pid, SIGKILL)) {
+		g_warning("Could not kill child process: %s", g_strerror(errno));
+	}
+	#endif /* G_OS_WIN32 */
+} /*}}}*/
 void runProgram(gchar *command) { /*{{{*/
 	/**
 	 * Execute program "command" on the current
@@ -562,6 +576,7 @@ void runProgram(gchar *command) { /*{{{*/
 	gint i;
 	GError *loadError = NULL;
 	gchar *childArgv[3];
+	GPid childPid;
 	gint childStdin; gint childStdout;
 
 	if(command[0] == '>') {
@@ -612,15 +627,13 @@ void runProgram(gchar *command) { /*{{{*/
 		childArgv[2] = &command[1];
 		childArgv[3] = 0;
 
-		if(!g_spawn_async_with_pipes(NULL, childArgv, NULL, G_SPAWN_STDERR_TO_DEV_NULL, NULL, NULL, NULL,
+		if(!g_spawn_async_with_pipes(NULL, childArgv, NULL, G_SPAWN_STDERR_TO_DEV_NULL, NULL, NULL, &childPid,
 			&childStdin, &childStdout, NULL, NULL)) {
 			g_printerr("Failed to spawn process %s\n", childArgv[2]);
 			setInfoText("Failure");
 			return;
 		}
 
-		// TODO Read and write using Glib IO
-		//
 		/* Store currentImage to the child process'es stdin */
 		if(fork() == 0) {
 			close(childStdout);
@@ -646,18 +659,21 @@ void runProgram(gchar *command) { /*{{{*/
 			}
 			if(gdk_pixbuf_loader_write(memoryImageLoader, (guchar*)buf,
 				i, &loadError) == FALSE) {
-				// TODO Kill child
+				_g_kill(childPid);
 				g_printerr("Failed to load output image: %s\n", loadError->message);
 				g_error_free(loadError);
 				g_object_unref(memoryImageLoader);
 				close(childStdout);
 				g_free(buf);
+				g_spawn_close_pid(childPid);
+				wait(NULL);
 				setInfoText("Failure");
 				return;
 			}
 		}
 		close(childStdout);
 		g_free(buf);
+		g_spawn_close_pid(childPid);
 		wait(NULL);
 
 		if(gdk_pixbuf_loader_close(memoryImageLoader, NULL) == TRUE) {
@@ -2021,9 +2037,10 @@ int main(int argc, char *argv[]) {
 	gint optionCount = 1, i;
 	gchar **fileFormatExtensionsIterator;
 	GSList *fileFormatsIterator;
-	GString *stdinReader;
 	gint optionFileArgc;
 	gchar **optionFileArgv;
+	GIOChannel *stdinReader;
+	gsize stdinReaderSize;
 /* }}} */
 /* glib & threads initialization {{{ */
 	DEBUG1("Debug mode enabled");
@@ -2265,21 +2282,17 @@ int main(int argc, char *argv[]) {
 		}
 	}
 	if(optionReadStdin == TRUE) {
-		/* TODO Use Glib IO */
-		stdinReader = g_string_new(NULL);
-		do {
-			option = getchar();
-			if(option == EOF) {
-				break;
-			}
-			if(option == '\n' || option == '\r') {
-				loadFilesAddFile(stdinReader->str);
-				g_string_truncate(stdinReader, 0);
-				continue;
-			}
-			g_string_append_c(stdinReader, option);
-		} while(TRUE);
-		g_string_free(stdinReader, TRUE);
+		stdinReader = g_io_channel_unix_new(0);
+		if(g_get_charset(&constBuf)) {
+			g_io_channel_set_encoding(stdinReader, constBuf, NULL);
+			constBuf = NULL;
+		}
+		while(g_io_channel_read_line(stdinReader, &buf, NULL, &stdinReaderSize, NULL) == G_IO_STATUS_NORMAL) {
+			buf[stdinReaderSize] = 0;
+			loadFilesAddFile(buf);
+			g_free(buf);
+		}
+		g_io_channel_unref(stdinReader);
 	}
 	#ifndef NO_SORTING
 	if(optionSortFiles == TRUE) {
