@@ -69,11 +69,11 @@ static GtkWidget *mouseEventBox;
 static GdkPixbuf *currentImage = NULL;
 static GdkPixbuf *scaledImage = NULL;
 static GdkPixbuf *memoryArgImage = NULL;
-static char emptyCursor[] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+static gchar emptyCursor[] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
 /* Inline images: The chess board like one for transparent images and
  * the application's icon */
-static char *chessBoard = 
+static gchar *chessBoard = 
 		"GdkP"
 		"\0\0\0\263" "\2\1\0\2" "\0\0\0@" "\0\0\0\20" "\0\0\0\20"
 		"\210jjj\377\210\233\233\233\377\210jjj\377\210\233\233\233\377\210jj"
@@ -83,7 +83,7 @@ static char *chessBoard =
 		"\210jjj\377\210\233\233\233\377\210jjj\377\210\233\233\233\377\210jj"
 		"j\377\210\233\233\233\377\210jjj\377\210\233\233\233\377\210jjj\377\210"
 		"\233\233\233\377\210jjj\377\210\233\233\233\377\210jjj\377";
-static char *appIcon =
+static gchar *appIcon =
 		"GdkP"
 		"\0\0\1\15" "\2\1\0\2" "\0\0\0@" "\0\0\0\20" "\0\0\0\20"
 		"\244\0\0\0\0\210\377\226\0\377\207\0\0\0\0\212\377\226\0\377\206\0\0"
@@ -100,8 +100,8 @@ static char *appIcon =
 
 /* Structure for file list building */
 static struct file {
-	char *fileName;
-	int nr;
+	gchar *fileName;
+	guint nr;
 	struct file *next;
 	struct file *prev;
 } firstFile;
@@ -112,51 +112,51 @@ GTree* recursionCheckTree = NULL;
 
 static GTimeVal  programStart;
 #ifdef SECONDS_TILL_LOADING_INFO
-static int       loadFilesChecked = 0;
+static gshort       loadFilesChecked = 0;
 #endif
 
 /* Program settings */
-static char isFullscreen = FALSE;
-static char infoBoxVisible = 0;
-static float scaledAt;
-static float zoom;
+static gboolean isFullscreen = FALSE;
+static gboolean infoBoxVisible = FALSE;
+static gfloat scaledAt;
+static gfloat zoom;
 static enum autoScaleSetting { OFF = 0, ON, ALWAYS } autoScale = ON;
-static int moveX, moveY;
-static int slideshowInterval = 3;
-static char slideshowEnabled = 0;
-static int slideshowID = 0;
-static char aliases[128];
+static gint moveX, moveY;
+static gshort slideshowInterval = 3;
+static gchar slideshowEnabled = 0;
+static guint slideshowID = 0;
+static gchar aliases[128];
 #ifndef NO_INOTIFY
 static int inotifyFd = 0;
 static int inotifyWd = -1;
 #endif
 
 /* Program options */
-static char optionHideInfoBox = FALSE;
+static gboolean optionHideInfoBox = FALSE;
 #ifndef NO_INOTIFY
-static char optionUseInotify = FALSE;
+static gboolean optionUseInotify = FALSE;
 #endif
-static char optionFollowSymlinks = FALSE;
-static float optionInitialZoom = 1;
-static int optionWindowPosition[3] = {-1, -1, -1};
-static char optionHideChessboardLevel = 0;
-static char optionReverseMovement = TRUE;
+static gboolean optionFollowSymlinks = FALSE;
+static gfloat optionInitialZoom = 1;
+static gint optionWindowPosition[3] = {-1, -1, -1};
+static gushort optionHideChessboardLevel = 0;
+static gboolean optionReverseMovement = TRUE;
 #ifndef NO_COMMANDS
-static char *optionCommands[] = { NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL };
+static gchar *optionCommands[] = { NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL };
 #endif
 static GdkInterpType optionInterpolation = GDK_INTERP_BILINEAR;
 
 #ifndef NO_FADING
 /* Stuff for fading between images */
-static char optionFadeImages = FALSE;
+static gboolean optionFadeImages = FALSE;
 struct fadeInfo {
 	GdkPixbuf *pixbuf;
-	int alpha;
+	gushort alpha;
 };
 #endif
 
 /* Function prototypes */
-char reloadImage();
+gboolean reloadImage();
 void autoScaleFactor();
 void resizeAndPosWindow();
 void displayImage();
@@ -176,8 +176,8 @@ void displayImage();
 #define die(text) g_printerr("%s\n", text); exit(1);
 /* }}} */
 /* Info text (Yellow label & title) {{{ */
-char *infoText;
-void setInfoText(char *text) {
+gchar *infoText;
+void setInfoText(gchar *text) {
 	/**
 	 * Set the info text in the yellow box and the title
 	 * line
@@ -185,7 +185,7 @@ void setInfoText(char *text) {
 	 * If text is NULL the "(text)" part will be stripped
 	 */
 	GString *newText = g_string_new(NULL);
-	char *displayName;
+	gchar *displayName;
 	displayName = g_filename_display_name(currentFile->fileName);
 	if(text == NULL) {
 		g_string_printf(newText, "pqiv: %s (%dx%d) %d%% [%d/%d]",
@@ -207,7 +207,7 @@ void setInfoText(char *text) {
 	g_string_free(newText, TRUE);
 }
 /* }}} */
-void helpMessage(char claim) { /* {{{ */
+void helpMessage(gchar claim) { /* {{{ */
 	/**
 	 * Display help message
 	 * If claim != NULL complain about that option.
@@ -310,29 +310,7 @@ void helpMessage(char claim) { /* {{{ */
 } /* }}} */
 /* }}} */
 /* File loading and file structure {{{ */
-char *mgetcwd() { /* {{{ */
-	/**
-	 * Behaves like the non-standard GNU getcwd(NULL) call
-	 */
-	int length = 0;
-	char *retVal = NULL;
-	while(retVal == NULL) {
-		length += 1024;
-		retVal = (char*)g_malloc(length);
-		getcwd(retVal, length);
-		if(retVal == NULL) {
-			if(errno == ERANGE) {
-				free(retVal);
-				length += 1024;
-			}
-			else {
-				die("Failed to get current working directory.");
-			}
-		}
-	}
-	return retVal;
-} /* }}} */
-void loadFilesAddFile(char *file) { /*{{{*/
+void loadFilesAddFile(gchar *file) { /*{{{*/
 	/**
 	 * Append a file to the list of files
 	 */
@@ -342,11 +320,10 @@ void loadFilesAddFile(char *file) { /*{{{*/
 		lastFile->next->prev = lastFile;
 		lastFile = lastFile->next;
 	}
-	lastFile->fileName = (char *)g_malloc(strlen(file) + 1);
-	strcpy(lastFile->fileName, file);
+	lastFile->fileName = g_strdup(file);
 	lastFile->next = NULL;
 } /*}}}*/
-void loadFilesHelper(DIR *cwd) { /*{{{*/
+void loadFilesHelper(GDir *cwd) { /*{{{*/
 	/**
 	 * Traverse through a directory and load every
 	 * image into the list of files.
@@ -358,13 +335,13 @@ void loadFilesHelper(DIR *cwd) { /*{{{*/
 	#ifdef SECONDS_TILL_LOADING_INFO
 	GTimeVal currentTime;
 	#endif
-	struct dirent *dirp;
 	GtkFileFilterInfo validFileTester;
-	DIR *ncwd;
-	char *completeName;
-	char *cwdName;
+	GDir *ncwd;
+	gchar *completeName;
+	gchar *cwdName;
 	gchar *lowerName;
-	cwdName = mgetcwd();
+	const gchar *currentFileName;
+	cwdName = g_get_current_dir();
 	if(optionFollowSymlinks == TRUE) {
 		/* Binary tree for recursion checking */
 		if(g_tree_lookup(recursionCheckTree, cwdName) != NULL) {
@@ -372,7 +349,7 @@ void loadFilesHelper(DIR *cwd) { /*{{{*/
 			g_free(cwdName);
 			return;
 		}
-		g_tree_insert(recursionCheckTree, cwdName, (void*)1);
+		g_tree_insert(recursionCheckTree, cwdName, (gpointer)1);
 	}
 
 	/* Display information message */
@@ -395,38 +372,34 @@ void loadFilesHelper(DIR *cwd) { /*{{{*/
 	#endif
 
 	validFileTester.contains = GTK_FILE_FILTER_FILENAME | GTK_FILE_FILTER_DISPLAY_NAME;
-	while((dirp = readdir(cwd)) != NULL) {
-		if(strcmp(dirp->d_name, ".") == 0 || strcmp(dirp->d_name, "..") == 0) {
-			continue;
-		}
-
+	while((currentFileName = g_dir_read_name(cwd)) != NULL) {
 		/* Try to open (possible) directory */
-		ncwd = opendir(dirp->d_name);
+		ncwd = g_dir_open(currentFileName, 0, NULL);
 		if(ncwd != NULL) {
 			/* Check for symlink */
 			if(optionFollowSymlinks == FALSE &&
-				g_file_test(dirp->d_name, G_FILE_TEST_IS_SYMLINK)) {
-				DEBUG2("Will not traverse into symlinked directory %s\n", dirp->d_name);
-				closedir(ncwd);
+				g_file_test(currentFileName, G_FILE_TEST_IS_SYMLINK)) {
+				DEBUG2("Will not traverse into symlinked directory %s\n", currentFileName);
+				g_dir_close(ncwd);
 				continue;
 			}
 			/* Call this function recursive on the subdirectory */
-			if(chdir(dirp->d_name) == 0) {
+			if(g_chdir(currentFileName) == 0) {
 				loadFilesHelper(ncwd);
 			}
-			chdir(cwdName);
-			closedir(ncwd);
+			g_chdir(cwdName);
+			g_dir_close(ncwd);
 		}
 		else {
 			/* Is a file. Check if it is an image */
-			lowerName = g_ascii_strdown(dirp->d_name, strlen(dirp->d_name));
+			lowerName = g_ascii_strdown(currentFileName, strlen(currentFileName));
 			validFileTester.filename = validFileTester.display_name = lowerName;
 			if(gtk_file_filter_filter(fileFormatsFilter, &validFileTester)) {
 				/* Load file if readable */
-				if(g_access(dirp->d_name, R_OK) == 0) {
-					completeName = (char*)g_malloc(
-						strlen(dirp->d_name) + strlen(cwdName) + 2);
-					sprintf(completeName, "%s/%s", cwdName, dirp->d_name);
+				if(g_access(currentFileName, R_OK) == 0) {
+					completeName = (gchar*)g_malloc(
+						strlen(currentFileName) + strlen(cwdName) + 2);
+					sprintf(completeName, "%s/%s", cwdName, currentFileName);
 					loadFilesAddFile(completeName);
 					g_free(completeName);
 				}
@@ -441,15 +414,15 @@ void loadFilesHelper(DIR *cwd) { /*{{{*/
 		g_free(cwdName);
 	}
 } /*}}}*/
-gboolean loadFiles(char **iterator) { /*{{{*/
+gboolean loadFiles(gchar **iterator) { /*{{{*/
 	/**
 	 * Load all files. The parameter "iterator"
 	 * is an array of char*-filenames.
 	 */
-	int i;
-	DIR *cwd;
-	char *ocwd;
-	char *buf;
+	gint i;
+	GDir *cwd;
+	gchar *ocwd;
+	guchar *buf;
 	GError *loadError = NULL;
 	GdkPixbufLoader *memoryImageLoader = NULL;
 
@@ -465,13 +438,13 @@ gboolean loadFiles(char **iterator) { /*{{{*/
 				continue;
 			}
 			memoryImageLoader = gdk_pixbuf_loader_new();
-			buf = (char*)g_malloc(1024);
+			buf = (gchar*)g_malloc(1024);
 			while(TRUE) {
 				i = fread(buf, 1, 1024, stdin);
 				if(i == 0) {
 					break;
 				}
-				if(gdk_pixbuf_loader_write(memoryImageLoader, (unsigned char*)buf, i,
+				if(gdk_pixbuf_loader_write(memoryImageLoader, buf, i,
 					&loadError) == FALSE) {
 					g_printerr("Failed to load the image from stdin: %s\n", 
 						loadError->message);
@@ -503,16 +476,16 @@ gboolean loadFiles(char **iterator) { /*{{{*/
 			continue;
 			/* }}} */
 		}
-		cwd = opendir(*iterator);
+		cwd = g_dir_open(*iterator, 0, NULL);
 		if(cwd != NULL) {
 			/* Use loadFilesHelper for directories */
-			ocwd = mgetcwd();
-			if(chdir(*iterator) == 0) {
+			ocwd = g_get_current_dir();
+			if(g_chdir(*iterator) == 0) {
 				loadFilesHelper(cwd);
 			}
-			chdir(ocwd);
+			g_chdir(ocwd);
 			g_free(ocwd);
-			closedir(cwd);
+			g_dir_close(cwd);
 		}
 		else {
 			if(g_access(*iterator, R_OK) == 0) {
@@ -523,7 +496,7 @@ gboolean loadFiles(char **iterator) { /*{{{*/
 	}
 	return FALSE;
 } /*}}}*/
-gint windowCloseOnlyCb(GtkWidget *widget, GdkEventKey *event, gpointer data) { /*{{{*/
+gboolean windowCloseOnlyCb(GtkWidget *widget, GdkEventKey *event, gpointer data) { /*{{{*/
 	/**
 	 * Callback function:
 	 * Close window when q is pressed
@@ -531,9 +504,9 @@ gint windowCloseOnlyCb(GtkWidget *widget, GdkEventKey *event, gpointer data) { /
 	if(event->keyval == 'q') {
 		gtk_widget_destroy(widget);
 	}
-	return 0;
+	return TRUE;
 } /* }}} */
-gboolean storeImageCb(const char *buf, gsize count, GError **error, gpointer data) { /*{{{*/
+gboolean storeImageCb(const gchar *buf, gsize count, GError **error, gpointer data) { /*{{{*/
 	/**
 	 * Write "buf" to the file pointed to by "data"
 	 */
@@ -544,7 +517,8 @@ gboolean storeImageCb(const char *buf, gsize count, GError **error, gpointer dat
 		return FALSE;
 	}
 } /*}}}*/
-int copyFile(char *src, char *dst) { /*{{{*/
+int copyFile(gchar *src, gchar *dst) { /*{{{*/
+	/* Standard C function, porting to Glib is currently TODO */
 	int fsrc, fdst, rds;
 	char buffer[1024];
 
@@ -571,43 +545,44 @@ int copyFile(char *src, char *dst) { /*{{{*/
 	return rds;
 } /*}}}*/
 #ifndef NO_COMMANDS
-char *prepareCommandCmdline(char *command) { /*{{{*/
-	char *buf, *buf2, *insPos;
+gchar *prepareCommandCmdline(gchar *command) { /*{{{*/
+	gchar *buf, *buf2, *insPos;
 
 	buf2 = g_shell_quote(currentFile->fileName);
 	if((insPos = g_strrstr(command, "$1")) != NULL) {
-		buf = (char*)g_malloc(strlen(command) + strlen(buf2) + 2);
+		buf = (gchar*)g_malloc(strlen(command) + strlen(buf2) + 2);
 
 		memcpy(buf, command, insPos - command);
 		sprintf(buf + (insPos - command), "%s%s", buf2, insPos + 2);
 		DEBUG2("Cmd prepared:", buf);
 	}
 	else {
-		buf = (char*)g_malloc(strlen(command) + 2 + strlen(buf2));
+		buf = (gchar*)g_malloc(strlen(command) + 2 + strlen(buf2));
 		sprintf(buf, "%s %s", command, buf2);
 	}
 	g_free(buf2);
 
 	return buf;
 } /*}}}*/
-void runProgram(char *command) { /*{{{*/
+void runProgram(gchar *command) { /*{{{*/
 	/**
 	 * Execute program "command" on the current
 	 * image. If command starts with ">" or "|"
 	 * behaves differently, you should read through
 	 * the code before using this function ;)
 	 */
-	char *buf4, *buf3, *buf;
+	/* TODO Convert to Glib Pipes */
+	gchar *buf4, *buf3, *buf;
 	GtkWidget *tmpWindow, *tmpScroller, *tmpText;
 	FILE *readInformation;
 	GString *infoString;
 	gsize uniTextLength;
 	GdkPixbufLoader *memoryImageLoader = NULL;
 	GdkPixbuf *tmpImage = NULL;
-	int i, child;
+	gint i, child;
 	GError *loadError = NULL;
-	int tmpFileDescriptorsTo[] = {0, 0};
-	int tmpFileDescriptorsFrom[] = {0, 0};
+	gint tmpFileDescriptorsTo[] = {0, 0};
+	gint tmpFileDescriptorsFrom[] = {0, 0};
 	if(command[0] == '>') {
 		/* Pipe information {{{ */
 		command = &command[1]; /* Does always exist as command is at least ">\0" */
@@ -619,7 +594,7 @@ void runProgram(char *command) { /*{{{*/
 			return;
 		}
 		infoString = g_string_new(NULL);
-		buf3 = (char*)g_malloc(1024);
+		buf3 = (gchar*)g_malloc(1024);
 		while(fgets(buf3, 1024, readInformation) != NULL) {
 			g_string_append(infoString, buf3);
 		}
@@ -644,6 +619,7 @@ void runProgram(char *command) { /*{{{*/
 		tmpText = gtk_text_view_new();
 		gtk_container_add(GTK_CONTAINER(tmpScroller), tmpText); 
 		gtk_text_view_set_editable(GTK_TEXT_VIEW(tmpText), FALSE);
+		/* TODO Allow other encodings as well */
 		if(g_utf8_validate(infoString->str, infoString->len, NULL) == FALSE) {
 			buf4 = g_convert(infoString->str, infoString->len, "utf8", "iso8859-1",
 				NULL, &uniTextLength, NULL);
@@ -683,7 +659,7 @@ void runProgram(char *command) { /*{{{*/
 			dup2(tmpFileDescriptorsTo[0], STDIN_FILENO);
 			close(tmpFileDescriptorsFrom[0]); close(tmpFileDescriptorsFrom[1]);
 			close(tmpFileDescriptorsTo[0]); close(tmpFileDescriptorsTo[1]);
-			_exit(system(command));
+			exit(system(command));
 		}
 		/* Store currentImage to the child process'es stdin */
 		if(fork() == 0) {
@@ -696,22 +672,22 @@ void runProgram(char *command) { /*{{{*/
 				close(tmpFileDescriptorsFrom[0]); close(tmpFileDescriptorsFrom[1]);
 				close(tmpFileDescriptorsTo[0]); close(tmpFileDescriptorsTo[1]);
 				setInfoText("Failure");
-				_exit(1);
+				exit(1);
 			}
 			close(tmpFileDescriptorsTo[1]);
-			_exit(0);
+			exit(0);
 		}
 		fsync(tmpFileDescriptorsTo[1]);
 		close(tmpFileDescriptorsFrom[1]); close(tmpFileDescriptorsTo[0]);
 		close(tmpFileDescriptorsTo[1]);
 		/* Load new image from the child processes stdout */
 		memoryImageLoader = gdk_pixbuf_loader_new();
-		buf = (char*)g_malloc(1024);
+		buf = (gchar*)g_malloc(1024);
 		while(TRUE) {
 			if((i = read(tmpFileDescriptorsFrom[0], buf, 1024)) < 1) {
 				break;
 			}
-			if(gdk_pixbuf_loader_write(memoryImageLoader, (unsigned char*)buf,
+			if(gdk_pixbuf_loader_write(memoryImageLoader, (guchar*)buf,
 				i, &loadError) == FALSE) {
 				kill(child, SIGTERM);
 				g_printerr("Failed to load output image: %s\n", loadError->message);
@@ -753,6 +729,7 @@ void runProgram(char *command) { /*{{{*/
 			exit(0);
 		} /* }}} */
 	}
+	/* TODO Are all children terminated or do we have remaining zombies? */
 } /*}}}*/
 #endif
 #ifndef NO_INOTIFY
@@ -816,8 +793,8 @@ void sortFiles() {
 	 * the string pointers?!
 	 */
 	DEBUG1("Sort");
-	int i = 0;
-	int fileCount = lastFile->nr;
+	gint i = 0;
+	gint fileCount = lastFile->nr;
 	/* Create a copy of the firstFile structure (which is not dynamically
 	 * allocated) */
 	struct file *tmpStore = g_new(struct file, 1);
@@ -852,14 +829,14 @@ void sortFiles() {
 /* }}} */
 /*}}}*/
 /* Load images and modify them {{{ */
-char loadImage() { /*{{{*/
+gboolean loadImage() { /*{{{*/
 	/**
 	 * Load an image and display it
 	 */
 	GdkPixbuf *tmpImage;
 	GdkPixbuf *chessBoardBuf;
 	GError *error = NULL;
-	int i, n, o, p;
+	gint i, n, o, p;
 
 	DEBUG2("loadImage", currentFile->fileName);
 	if(strcmp(currentFile->fileName, "-") == 0) {
@@ -942,7 +919,7 @@ inline void scale() { /*{{{*/
 	 * This function uses "scaledAt" and "scaledImage"
 	 * for caching.
 	 */
-	int imgx, imgy;
+	gint imgx, imgy;
 
 	if(scaledAt != zoom) {
 		DEBUG1("Scale");
@@ -973,7 +950,7 @@ void forceAutoScaleFactor(enum autoScaleSetting upDown) { /*{{{*/
 	 * Set "zoom" to an optimal value according
 	 * to the window/screen size
 	 */
-	int imgx, imgy, scrx, scry, rem;
+	gint imgx, imgy, scrx, scry, rem;
 	GdkScreen *screen;
 
 	screen = gtk_widget_get_screen(window);
@@ -1026,7 +1003,7 @@ void autoScaleFactor() { /*{{{*/
 	
 	forceAutoScaleFactor(autoScale);
 } /*}}}*/
-void scaleBy(float add) { /*{{{*/
+void scaleBy(gfloat add) { /*{{{*/
 	/*
 	 * Change zoom factor by "add"
 	 */
@@ -1034,7 +1011,7 @@ void scaleBy(float add) { /*{{{*/
 	zoom += add;
 	scale();
 } /*}}}*/
-void flip(char horizontal) { /*{{{*/
+void flip(gboolean horizontal) { /*{{{*/
 	/*
 	 * Flip the image
 	 * You'll have to regenerate the scaled image!
@@ -1047,7 +1024,7 @@ void flip(char horizontal) { /*{{{*/
 
 	scaledAt = -1;
 } /*}}}*/
-void rotate(char left) { /*{{{*/
+void rotate(gboolean left) { /*{{{*/
 	/*
 	 * Rotate the image
 	 * You'll have to regenerate the scaled image!
@@ -1063,7 +1040,7 @@ void rotate(char left) { /*{{{*/
 /* }}} */
 /* Draw image to screen {{{ */
 #ifndef NO_COMPOSITING
-gint exposeCb(GtkWidget *widget, GdkEventExpose *event, gpointer data) { /*{{{*/
+gboolean exposeCb(GtkWidget *widget, GdkEventExpose *event, gpointer data) { /*{{{*/
 	/**
 	 * Taken from API documentation on developer.gnome.org
 	 * For real alpha :)
@@ -1100,7 +1077,7 @@ gboolean fadeOut(gpointer data) { /*{{{*/
 	 * Timeout callback for fading between two images
 	 */
 	struct fadeInfo *fadeStruct = (struct fadeInfo *)data;
-	int imgx, imgy;
+	gint imgx, imgy;
 	GdkPixbuf *fadeBuf;
 	imgx = gdk_pixbuf_get_width(fadeStruct->pixbuf);
 	imgy = gdk_pixbuf_get_height(fadeStruct->pixbuf);
@@ -1148,14 +1125,14 @@ void fadeImage(GdkPixbuf *image) { /*{{{*/
 } /*}}}*/
 /* }}} */
 #endif
-void setFullscreen(char fullscreen) { /*{{{*/
+void setFullscreen(gboolean fullscreen) { /*{{{*/
 	/**
 	 * Change to fullscreen view (and back)
 	 */
 	GdkCursor *cursor;
 	GdkPixmap *source;
 	GdkScreen *screen;
-	int scrx, scry;
+	gint scrx, scry;
 
 	DEBUG1("Fullscreen");
 	if(fullscreen == TRUE) {
@@ -1242,7 +1219,7 @@ void resizeAndPosWindow() { /*{{{*/
 	 * Resize the window and place it centered
 	 * on the screen
 	 */
-	int imgx, imgy, scrx, scry;
+	gint imgx, imgy, scrx, scry;
 	GdkScreen *screen;
 	DEBUG1("Resize");
 
@@ -1294,7 +1271,7 @@ void displayImage() { /*{{{*/
 	/* Draw image */
 	gtk_image_set_from_pixbuf(GTK_IMAGE(imageWidget), scaledImage);
 } /*}}}*/
-char reloadImage() { /*{{{*/
+gboolean reloadImage() { /*{{{*/
 	/**
 	 * In fact, not only reload but also used to load images
 	 */
@@ -1372,8 +1349,8 @@ gboolean doJumpDialog_searchListFilter(GtkTreeModel *model, GtkTreeIter *iter, g
 	 * List filter function for the jump dialog
 	 */
 	GValue colData;
-	char *entryText = (char*)gtk_entry_get_text(GTK_ENTRY(data)); /* (Must not be freed here) */
-	char *compareIn, *compareSearch;
+	gchar *entryText = (gchar*)gtk_entry_get_text(GTK_ENTRY(data)); /* (Must not be freed here) */
+	gchar *compareIn, *compareSearch;
 	gboolean retVal;
 
 	if(entryText[0] == 0) {
@@ -1429,7 +1406,7 @@ void doJumpDialog_openImage(GtkTreeModel *model, GtkTreePath *path, GtkTreeIter 
 	GValue colData;
 	GtkWidget *dlgWindow;
 	struct file *oldIndex;
-	int jumpTo;
+	gint jumpTo;
 	memset(&colData, 0, sizeof(GValue));
 	gtk_tree_model_get_value(model, iter, 0, &colData);
 	jumpTo = g_value_get_int(&colData); /* (Must not be freed here) */
@@ -1471,7 +1448,7 @@ inline void doJumpDialog() { /* {{{ */
 	GtkCellRenderer *searchListRenderer0;
 	GtkCellRenderer *searchListRenderer1;
 	struct file *tmpFileIndex;
-	char *tmpStr;
+	gchar *tmpStr;
 	DEBUG1("Jump dialog");
 
 	/* Create dialog box */
@@ -1571,21 +1548,21 @@ inline void doJumpDialog() { /* {{{ */
 	g_object_unref(searchListFilter);
 	
 } /* }}} */
-void jumpFiles(int num) { /* {{{ */
-	int i, n, count, forwards;
+void jumpFiles(gint num) { /* {{{ */
+	gint i, n, count, forward;
 
 	if(num < 0) {
 		count = -num;
-		forwards = FALSE;
+		forward = FALSE;
 	} else {
 		count = num;
-		forwards = TRUE;
+		forward = TRUE;
 	}
 
 	i = currentFile->nr;
 	do {
 		for(n=0; n<count; n++) {
-			if(forwards) {
+			if(forward) {
 				currentFile = currentFile->next;
 				if(currentFile == NULL) {
 					currentFile = &firstFile;
@@ -1604,14 +1581,14 @@ void jumpFiles(int num) { /* {{{ */
 } /* }}} */
 /* }}} */
 /* Keyboard & mouse event handlers {{{ */
-char mouseScrollEnabled = FALSE;
+gboolean mouseScrollEnabled = FALSE;
 gboolean keyboardCb(GtkWidget *widget, GdkEventKey *event, gpointer data) { /*{{{*/
 	/**
 	 * Callback for keyboard events
 	 */
-	int i = 0, n = 0;
-	float savedZoom;
-	char *buf, *buf2;
+	gint i = 0, n = 0;
+	gfloat savedZoom;
+	gchar *buf, *buf2;
 	#ifdef DEBUG
 		g_print("(%04d) %-20s Keyboard: '%c' (%d), %d\n",
 			__LINE__, G_STRFUNC,
@@ -1901,7 +1878,7 @@ gboolean mouseButtonCb(GtkWidget *widget, GdkEventButton *event, gpointer data) 
 	/**
 	 * Callback for mouse events
 	 */
-	GdkScreen *screen; int scrx, scry, i;
+	GdkScreen *screen; gint scrx, scry, i;
 	static guint32 timeOfButtonPress;
 	if(event->button == 1) {
 		/* Button 1 for scrolling */
@@ -1985,7 +1962,7 @@ gint mouseMotionCb(GtkWidget *widget, GdkEventMotion *event, gpointer data) {
 	 * Callback for mouse motion
 	 * (Moving & zooming)
 	 */
-	GdkScreen *screen; int scrx, scry;
+	GdkScreen *screen; gint scrx, scry;
 	if(mouseScrollEnabled == FALSE) {
 		return 0;
 	}
@@ -1994,7 +1971,7 @@ gint mouseMotionCb(GtkWidget *widget, GdkEventMotion *event, gpointer data) {
 		scrx = gdk_screen_get_width(screen) / 2;
 		scry = gdk_screen_get_height(screen) / 2;
 
-		// Don't perform too small movement (Improves performance a lot!)
+		/* Don't perform too small movement (Improves performance a lot!) */
 		if(abs(event->x - scrx) + abs(event->y - scry) < 4) {
 			return 0;
 		}
@@ -2011,7 +1988,6 @@ gint mouseMotionCb(GtkWidget *widget, GdkEventMotion *event, gpointer data) {
 			gdk_display_get_default_screen(gdk_display_get_default()), scrx, scry);
 
 		resizeAndPosWindow();
-		// displayImage();
 	}
 	#ifndef NO_COMPOSITING
 	else if(optionHideChessboardLevel == 3) {
@@ -2030,7 +2006,7 @@ gboolean mouseScrollCb(GtkWidget *widget, GdkEventScroll *event, gpointer data) 
 	/**
 	 * Callback for scroll wheel of the mouse
 	 */
-	int i;
+	gint i;
 	if(event->direction > 1) {
 		/* Only vertical scrolling */
 		return 0;
@@ -2075,19 +2051,19 @@ int main(int argc, char *argv[]) {
 /* Variable definitions {{{ */
 	GdkColor color;
 	GtkWidget *fileChooser;
-	char option;
-	char **envP;
-	char *fileName;
-	char *buf;
-	char optionFullScreen = FALSE;
+	gchar option;
+	gchar *fileName;
+	gchar *buf;
+	const gchar *constBuf;
+	gchar optionFullScreen = FALSE;
 	#ifndef NO_SORTING	
-	char optionSortFiles = FALSE;
+	gchar optionSortFiles = FALSE;
 	#endif
-	char optionReadStdin = FALSE;
-	char **options;
-	char **parameterIterator;
-	int optionCount = 1, i;
-	char **fileFormatExtensionsIterator;
+	gchar optionReadStdin = FALSE;
+	gchar **options;
+	gchar **parameterIterator;
+	gint optionCount = 1, i;
+	gchar **fileFormatExtensionsIterator;
 	GSList *fileFormatsIterator;
 	GString *stdinReader;
 	gint optionFileArgc;
@@ -2099,21 +2075,17 @@ int main(int argc, char *argv[]) {
 	g_thread_init(NULL);
 	gdk_threads_init();
 	if(gtk_init_check(&argc, &argv) == FALSE) {
-		die("Failed to open X11 Display.");
+		die("Failed to open X11 display.");
 	}
 	g_get_current_time(&programStart);
 /* }}} */
 	/* Command line and configuration parsing {{{ */
-	envP = environ;
-	options = (char**)g_malloc((argc + 251) * sizeof(char*));
+	options = (gchar**)g_malloc((argc + 251) * sizeof(gchar*));
 	options[0] = argv[0];
 	#ifndef NO_CONFIG_FILE
-	while((buf = *envP++) != NULL) {
-		if(strncmp(buf, "HOME=", 5) != 0) {
-			continue;
-		}
-		fileName = (char*)g_malloc(strlen(buf + 5) + 9);
-		sprintf(fileName, "%s/.pqivrc", buf + 5);
+	if((constBuf = g_getenv("HOME")) != NULL) {
+		fileName = (char*)g_malloc(strlen(constBuf) + 9);
+		sprintf(fileName, "%s/.pqivrc", constBuf + 5);
 
 		if(g_file_get_contents(fileName, &buf, NULL, NULL)) {
 			if(!g_shell_parse_argv(buf, &optionFileArgc, &optionFileArgv, NULL)) {
@@ -2127,14 +2099,13 @@ int main(int argc, char *argv[]) {
 						"is restricted to 250 options");
 				}
 			}
-			// We can't free due to a bug in ubuntu's GTK version
-			// g_strfreev(optionFileArgv);
-			// try ~/.pqivrc = -1 "echo foo bar" to test it
+			/* We can't free due to a bug in ubuntu's GTK version
+			   g_strfreev(optionFileArgv);
+			   try ~/.pqivrc = -1 "echo foo bar" to test it */
 			buf = NULL;
 		}
 		
 		g_free(fileName);
-		break;
 	}
 	#endif
 	for(i=1; i<argc; i++) {
@@ -2260,10 +2231,10 @@ int main(int argc, char *argv[]) {
 				break;
 			/* OPTION: -a nf: Define n as a keyboard alias for f */
 			case 'a':
-				if((unsigned char)optarg[0] > 128) {
+				if((guchar)optarg[0] > 128) {
 					die("Can't define aliases for non ASCII characters.");
 				}
-				aliases[(unsigned int)optarg[0]] = optarg[1];
+				aliases[(guint)optarg[0]] = optarg[1];
 				break;
 			#ifndef NO_COMMANDS
 			/* OPTION: -<n> s: Set command number n (1-9) to s */
@@ -2275,8 +2246,7 @@ int main(int argc, char *argv[]) {
 				if(optionCommands[i] != NULL) {
 					g_free(optionCommands[i]);
 				}
-				optionCommands[i] = (char*)g_malloc(strlen(optarg) + 1);
-				strcpy(optionCommands[i], optarg);
+				optionCommands[i] = g_strdup((gchar*)optarg);
 				break;
 			/* OPTION: -q: Use the qiv-command script for commands */
 			case 'q':
@@ -2284,8 +2254,7 @@ int main(int argc, char *argv[]) {
 					if(optionCommands[i] != NULL) {
 						g_free(optionCommands[i]);
 					}
-					optionCommands[i] = (char*)g_malloc(14);
-					memcpy(optionCommands[i], "qiv-command 0", 14);
+					optionCommands[i] = g_strdup("qiv-command 0");
 					optionCommands[i][12] += i;
 				}
 				break;
@@ -2308,7 +2277,7 @@ int main(int argc, char *argv[]) {
 		fileFormatExtensionsIterator = gdk_pixbuf_format_get_extensions(
 			fileFormatsIterator->data);
 		while(*fileFormatExtensionsIterator != NULL) {
-			buf = (char*)g_malloc(strlen(*fileFormatExtensionsIterator) + 3);
+			buf = (gchar*)g_malloc(strlen(*fileFormatExtensionsIterator) + 3);
 			sprintf(buf, "*.%s", *fileFormatExtensionsIterator);
 			gtk_file_filter_add_pattern(fileFormatsFilter, buf);
 			g_free(buf);
@@ -2340,6 +2309,7 @@ int main(int argc, char *argv[]) {
 		}
 	}
 	if(optionReadStdin == TRUE) {
+		/* TODO Use Glib IO */
 		stdinReader = g_string_new(NULL);
 		do {
 			option = getchar();
