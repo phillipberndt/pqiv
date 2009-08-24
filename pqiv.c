@@ -590,7 +590,7 @@ void runProgram(gchar *command) { /*{{{*/
 			g_printerr("Command execution failed for %s:\n", command);
 			return;
 		}
-		g_printerr(buf2);
+		g_printerr("%s", buf2);
 		g_free(childArgv[2]);
 	
 		/* Display information in a window */
