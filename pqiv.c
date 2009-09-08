@@ -1054,7 +1054,12 @@ gboolean fadeOut(gpointer data) { /*{{{*/
 	imgx = gdk_pixbuf_get_width(fadeStruct->pixbuf);
 	imgy = gdk_pixbuf_get_height(fadeStruct->pixbuf);
 
-	fadeStruct->alpha -= 20;
+	if(fadeStruct->alpha > 20) {
+		fadeStruct->alpha -= 20;
+	}
+	else {
+		fadeStruct->alpha = 0;
+	}
 	if(fadeStruct->alpha > 0 && imgx == gdk_pixbuf_get_width(scaledImage) &&
 		imgy == gdk_pixbuf_get_height(scaledImage)) {
 		
