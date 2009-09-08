@@ -1,43 +1,43 @@
 PQIV README
-
-WHY NOT USE QIV?
-
-qiv (http://www.klografx.net/qiv/index2.html) is a great image viewer, but it
-does not use gtk2 but imlib for image handling. This is bad, because many
-distributions (well, at least gentoo) do not offer this library anymore as it's
-quite old and not maintained anymore.
-
+-------------------------------------------------------------------------------
 
 ABOUT PQIV
 
-When the first release of pqiv was written, I used python, hence the name. I
-expected somebody else to write a c-rewrite of qiv, so I didn't really care
-about that. About one month later nothing had happened yet, so I did this on my
-own. Starting from 0.4 pqiv means "pretty quick image viewer", written in pure
-c, using gtk+-2.0.
+Originally, PQIV was written as a drop-in replacement for QIV
+(http://spiegl.de/qiv/), as QIV was unmaintained and used imlib, a deprecated
+library, which was to be removed from Gentoo Linux. The first release was not
+more than a Python script, hence the name. After some month I realized that
+nobody would do a better version, so I did it myself.  Now, PQIV is a (modulo
+some small extras) full featured clone of QIV written in C using GTK-2 and
+GLIB-2.
 
-Now the program is more or less feature complete. If you miss something either
-look for one of those big image viewers or pass me an email.
+When Debian decided to do the same step regarding imlib, a new developer stepped
+in for QIV's klografx.net team and updated QIV to use GDK-2 and imlib-2. As of
+May 2009, both programs are useable again and their features are likely to
+diverge.
 
 
 FEATURES
 
-Thanks to Rene Saarsoo <nene ät triin döt net>, who suggested nearly all of the
-new 0.4 features. He also implemented most of them into the old python code,
-so ask him if you're interested in another python'ish version.
-
-Features include:
- * Fullscreen
- * Slideshow
- * Rotate / Flip
- * (Automatic/manual) Zoom
- * Move by drag & drop in fullscreen
- * Keep preferences in a configuration file
- * Rather small executable (~36k), low ram consumtion, quick
- * Execute predefined commands, pipe images through them or
-   display their output
- * Real transparency
- * Fade between images
+Originating from qiv:
+ * moving & zooming image in fullscreen mode.
+ * fullscreen viewing with a great statusbar
+ * external "qiv-command" program support
+ * real transparency
+ * maxpect (zoom to screen size while preserving aspect ratio)
+ * scale_down (scale down to big images to fit screen size)
+ * slideshow (with random order if you want)
+ * flip horizontal/vertical, rotate left/right
+ * jump to image number x
+Unique features:
+ * fade between images
+ * better transparency handling
+ * ability to place the window at arbitrary positions on the desktop and remove
+   the title bar
+ * define custom keyboard aliases
+ * configuration file support
+ * external commands support pipelining images
+ * search in argument list
 
 
 INSTALLATION
@@ -46,6 +46,8 @@ Usual stuff. ./configure && make && make install
 You'll need
  * gtk+-2.0 >= 2.12
  * Corresponding glib, gthread, gpixbuf versions
+
+If you're compiling under cygwin, you'll have to use --no-inotify for ./configure
 
 
 THANKS
@@ -60,15 +62,12 @@ CONTRIBUTORS
  * David Lindquist
  * Tinoucas
  * John Keeping
+ * Rene Saarsoo
  * Alexandros Diamantidis (Reverse-movement-direction code, fixed code typos)
 
 
 KNOWN PROBLEMS
 
- * Some window managers, especially Beryl, have problems with many commands in
-   short intervals. As a resize follows the unfullscreen command immediately,
-   the main window could be too big/small upon the unfullscreen command
-   -> This should be fixed with 0.9
  * If you experience problems with file encodings, try setting the environment
    variable G_FILENAME_ENCODING to match your file system's encoding
  * It seems that GTK buffers images in memory even after they are freed. If you
@@ -88,14 +87,16 @@ it in pqiv code. Here's what I do:
  * }\nelse {
  * function(\n\tparameters,\n\t..\n)
  * I indent preprocessor stuff whereever I think it might improve readability
- * Variable names are capitalized the java way (eachNewWordStartsCapitalized)
+ * Variable names are camelCase
 
 
 CHANGELOG
 
+pqiv 0.10-devel
  * Improved compatibility with systems not using a WM
  * Improved handling of ~/.pqivrc
- * Commands may now contain $1 to specify filename position
+ * -<n> supports inserting the filename at arbitrary positions
+ * Replaced most algorithms with corresponding GLib functions
 
 pqiv 0.9
  * Improved reliability in resize/reshape code. Switching to/from fullscreen with

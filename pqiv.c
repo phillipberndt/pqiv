@@ -1,8 +1,8 @@
 /**
- * vim:ft=c:fileencoding=utf-8:fdm=marker:tabstop=8
+ * vim:ft=c:fileencoding=utf-8:fdm=marker:ts=8:noet
  *
  * pqiv - pretty quick image viewer
- * Copyright (c) Phillip Berndt, 2007
+ * Copyright (c) Phillip Berndt, 2007-2009
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
