@@ -251,6 +251,7 @@ void helpMessage(gchar claim) { /* {{{ */
 		" -S             Follow symlinks \n"
                 #ifndef NO_SORTING
                 " -n             Sort all files in natural order \n"
+		"                Use twice to shuffle files \n"
                 #endif
                 " -d n           Slideshow interval \n"
                 " -t             Scale images up to fill the whole screen \n"
@@ -739,63 +740,32 @@ void inotifyCb(gpointer data, gint source_fd, GdkInputCondition condition) { /*{
 #endif
 /* File sorting {{{ */
 #ifndef NO_SORTING
-int sortFilesCompare(const void *f1, const void *f2) {
-	/**
-	 * Compare function for qsort
-	 *
-	 * This is quite complex oO
-	 * qsort gives me pointers to the array elements,
-	 * which are pointers themselves
-	 */
-	return strnatcasecmp(
-		(*(struct file **)f1)->fileName,
-		(*(struct file **)f2)->fileName
-		);
+int sortFilesRandom(const void *f1, const void *f2) {
+	return rand() > RAND_MAX / 2 ? 1 : -1;
 }
-void sortFiles() {
+int sortFilesCompare(const void *f1, const void *f2) {
+	return strnatcasecmp(*(const char**)f1, *(const char**)f2);
+}
+void sortFiles(int (*compareFunction)(const void*, const void*)) {
 	/**
 	 * Sort the file list
 	 */
-
-	/* TODO
-	 * Find a better method for this. Atm the code fills an array with
-	 * all elements, qsorts it and relinks all elements. It should be
-	 * possible to avoid the array or at least the linking without
-	 * having to write a new qsort implementation. Maybe something with
-	 * the string pointers?!
-	 */
-	DEBUG1("Sort");
-	gint i = 0;
-	gint fileCount = lastFile->nr;
-	/* Create a copy of the firstFile structure (which is not dynamically
-	 * allocated) */
-	struct file *tmpStore = g_new(struct file, 1);
-	memcpy(tmpStore, &firstFile, sizeof(struct file));
-	struct file *iterator = tmpStore;
-	if(iterator->next != NULL) {
-		iterator->next->prev = iterator;
-	}
-	/* Create an array of pointers to all files */
-	struct file **files = g_new(struct file*, fileCount + 1);
+	struct file *iterator = &firstFile;
+	gchar **fileNamePointerList;
+	DEBUG1("Sorting files");
+	
+	fileNamePointerList = (gchar **)g_malloc(sizeof(gchar*) * (lastFile->nr + 1));
 	do {
-		files[i++] = iterator;
+		fileNamePointerList[iterator->nr] = iterator->fileName;
 	} while((iterator = iterator->next) != NULL);
-	/* qsort that array */
-	qsort(files, lastFile->nr + 1, sizeof(struct file*), sortFilesCompare);
-	/* Renumber and relink the list */
-	lastFile = files[fileCount];
-	for(i=0; i<=fileCount; i++) {
-		files[i]->nr = i;
-		files[i]->prev = (i == 0 ? NULL : files[i-1]);
-		files[i]->next = (i == fileCount ? NULL : files[i+1]);
-	}
-	/* Copy the firstFile structure back */
-	memcpy(&firstFile, files[0], sizeof(struct file));
-	if(firstFile.next != NULL) {
-		files[1]->prev = &firstFile;
-	}
-	/* Free the temporary copy */
-	g_free(files[0]);
+	qsort(fileNamePointerList, lastFile->nr + 1, sizeof(gchar*), compareFunction);
+	iterator = &firstFile;
+	do {
+		iterator->fileName = fileNamePointerList[iterator->nr];
+	} while((iterator = iterator->next) != NULL);
+	g_free(fileNamePointerList);
+
+	DEBUG1("Done");
 }
 #endif
 /* }}} */
@@ -2029,7 +1999,7 @@ int main(int argc, char *argv[]) {
 	const gchar *constBuf;
 	gchar optionFullScreen = FALSE;
 	#ifndef NO_SORTING	
-	gchar optionSortFiles = FALSE;
+	gint optionSortFiles = 0;
 	#endif
 	gchar optionReadStdin = FALSE;
 	gchar **options;
@@ -2120,8 +2090,9 @@ int main(int argc, char *argv[]) {
 				break;
 			#ifndef NO_SORTING
 			/* OPTION: -n: Sort all files in natural order */
+			/* ADD: Use twice to shuffle files */
 			case 'n':
-				optionSortFiles = TRUE;
+				optionSortFiles = optionSortFiles == 1 ? 2 : 1;
 				break;
 			#endif
 			/* OPTION: -d n: Slideshow interval */
@@ -2295,8 +2266,12 @@ int main(int argc, char *argv[]) {
 		g_io_channel_unref(stdinReader);
 	}
 	#ifndef NO_SORTING
-	if(optionSortFiles == TRUE) {
-		sortFiles();
+	if(optionSortFiles == 1) {
+		sortFiles(sortFilesCompare);
+	}
+	else if(optionSortFiles == 2) {
+		srand((unsigned)time(NULL));
+		sortFiles(sortFilesRandom);
 	}
 	#endif
 	if(currentFile->fileName == NULL) {
