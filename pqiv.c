@@ -1067,6 +1067,12 @@ void fadeImage(GdkPixbuf *image) { /*{{{*/
 } /*}}}*/
 /* }}} */
 #endif
+inline void handlePendingEvents() { /*{{{*/
+	int i = 0;
+	while(gtk_events_pending() && ++i < 50) {
+		gtk_main_iteration();
+	}
+} /*}}}*/
 void setFullscreen(gboolean fullscreen) { /*{{{*/
 	/**
 	 * Change to fullscreen view (and back)
@@ -1083,15 +1089,11 @@ void setFullscreen(gboolean fullscreen) { /*{{{*/
 		scrx = gdk_screen_get_width(screen);
 		scry = gdk_screen_get_height(screen);
 		gtk_window_set_resizable(GTK_WINDOW(window), TRUE);
-		while(gtk_events_pending()) {
-			gtk_main_iteration();
-		}
+		handlePendingEvents();
 		/* For users without window managers */
 		gtk_window_move(GTK_WINDOW(window), 0, 0);
 		gdk_window_fullscreen(window->window);
-		while(gtk_events_pending()) {
-			gtk_main_iteration();
-		}
+		handlePendingEvents();
 		gtk_widget_set_size_request(window, scrx, scry);
 		/* This is done by event cb now
 		 * gtk_window_set_resizable(GTK_WINDOW(window), FALSE);*/
@@ -1107,55 +1109,15 @@ void setFullscreen(gboolean fullscreen) { /*{{{*/
 	}
 	else {
 		gtk_window_set_resizable(GTK_WINDOW(window), TRUE);
-		while(gtk_events_pending()) {
-			gtk_main_iteration();
-		}
+		handlePendingEvents();
 		gdk_window_unfullscreen(window->window);
-		while(gtk_events_pending()) {
-			gtk_main_iteration();
-		}
+		handlePendingEvents();
 		/*gtk_window_set_resizable(GTK_WINDOW(window), FALSE);*/
 		gdk_window_set_cursor(window->window, NULL);
 	}
 	scaledAt = -1;
 	isFullscreen = fullscreen;
 } /*}}}*/
-gboolean toFullscreenCb(gpointer data) { /*{{{*/
-	/**
-	 * Callback for the "go to fullscreen on load"
-	 * function (which must be called a few ms. after
-	 * starting the program oO)
-	 */
-	static int callNumber = 0;
-	GdkEventKey keyEvent;
-
-	if(callNumber++ == 0) {
-		DEBUG1("Switch to fullscreen (callback)");
-
-		/* We have to emulate a keypress because of some buggy wms */
-		memset(&keyEvent, 0, sizeof(GdkEventKey));
-		keyEvent.type = GDK_KEY_PRESS;
-		keyEvent.window = window->window;
-		keyEvent.time = time(NULL);
-		keyEvent.keyval = 102;
-		keyEvent.hardware_keycode = 41;
-		keyEvent.length = 1;
-		keyEvent.string = "f";
-		gdk_event_put((GdkEvent*)(&keyEvent));
-
-		return TRUE;
-	}
-	else {
-		/* Second call: Needed if window-state-event won't be fired, which
-		 * is the case for X11 screens without WMs.
-		 */
-		autoScaleFactor();
-		resizeAndPosWindow();
-		displayImage();
-
-		return FALSE;
-	}
-} /* }}} */
 void resizeAndPosWindow() { /*{{{*/
 	/**
 	 * Resize the window and place it centered
@@ -1177,13 +1139,9 @@ void resizeAndPosWindow() { /*{{{*/
 		/* In window mode, resize and reposition window */
 		gtk_widget_set_size_request(mouseEventBox, imgx, imgy);
 		gtk_window_set_resizable(GTK_WINDOW(window), TRUE);
-		while(gtk_events_pending()) {
-			gtk_main_iteration();
-		}
+		handlePendingEvents();
 		gtk_widget_set_size_request(window, imgx, imgy);
-		while(gtk_events_pending()) {
-			gtk_main_iteration();
-		}
+		handlePendingEvents();
 		/*gtk_window_set_resizable(GTK_WINDOW(window), FALSE);*/
 		if(optionWindowPosition[2] == -1) {
 			gtk_window_move(GTK_WINDOW(window), (scrx - imgx) / 2, (scry - imgy) / 2);
@@ -1803,9 +1761,7 @@ gboolean keyboardCb(GtkWidget *widget, GdkEventKey *event, gpointer data) { /*{{
 				buf = (char*)g_malloc(15);
 				sprintf(buf, "Run command %c", event->keyval);
 				setInfoText(buf);
-				while(gtk_events_pending()) {
-					gtk_main_iteration();
-				}
+				handlePendingEvents();
 				g_free(buf);
 				runProgram(optionCommands[i]);
 			}
@@ -2337,7 +2293,6 @@ int main(int argc, char *argv[]) {
 	#endif
 	gtk_window_set_icon(GTK_WINDOW(window),
 		gdk_pixbuf_new_from_inline(348, (const guint8 *)appIcon, FALSE, NULL));
-	gtk_widget_show(window);
 	fixed = gtk_fixed_new();
 	gtk_container_add(GTK_CONTAINER(window), fixed);
 	gtk_widget_show(fixed);
@@ -2439,8 +2394,9 @@ int main(int argc, char *argv[]) {
 
 	/* }}} */
 	/* Load first image {{{ */
+	gtk_widget_show(window);
 	if(optionFullScreen == TRUE) {
-		g_timeout_add(200, toFullscreenCb, NULL);
+		setFullscreen(TRUE);
 	}
 	autoScaleFactor();
 	resizeAndPosWindow();
