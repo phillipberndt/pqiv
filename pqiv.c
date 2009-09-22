@@ -2,7 +2,7 @@
  * vim:ft=c:fileencoding=utf-8:fdm=marker:tabstop=8
  *
  * pqiv - pretty quick image viewer
- * Copyright (c) Phillip Berndt, 2007
+ * Copyright (c) Phillip Berndt, 2007-2009
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -1091,10 +1091,11 @@ void setFullscreen(gboolean fullscreen) { /*{{{*/
 		gtk_window_set_resizable(GTK_WINDOW(window), TRUE);
 		handlePendingEvents();
 		/* For users without window managers */
-		gtk_window_move(GTK_WINDOW(window), 0, 0);
 		gdk_window_fullscreen(window->window);
 		handlePendingEvents();
-		gtk_widget_set_size_request(window, scrx, scry);
+		gtk_window_move(GTK_WINDOW(window), 0, 0);
+		gtk_window_resize(GTK_WINDOW(window), scrx, scry);
+		handlePendingEvents();
 		/* This is done by event cb now
 		 * gtk_window_set_resizable(GTK_WINDOW(window), FALSE);*/
 
@@ -1112,7 +1113,7 @@ void setFullscreen(gboolean fullscreen) { /*{{{*/
 		handlePendingEvents();
 		gdk_window_unfullscreen(window->window);
 		handlePendingEvents();
-		/*gtk_window_set_resizable(GTK_WINDOW(window), FALSE);*/
+		gtk_window_set_resizable(GTK_WINDOW(window), FALSE);
 		gdk_window_set_cursor(window->window, NULL);
 	}
 	scaledAt = -1;
@@ -1137,12 +1138,12 @@ void resizeAndPosWindow() { /*{{{*/
 
 	if(!isFullscreen) {
 		/* In window mode, resize and reposition window */
-		gtk_widget_set_size_request(mouseEventBox, imgx, imgy);
 		gtk_window_set_resizable(GTK_WINDOW(window), TRUE);
+		gtk_widget_set_size_request(mouseEventBox, imgx, imgy);
 		handlePendingEvents();
-		gtk_widget_set_size_request(window, imgx, imgy);
+		gtk_window_resize(GTK_WINDOW(window), imgx, imgy);
 		handlePendingEvents();
-		/*gtk_window_set_resizable(GTK_WINDOW(window), FALSE);*/
+		gtk_window_set_resizable(GTK_WINDOW(window), FALSE);
 		if(optionWindowPosition[2] == -1) {
 			gtk_window_move(GTK_WINDOW(window), (scrx - imgx) / 2, (scry - imgy) / 2);
 		}
@@ -1921,9 +1922,35 @@ gboolean mouseScrollCb(GtkWidget *widget, GdkEventScroll *event, gpointer data) 
 /* }}} */
 /* }}} */
 /* Event handlers for resize stuff {{{ */
+gint configureCbKnownSize = 0;
 gboolean configureCb(GtkWidget *widget, GdkEventConfigure *event, gpointer data) {
+	gint imgx, imgy, scrx, scry;
+	GdkScreen *screen;
+
 	DEBUG1("Received configure-event");
+
+	/* Move fixed widget to correct position */
+	if(GDK_IS_PIXBUF(scaledImage) && (event->width << 4 | event->height) != configureCbKnownSize) {
+		configureCbKnownSize = event->width << 4 | event->height;
+		imgx = gdk_pixbuf_get_width(scaledImage);
+		imgy = gdk_pixbuf_get_height(scaledImage);
+		screen = gtk_widget_get_screen(window);
+		scrx = gdk_screen_get_width(screen);
+		scry = gdk_screen_get_height(screen);
+
+		if(isFullscreen) {
+			gtk_window_move(GTK_WINDOW(window), 0, 0);
+			gtk_window_resize(GTK_WINDOW(window), scrx, scry);
+			gtk_fixed_move(GTK_FIXED(fixed), imageWidget, (scrx - imgx) / 2 + moveX,
+				(scry - imgy) / 2 + moveY);
+		}
+		else {
+			gtk_fixed_move(GTK_FIXED(fixed), imageWidget, 0, 0);
+		}
+	}
+
 	gtk_window_set_resizable(GTK_WINDOW(window), FALSE);
+
 	return FALSE;
 }
 gboolean screenChangedCb(GtkWidget *widget, GdkScreen *previous_screen, gpointer data) {
@@ -1936,6 +1963,7 @@ gboolean screenChangedCb(GtkWidget *widget, GdkScreen *previous_screen, gpointer
 gboolean windowStateCb(GtkWidget *widget, GdkEventWindowState *event, gpointer data) {
 	DEBUG1("Received window-state-event");
 	if(event->changed_mask & GDK_WINDOW_STATE_FULLSCREEN) {
+		/* Replace/scale display */
 		autoScaleFactor();
 		resizeAndPosWindow();
 		displayImage();
@@ -2281,8 +2309,6 @@ int main(int argc, char *argv[]) {
 	if(!window) {
 		die("Failed to create a window");
 	}
-	gtk_window_set_resizable(GTK_WINDOW(window), FALSE);
-	gtk_widget_set_size_request(window, 640, 480);
 	gtk_window_set_title(GTK_WINDOW(window), "pqiv");
 	#ifndef NO_COMPOSITING
 	if(optionHideChessboardLevel > 1) {
