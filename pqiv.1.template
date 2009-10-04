@@ -31,7 +31,7 @@ example symlinks to /) is not.
 .\" unless NO_SORTING
 .TP
 .B -n
-Sort the file list using natsort
+Sort the file list using natsort. Use twice to shuffle the list.
 .\" end
 .TP
 .B -d n
