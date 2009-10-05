@@ -1929,6 +1929,12 @@ gboolean mouseScrollCb(GtkWidget *widget, GdkEventScroll *event, gpointer data) 
 /* }}} */
 /* }}} */
 /* Event handlers for resize stuff {{{ */
+gboolean showCb(GtkWidget *widget, GdkEventConfigure *event, gpointer data) {
+	/* Used to toggle fullscreen upon startup (which isn't supported by
+	 * some WMs if done before the window is visible) */
+	setFullscreen(TRUE);
+	return FALSE;
+}
 gint configureCbKnownSize = 0;
 gboolean configureCb(GtkWidget *widget, GdkEventConfigure *event, gpointer data) {
 	gint imgx, imgy, scrx, scry;
@@ -2428,13 +2434,15 @@ int main(int argc, char *argv[]) {
 
 	/* }}} */
 	/* Load first image {{{ */
-	gtk_widget_show(window);
 	if(optionFullScreen == TRUE) {
+		g_signal_connect(window, "show",
+			G_CALLBACK(showCb), NULL);
+		gtk_widget_show(window);
 		autoScaleFactor();
 		displayImage(); /* To at least view the image if something goes wrong */
-		setFullscreen(TRUE);
 	}
 	else {
+		gtk_widget_show(window);
 		autoScaleFactor();
 		resizeAndPosWindow();
 		displayImage();
