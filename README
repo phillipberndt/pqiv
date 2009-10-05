@@ -92,8 +92,11 @@ it in pqiv code. Here's what I do:
 
 CHANGELOG
 
-pqiv 0.10-devel
- * Improved compatibility with systems not using a WM
+pqiv 0.10
+ * Improved window initialisation code to support systems without a window manager
+ * Rewrote code that toggles fullscreen to improve compatibility and speed
+   things up
+ * Rewrote file sorting, supports shuffle mode now as well
  * Improved handling of ~/.pqivrc
  * -<n> supports inserting the filename at arbitrary positions
  * Replaced most algorithms with corresponding GLib functions
