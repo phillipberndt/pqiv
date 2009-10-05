@@ -1088,6 +1088,8 @@ void setFullscreen(gboolean fullscreen) { /*{{{*/
 	gint scrx, scry;
 
 	DEBUG1("Fullscreen");
+	scaledAt = -1;
+	isFullscreen = fullscreen;
 	if(fullscreen == TRUE) {
 		/* This is needed because of crappy window managers :/ */
 		screen = gtk_widget_get_screen(window);
@@ -1099,6 +1101,7 @@ void setFullscreen(gboolean fullscreen) { /*{{{*/
 		gdk_window_fullscreen(window->window);
 		handlePendingEvents();
 		gtk_window_move(GTK_WINDOW(window), 0, 0);
+		gtk_widget_set_size_request(window, scrx, scry);
 		gtk_window_resize(GTK_WINDOW(window), scrx, scry);
 		handlePendingEvents();
 		/* This is done by event cb now
@@ -1121,8 +1124,6 @@ void setFullscreen(gboolean fullscreen) { /*{{{*/
 		gtk_window_set_resizable(GTK_WINDOW(window), FALSE);
 		gdk_window_set_cursor(window->window, NULL);
 	}
-	scaledAt = -1;
-	isFullscreen = fullscreen;
 } /*}}}*/
 void resizeAndPosWindow() { /*{{{*/
 	/**
@@ -1144,8 +1145,9 @@ void resizeAndPosWindow() { /*{{{*/
 	if(!isFullscreen) {
 		/* In window mode, resize and reposition window */
 		gtk_window_set_resizable(GTK_WINDOW(window), TRUE);
-		gtk_widget_set_size_request(mouseEventBox, imgx, imgy);
 		handlePendingEvents();
+		gtk_widget_set_size_request(mouseEventBox, imgx, imgy);
+		gtk_widget_set_size_request(window, imgx, imgy);
 		gtk_window_resize(GTK_WINDOW(window), imgx, imgy);
 		handlePendingEvents();
 		gtk_window_set_resizable(GTK_WINDOW(window), FALSE);
@@ -1945,6 +1947,7 @@ gboolean configureCb(GtkWidget *widget, GdkEventConfigure *event, gpointer data)
 
 		if(isFullscreen) {
 			gtk_window_move(GTK_WINDOW(window), 0, 0);
+			gtk_widget_set_size_request(window, scrx, scry);
 			gtk_window_resize(GTK_WINDOW(window), scrx, scry);
 			gtk_fixed_move(GTK_FIXED(fixed), imageWidget, (scrx - imgx) / 2 + moveX,
 				(scry - imgy) / 2 + moveY);
@@ -2427,11 +2430,14 @@ int main(int argc, char *argv[]) {
 	/* Load first image {{{ */
 	gtk_widget_show(window);
 	if(optionFullScreen == TRUE) {
+		autoScaleFactor();
 		setFullscreen(TRUE);
 	}
-	autoScaleFactor();
-	resizeAndPosWindow();
-	displayImage();
+	else {
+		autoScaleFactor();
+		resizeAndPosWindow();
+		displayImage();
+	}
 	if(slideshowEnabled == TRUE) {
 		slideshowDo();
 	}
