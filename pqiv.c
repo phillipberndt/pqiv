@@ -1929,14 +1929,14 @@ gboolean mouseScrollCb(GtkWidget *widget, GdkEventScroll *event, gpointer data) 
 /* }}} */
 /* }}} */
 /* Event handlers for resize stuff {{{ */
-gboolean showCb(GtkWidget *widget, GdkEventConfigure *event, gpointer data) {
+gboolean showCb(GtkWidget *widget, GdkEventConfigure *event, gpointer data) {/*{{{*/
 	/* Used to toggle fullscreen upon startup (which isn't supported by
 	 * some WMs if done before the window is visible) */
 	setFullscreen(TRUE);
 	return FALSE;
-}
+}/*}}}*/
 gint configureCbKnownSize = 0;
-gboolean configureCb(GtkWidget *widget, GdkEventConfigure *event, gpointer data) {
+gboolean configureCb(GtkWidget *widget, GdkEventConfigure *event, gpointer data) {/*{{{*/
 	gint imgx, imgy, scrx, scry;
 	GdkScreen *screen;
 
@@ -1966,24 +1966,48 @@ gboolean configureCb(GtkWidget *widget, GdkEventConfigure *event, gpointer data)
 	gtk_window_set_resizable(GTK_WINDOW(window), FALSE);
 
 	return FALSE;
-}
-gboolean screenChangedCb(GtkWidget *widget, GdkScreen *previous_screen, gpointer data) {
+}/*}}}*/
+gboolean screenChangedCb(GtkWidget *widget, GdkScreen *previous_screen, gpointer data) {/*{{{*/
 	DEBUG1("Received screen-changed-event");
 	autoScaleFactor();
 	resizeAndPosWindow();
 	displayImage();
 	return FALSE;
-}
-gboolean windowStateCb(GtkWidget *widget, GdkEventWindowState *event, gpointer data) {
+}/*}}}*/
+gboolean receivedInitialFullscreen = FALSE;
+gboolean isFullscreenOnStartTimerCb(gpointer data) {/*{{{*/
+	/* This is needed because some WMs fail to honor setFullscreen upon startup
+	 * for some reason (Compiz-Fusion 0.8.2 with Emerald 0.8.2 on Gentoo)
+	 */
+	GdkEventKey keyEvent;
+	if(receivedInitialFullscreen == TRUE) return FALSE;
+	DEBUG1("isFullscreen timer fired and was not canceled");
+
+	/* We have to emulate a keypress because of some buggy wms */
+	isFullscreen = FALSE;
+	memset(&keyEvent, 0, sizeof(GdkEventKey));
+	keyEvent.type = GDK_KEY_PRESS;
+	keyEvent.window = window->window;
+	keyEvent.time = time(NULL);
+	keyEvent.keyval = 102;
+	keyEvent.hardware_keycode = 65;
+	keyEvent.length = 1;
+	keyEvent.string = "x";
+	gdk_event_put((GdkEvent*)(&keyEvent));
+
+	return FALSE;
+}/*}}}*/
+gboolean windowStateCb(GtkWidget *widget, GdkEventWindowState *event, gpointer data) {/*{{{*/
 	DEBUG1("Received window-state-event");
 	if(event->changed_mask & GDK_WINDOW_STATE_FULLSCREEN) {
 		/* Replace/scale display */
+		receivedInitialFullscreen = TRUE;
 		autoScaleFactor();
 		resizeAndPosWindow();
 		displayImage();
 	}
 	return FALSE;
-}
+}/*}}}*/
 
 /* }}} */
 
@@ -2438,6 +2462,7 @@ int main(int argc, char *argv[]) {
 		g_signal_connect(window, "show",
 			G_CALLBACK(showCb), NULL);
 		gtk_widget_show(window);
+		g_timeout_add(200, isFullscreenOnStartTimerCb, NULL);
 		autoScaleFactor();
 		displayImage(); /* To at least view the image if something goes wrong */
 	}
