@@ -2431,6 +2431,7 @@ int main(int argc, char *argv[]) {
 	gtk_widget_show(window);
 	if(optionFullScreen == TRUE) {
 		autoScaleFactor();
+		displayImage(); /* To at least view the image if something goes wrong */
 		setFullscreen(TRUE);
 	}
 	else {
