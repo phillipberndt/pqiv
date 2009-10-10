@@ -14,11 +14,11 @@ PACKAGE_VERSION:=$(shell awk '/RELEASE/ {print $$3}' pqiv.c | tr -d \" | head -n
 # pqiv
 all: pqiv manpage
 pqiv: 
-	$(CC) $(CFLAGS) `pkg-config --cflags $(REQUIRED_PACKAGES)` $(OPTIONFLAGS) pqiv.c `pkg-config --libs $(REQUIRED_PACKAGES)` -o qiv
+	$(CC) $(LDFLAGS) $(CFLAGS) `pkg-config --cflags $(REQUIRED_PACKAGES)` $(OPTIONFLAGS) pqiv.c `pkg-config --libs $(REQUIRED_PACKAGES)` -o qiv
 debug:
-	$(CC) $(CFLAGS) `pkg-config --cflags $(REQUIRED_PACKAGES)` $(OPTIONFLAGS) -Wall -ggdb pqiv.c `pkg-config --libs $(REQUIRED_PACKAGES)` -o qiv
+	$(CC) $(LDFLAGS) $(CFLAGS) `pkg-config --cflags $(REQUIRED_PACKAGES)` $(OPTIONFLAGS) -Wall -ggdb pqiv.c `pkg-config --libs $(REQUIRED_PACKAGES)` -o qiv
 vdebug: 
-	$(CC) $(CGLAGS) `pkg-config --cflags $(REQUIRED_PACKAGES)` -Wall -ggdb -DDEBUG `pkg-config --libs $(REQUIRED_PACKAGES)` $(OPTIONFLAGS) -o qiv pqiv.c
+	$(CC) $(LDFLAGS) $(CGLAGS) `pkg-config --cflags $(REQUIRED_PACKAGES)` -Wall -ggdb -DDEBUG `pkg-config --libs $(REQUIRED_PACKAGES)` $(OPTIONFLAGS) -o qiv pqiv.c
 
 # The manpage stuff is kind of hackish, but it seems that I can't rely on the C
 # preprocessor (drac from gentoo reported "missing terminating ' character"

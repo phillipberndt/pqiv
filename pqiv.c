@@ -2050,7 +2050,7 @@ int main(int argc, char *argv[]) {
 	#ifndef NO_CONFIG_FILE
 	if((constBuf = g_getenv("HOME")) != NULL) {
 		fileName = (char*)g_malloc(strlen(constBuf) + 9);
-		sprintf(fileName, "%s/.pqivrc", constBuf + 5);
+		sprintf(fileName, "%s/.pqivrc", constBuf);
 
 		if(g_file_get_contents(fileName, &buf, NULL, NULL)) {
 			if(!g_shell_parse_argv(buf, &optionFileArgc, &optionFileArgv, NULL)) {
