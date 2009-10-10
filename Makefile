@@ -4,7 +4,7 @@
 DESTDIR="/"
 PREFIX="/usr"
 OPTIONFLAGS= lib/strnatcmp.c      
-BINARY_NAME="pqiv"
+BINARY_NAME="qiv"
 
 # Fixed settings
 REQUIRED_PACKAGES=gtk+-2.0 gthread-2.0 pango glib-2.0
@@ -15,11 +15,11 @@ OPTIONFLAGS+=-DBINARY_NAME='$(BINARY_NAME)'
 # pqiv
 all: pqiv manpage
 pqiv: 
-	$(CC) $(LDFLAGS) $(CFLAGS) `pkg-config --cflags $(REQUIRED_PACKAGES)` $(OPTIONFLAGS) pqiv.c `pkg-config --libs $(REQUIRED_PACKAGES)` -o qiv
+	$(CC) $(LDFLAGS) $(CFLAGS) `pkg-config --cflags $(REQUIRED_PACKAGES)` $(OPTIONFLAGS) pqiv.c `pkg-config --libs $(REQUIRED_PACKAGES)` -o pqiv
 debug:
-	$(CC) $(LDFLAGS) $(CFLAGS) `pkg-config --cflags $(REQUIRED_PACKAGES)` $(OPTIONFLAGS) -Wall -ggdb pqiv.c `pkg-config --libs $(REQUIRED_PACKAGES)` -o qiv
+	$(CC) $(LDFLAGS) $(CFLAGS) `pkg-config --cflags $(REQUIRED_PACKAGES)` $(OPTIONFLAGS) -Wall -ggdb pqiv.c `pkg-config --libs $(REQUIRED_PACKAGES)` -o pqiv
 vdebug: 
-	$(CC) $(LDFLAGS) $(CGLAGS) `pkg-config --cflags $(REQUIRED_PACKAGES)` -Wall -ggdb -DDEBUG `pkg-config --libs $(REQUIRED_PACKAGES)` $(OPTIONFLAGS) -o qiv pqiv.c
+	$(CC) $(LDFLAGS) $(CGLAGS) `pkg-config --cflags $(REQUIRED_PACKAGES)` -Wall -ggdb -DDEBUG `pkg-config --libs $(REQUIRED_PACKAGES)` $(OPTIONFLAGS) -o pqiv pqiv.c
 
 # The manpage stuff is kind of hackish, but it seems that I can't rely on the C
 # preprocessor (drac from gentoo reported "missing terminating ' character"
@@ -39,21 +39,21 @@ manpage:
 		if [ "$${MAT}" == "1" ]; then ACT=Stripping; else ACT=Ignoring; fi; \
 		echo "$${ACT} $${REQ}" >&2; \
 		IN=1; \
-	done < pqiv.1.template ) | sed -e 's/$$PACKAGE_VERSION/$(PACKAGE_VERSION)/' -e 's/$$BINARY_NAME/$(BINARY_NAME)/' > qiv.1
+	done < pqiv.1.template ) | sed -e 's/$$PACKAGE_VERSION/$(PACKAGE_VERSION)/' -e 's/$$BINARY_NAME/$(BINARY_NAME)/' > pqiv.1
 
 # Cleanup
 clean:
-	rm -f qiv qiv.1
+	rm -f pqiv pqiv.1
 
 # Installation and uninstallation
 install:
-	install -D qiv $(DESTDIR)$(PREFIX)/bin/$(BINARY_NAME)
-	install -D qiv.1 $(DESTDIR)$(PREFIX)/share/man/man1/$(BINARY_NAME).1
+	install -D pqiv $(DESTDIR)$(PREFIX)/bin/$(BINARY_NAME)
+	install -D pqiv.1 $(DESTDIR)$(PREFIX)/share/man/man1/$(BINARY_NAME).1
 uninstall:
 	rm $(DESTDIR)$(PREFIX)/bin/$(BINARY_NAME)
 	rm $(DESTDIR)$(PREFIX)/share/man/man1/$(BINARY_NAME).1
 mininstall:
-	install -Ds qiv /usr/local/bin
+	install -Ds pqiv /usr/local/bin/$(BINARY_NAME)
 
 # Package generation
 package: 
@@ -63,8 +63,8 @@ package:
 	rm -rf pqiv-$(PACKAGE_VERSION)
 deb:
 	mkdir deb-pqiv-$(PACKAGE_VERSION)/
-	install -D qiv deb-pqiv-$(PACKAGE_VERSION)/$(PREFIX)/bin/$(BINARY_NAME)
-	install -D qiv.1 deb-pqiv-$(PACKAGE_VERSION)/$(PREFIX)/share/man/man1/$(BINARY_NAME).1
+	install -D pqiv deb-pqiv-$(PACKAGE_VERSION)/$(PREFIX)/bin/$(BINARY_NAME)
+	install -D pqiv.1 deb-pqiv-$(PACKAGE_VERSION)/$(PREFIX)/share/man/man1/$(BINARY_NAME).1
 	mkdir deb-pqiv-$(PACKAGE_VERSION)/DEBIAN
 	(echo -e "Package: pqiv\nVersion: $(PACKAGE_VERSION)\nSection: graphics\nPriority: optional"; \
 	 echo -ne "Architecture: "; uname -m | sed -e 's/686/386/'; echo -e "Essential: no"; \
