@@ -18,7 +18,7 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  * 
  */
-#define RELEASE "0.10"
+#define RELEASE "0.10.1"
 
 /* Includes {{{ */
 #include <stdio.h>
@@ -233,8 +233,8 @@ void helpMessage(gchar claim) { /* {{{ */
 
 		}}}		
 	 */
-	g_print("usage: pqiv [options] <files or folders>\n"
-		"(p)qiv version " RELEASE " by Phillip Berndt\n"
+	g_print("usage: " BINARY_NAME " [options] <files or folders>\n"
+		"pqiv version " RELEASE " by Phillip Berndt\n"
 		"\n");
 	if(claim != 0) {
 		g_print("I don't understand the meaning of %c\n\n", claim);
