@@ -1,6 +1,6 @@
 #!/bin/bash
 # Simple configure script for pqiv
-# Why not autoconf? -> K.i.s.s.!
+# Running this script before make'ing is optional but recommended
 
 OPTIONS=( "no-sorting"		"Disable sorting of loaded files"		"-DNO_SORTING"		"lib/strnatcmp.c"
           "no-compositing"	"Disable support for transparent windows"	"-DNO_COMPOSITING"	""
@@ -83,6 +83,25 @@ while [ $# -gt 0 ]; do
 	esac
 	shift
 done
+
+# Check for inotify support
+echo -n "Checking for inotify...        "
+TEST_INOTIFY=$(tempfile -s .c)
+TEST_INOTIFY_EXEC=$(tempfile)
+cat > ${TEST_INOTIFY} <<EOF
+#include <sys/inotify.h>
+int main(int argc, char* argv[]) { inotify_init(); return 0; }
+EOF
+if cc -o ${TEST_INOTIFY_EXEC} ${TEST_INOTIFY}  > /dev/null 2>&1; then
+	echo "ok"
+else
+	echo "unsupported. Enforcing --no-inotify"
+	if echo "${OPTIONFLAGS}" | grep -vq "NO_INOTIFY"; then
+		OPTIONFLAGS+="-DNO_INOTIFY"
+	fi
+fi
+rm -f ${TEST_INOTIFY} ${TEST_INOTIFY_EXEC}
+
 # Check tools
 for TOOL in install pkg-config; do
 	echo -n "Checking for ${TOOL}..."
