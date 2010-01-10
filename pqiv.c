@@ -702,6 +702,7 @@ void runProgram(gchar *command) { /*{{{*/
 			g_free(buf);
 			exit(0);
 		} /* }}} */
+		wait(NULL);
 	}
 } /*}}}*/
 #endif

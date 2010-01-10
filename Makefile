@@ -14,11 +14,11 @@ OPTIONFLAGS+=-DBINARY_NAME='$(BINARY_NAME)'
 
 # pqiv
 all: pqiv manpage
-pqiv: 
+pqiv: pqiv.c
 	$(CC) $(LDFLAGS) $(CFLAGS) `pkg-config --cflags $(REQUIRED_PACKAGES)` $(OPTIONFLAGS) pqiv.c `pkg-config --libs $(REQUIRED_PACKAGES)` -o pqiv
-debug:
+debug: pqiv.c
 	$(CC) $(LDFLAGS) $(CFLAGS) `pkg-config --cflags $(REQUIRED_PACKAGES)` $(OPTIONFLAGS) -Wall -ggdb pqiv.c `pkg-config --libs $(REQUIRED_PACKAGES)` -o pqiv
-vdebug: 
+vdebug: pqiv.c
 	$(CC) $(LDFLAGS) $(CGLAGS) `pkg-config --cflags $(REQUIRED_PACKAGES)` -Wall -ggdb -DDEBUG `pkg-config --libs $(REQUIRED_PACKAGES)` $(OPTIONFLAGS) -o pqiv pqiv.c
 
 # The manpage stuff is kind of hackish, but it seems that I can't rely on the C
