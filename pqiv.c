@@ -2148,6 +2148,7 @@ gboolean screenChangedCb(GtkWidget *widget, GdkScreen *previous_screen, gpointer
 	autoScaleFactor();
 	resizeAndPosWindow();
 	displayImage();
+	setInfoText(NULL);
 	return FALSE;
 }/*}}}*/
 gboolean receivedInitialFullscreen = FALSE;
@@ -2181,6 +2182,7 @@ gboolean windowStateCb(GtkWidget *widget, GdkEventWindowState *event, gpointer d
 		autoScaleFactor();
 		resizeAndPosWindow();
 		displayImage();
+		setInfoText(NULL);
 	}
 	return FALSE;
 }/*}}}*/
