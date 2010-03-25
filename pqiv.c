@@ -851,12 +851,13 @@ gboolean loadImage() { /*{{{*/
 		}
 		tmpAnimation = g_object_ref(memoryArgAnimation);
 		if(gdk_pixbuf_animation_is_static_image(tmpAnimation)) {
-			tmpImage = gdk_pixbuf_animation_get_static_image(tmpAnimation);
+			tmpImage = gdk_pixbuf_copy(gdk_pixbuf_animation_get_static_image(tmpAnimation));
 			if(!tmpImage) {
 				g_printerr("Failed to load %s\n", currentFile->fileName);
 				g_object_unref(tmpAnimation);
 				return FALSE;
 			}
+			g_object_unref(tmpAnimation);
 			currentImageIsAnimated = FALSE;
 		}
 		else {
@@ -880,12 +881,13 @@ gboolean loadImage() { /*{{{*/
 			return FALSE;
 		}
 		if(gdk_pixbuf_animation_is_static_image(tmpAnimation)) {
-			tmpImage = gdk_pixbuf_animation_get_static_image(tmpAnimation);
+			tmpImage = gdk_pixbuf_copy(gdk_pixbuf_animation_get_static_image(tmpAnimation));
 			if(!tmpImage) {
 				g_printerr("Failed to load %s\n", currentFile->fileName);
 				g_object_unref(tmpAnimation);
 				return FALSE;
 			}
+			g_object_unref(tmpAnimation);
 			currentImageIsAnimated = FALSE;
 		}
 		else {
@@ -904,9 +906,8 @@ gboolean loadImage() { /*{{{*/
 	// Free old, now unused stuff
 	#ifndef NO_ANIMATIONS
 	if(currentAnimation != NULL) {
-		if(G_IS_OBJECT(currentAnimation)) { // Might already be freed in chessboard code
-			g_object_unref(currentAnimation);
-		}
+		g_object_unref(currentAnimation);
+		currentImage = NULL;
 		currentAnimation = NULL;
 	}
 	if(animationImageBuffer != NULL) {
@@ -923,18 +924,15 @@ gboolean loadImage() { /*{{{*/
 	}
 	#endif
 	if(currentImage != NULL) {
-		#ifndef NO_ANIMATIONS
-		// We don't free currentImage, this is done by the animation stuff above
-		#else
 		if(G_IS_OBJECT(currentImage)) {
 			g_object_unref(currentImage);
 		}
-		#endif
 		currentImage = NULL;
 	}
 	#ifndef NO_ANIMATIONS
-	currentAnimation = tmpAnimation;
 	if(currentImageIsAnimated) {
+		currentAnimation = tmpAnimation;
+
 		// Setup iterator
 		g_get_current_time(&currentTime);
 		animationIterator = gdk_pixbuf_animation_get_iter(tmpAnimation, &currentTime);
@@ -973,12 +971,7 @@ gboolean loadImage() { /*{{{*/
 		/* Copy image into chessboard */
 		gdk_pixbuf_composite(tmpImage, currentImage, 0, 0, o, p, 0, 0, 1, 1,
 			GDK_INTERP_BILINEAR, 255);
-		#ifndef NO_ANIMATIONS
-		// It's important to unref the animation instead of the image
-		g_object_unref(tmpAnimation);
-		#else
 		g_object_unref(tmpImage);
-		#endif
 		g_object_unref(chessBoardBuf);
 	}
 	else {
@@ -1858,6 +1851,12 @@ gboolean keyboardCb(GtkWidget *widget, GdkEventKey *event, gpointer data) { /*{{
 		/* }}} */
 		/* BIND: l: Rotate left {{{ */
 		case GDK_l:
+			#ifndef NO_ANIMATIONS
+			if(currentImageIsAnimated) {
+				setInfoText("Rotation not supported for animations");
+				break;
+			}
+			#endif
 			setInfoText("Rotated left");
 			rotate(TRUE);
 			autoScaleFactor();
@@ -1867,6 +1866,12 @@ gboolean keyboardCb(GtkWidget *widget, GdkEventKey *event, gpointer data) { /*{{
 			/* }}} */
 		/* BIND: k: Rotate right {{{ */
 		case GDK_k:
+			#ifndef NO_ANIMATIONS
+			if(currentImageIsAnimated) {
+				setInfoText("Rotation not supported for animations");
+				break;
+			}
+			#endif
 			setInfoText("Rotated right");
 			rotate(FALSE);
 			autoScaleFactor();
@@ -1876,6 +1881,12 @@ gboolean keyboardCb(GtkWidget *widget, GdkEventKey *event, gpointer data) { /*{{
 			/* }}} */
 		/* BIND: h: Horizontal flip {{{ */
 		case GDK_h:
+			#ifndef NO_ANIMATIONS
+			if(currentImageIsAnimated) {
+				setInfoText("Flipping not supported for animations");
+				break;
+			}
+			#endif
 			setInfoText("Flipped horizontally");
 			flip(TRUE);
 			displayImage();
@@ -1883,6 +1894,12 @@ gboolean keyboardCb(GtkWidget *widget, GdkEventKey *event, gpointer data) { /*{{
 			/* }}} */
 		/* BIND: v: Vertical flip {{{ */
 		case GDK_v:
+			#ifndef NO_ANIMATIONS
+			if(currentImageIsAnimated) {
+				setInfoText("Flipping not supported for animations");
+				break;
+			}
+			#endif
 			setInfoText("Flipped vertically");
 			flip(FALSE);
 			displayImage();
