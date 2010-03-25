@@ -68,7 +68,16 @@ static GtkWidget *infoLabelBox;
 static GtkWidget *mouseEventBox;
 static GdkPixbuf *currentImage = NULL;
 static GdkPixbuf *scaledImage = NULL;
+
+#ifndef NO_ANIMATIONS
+static GdkPixbufAnimation *currentAnimation = NULL;
+static GSList *animationImageBuffer = NULL;
+static GdkPixbufAnimationIter *animationIterator = NULL;
+static GdkPixbufAnimation *memoryArgAnimation = NULL;
+#else
 static GdkPixbuf *memoryArgImage = NULL;
+#endif
+
 static gchar emptyCursor[] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
 /* Inline images: The chess board like one for transparent images and
@@ -126,6 +135,10 @@ static gshort slideshowInterval = 3;
 static gchar slideshowEnabled = 0;
 static guint slideshowID = 0;
 static gchar aliases[128];
+#ifndef NO_ANIMATIONS
+static guint animationTimeoutID = 0;
+static gboolean currentImageIsAnimated = FALSE;
+#endif
 #ifndef NO_INOTIFY
 static int inotifyFd = 0;
 static int inotifyWd = -1;
@@ -160,6 +173,7 @@ gboolean reloadImage();
 void autoScaleFactor();
 void resizeAndPosWindow();
 void displayImage();
+inline void scale();
 /* }}} */
 /* Error, debug and info message stuff {{{ */
 /* Debugging {{{ */
@@ -432,7 +446,11 @@ gboolean loadFiles(gchar **iterator) { /*{{{*/
 	while(*iterator != 0) {
 		if(strcmp(*iterator, "-") == 0) {
 			/* Load image from stdin {{{ */
+			#ifndef NO_ANIMATIONS
+			if(memoryArgAnimation != NULL) {
+			#else
 			if(memoryArgImage != NULL) {
+			#endif
 				g_printerr("You can't specify more than one image to "
 					"be read from stdin.\n");
 				iterator++;
@@ -453,15 +471,25 @@ gboolean loadFiles(gchar **iterator) { /*{{{*/
 					g_error_free(loadError);
 					g_object_unref(memoryImageLoader);
 					loadError = NULL;
-					memoryArgImage = (GdkPixbuf*)1; /* Ignore further
-						attempts to load an image from stdin */
+					#ifndef NO_ANIMATIONS
+					memoryArgAnimation = (GdkPixbufAnimation*)1; /* Ignore further attempts
+						to load an image from stdin */
+					#else
+					memoryArgImage = (GdkPixbuf*)1; /* Ignore further attempts
+						to load an image from stdin */
+					#endif
 					break;
 				}
 			}
 			if(gdk_pixbuf_loader_close(memoryImageLoader, &loadError) == TRUE) {
+				#ifndef NO_ANIMATIONS
+				memoryArgAnimation = gdk_pixbuf_loader_get_animation(memoryImageLoader);
+				// Don't unref as we can't copy animations
+				#else
 				memoryArgImage = gdk_pixbuf_copy(
 					gdk_pixbuf_loader_get_pixbuf(memoryImageLoader));
 				g_object_unref(memoryImageLoader);
+				#endif
 				loadFilesAddFile("-");
 			}
 			else {
@@ -469,8 +497,13 @@ gboolean loadFiles(gchar **iterator) { /*{{{*/
 					loadError->message);
 				g_error_free(loadError);
 				g_object_unref(memoryImageLoader);
+				#ifndef NO_ANIMATIONS
+				memoryArgAnimation = (GdkPixbufAnimation*)1; /* Ignore further attempts
+					to load an image from stdin */
+				#else
 				memoryArgImage = (GdkPixbuf*)1; /* Ignore further attempts
 					to load an image from stdin */
+				#endif
 			}
 			g_free(buf);
 			iterator++;
@@ -771,6 +804,30 @@ void sortFiles(int (*compareFunction)(const void*, const void*)) {
 #endif
 /* }}} */
 /*}}}*/
+#ifndef NO_ANIMATIONS
+/* Animated images support {{{ */
+gboolean animationIterateCb(gpointer data) {
+	GTimeVal currentTime;
+	gboolean mustRedraw = FALSE;
+
+	if(!currentAnimation) return FALSE;
+
+	// Iterate
+	g_get_current_time(&currentTime);
+	mustRedraw = gdk_pixbuf_animation_iter_advance(animationIterator, &currentTime);
+
+	if(!mustRedraw) return TRUE;
+
+	// Load new image
+	currentImage = gdk_pixbuf_animation_iter_get_pixbuf(animationIterator);
+	scaledAt = -1;
+	scale();
+	displayImage();
+
+	return TRUE;
+}
+/* }}} */
+#endif
 /* Load images and modify them {{{ */
 gboolean loadImage() { /*{{{*/
 	/**
@@ -778,30 +835,127 @@ gboolean loadImage() { /*{{{*/
 	 */
 	GdkPixbuf *tmpImage;
 	GdkPixbuf *chessBoardBuf;
+	#ifndef NO_ANIMATIONS
+	GdkPixbufAnimation *tmpAnimation;
+	#endif
 	GError *error = NULL;
 	gint i, n, o, p;
+	GTimeVal currentTime;
 
 	DEBUG2("loadImage", currentFile->fileName);
 	if(strcmp(currentFile->fileName, "-") == 0) {
 		/* Load memory image */
+		#ifndef NO_ANIMATIONS
+		if(memoryArgAnimation == NULL) {
+			return FALSE;
+		}
+		tmpAnimation = g_object_ref(memoryArgAnimation);
+		if(gdk_pixbuf_animation_is_static_image(tmpAnimation)) {
+			tmpImage = gdk_pixbuf_animation_get_static_image(tmpAnimation);
+			if(!tmpImage) {
+				g_printerr("Failed to load %s\n", currentFile->fileName);
+				g_object_unref(tmpAnimation);
+				return FALSE;
+			}
+			currentImageIsAnimated = FALSE;
+		}
+		else {
+			currentImageIsAnimated = TRUE;
+			DEBUG1("Current image is animated");
+		}
+		#else
 		if(memoryArgImage == NULL) {
 			return FALSE;
 		}
 		tmpImage = g_object_ref(memoryArgImage);
+		#endif
 	}
 	else {
 		/* Load from file */
+		#ifndef NO_ANIMATIONS
+		tmpAnimation = gdk_pixbuf_animation_new_from_file(currentFile->fileName, &error);
+		if(!tmpAnimation) {
+			g_printerr("Failed to load %s: %s\n", currentFile->fileName, error->message);
+			g_error_free(error);
+			return FALSE;
+		}
+		if(gdk_pixbuf_animation_is_static_image(tmpAnimation)) {
+			tmpImage = gdk_pixbuf_animation_get_static_image(tmpAnimation);
+			if(!tmpImage) {
+				g_printerr("Failed to load %s\n", currentFile->fileName);
+				g_object_unref(tmpAnimation);
+				return FALSE;
+			}
+			currentImageIsAnimated = FALSE;
+		}
+		else {
+			currentImageIsAnimated = TRUE;
+			DEBUG1("Current image is animated");
+		}
+		#else
 		tmpImage = gdk_pixbuf_new_from_file(currentFile->fileName, &error);
 		if(!tmpImage) {
 			g_printerr("Failed to load %s: %s\n", currentFile->fileName, error->message);
 			g_error_free(error);
 			return FALSE;
 		}
+		#endif
 	}
+	// Free old, now unused stuff
+	#ifndef NO_ANIMATIONS
+	if(currentAnimation != NULL) {
+		if(G_IS_OBJECT(currentAnimation)) { // Might already be freed in chessboard code
+			g_object_unref(currentAnimation);
+		}
+		currentAnimation = NULL;
+	}
+	if(animationImageBuffer != NULL) {
+		g_slist_free(animationImageBuffer);
+		animationImageBuffer = NULL;
+	}
+	if(animationIterator != NULL) {
+		g_object_unref(animationIterator);
+		animationIterator = NULL;
+	}
+	if(animationTimeoutID != 0) {
+		g_source_remove(animationTimeoutID);
+		animationTimeoutID = 0;
+	}
+	#endif
 	if(currentImage != NULL) {
-		DEBUG1("Free old image");
-		g_object_unref(currentImage);
+		#ifndef NO_ANIMATIONS
+		// We don't free currentImage, this is done by the animation stuff above
+		#else
+		if(G_IS_OBJECT(currentImage)) {
+			g_object_unref(currentImage);
+		}
+		#endif
+		currentImage = NULL;
 	}
+	#ifndef NO_ANIMATIONS
+	currentAnimation = tmpAnimation;
+	if(currentImageIsAnimated) {
+		// Setup iterator
+		g_get_current_time(&currentTime);
+		animationIterator = gdk_pixbuf_animation_get_iter(tmpAnimation, &currentTime);
+
+		// Get image to-be-displayed
+		tmpImage = gdk_pixbuf_animation_iter_get_pixbuf(animationIterator);
+
+		// Setup image cache
+		animationImageBuffer = g_slist_alloc();
+
+		// Setup animation callback function
+		animationTimeoutID = g_timeout_add(gdk_pixbuf_animation_iter_get_delay_time(animationIterator), animationIterateCb, NULL);
+
+		// We don't support chessboards / autorotation for animated images (yet)
+		currentImage = tmpImage;
+		zoom = 1;
+		moveX = moveY = 0;
+		scaledAt = -1;
+		return TRUE;
+	}
+	#endif
 	if(optionHideChessboardLevel == 0 && gdk_pixbuf_get_has_alpha(tmpImage)) {
 		/* Draw chessboard for transparent images */
 		DEBUG1("Creating chessboard");
@@ -819,7 +973,12 @@ gboolean loadImage() { /*{{{*/
 		/* Copy image into chessboard */
 		gdk_pixbuf_composite(tmpImage, currentImage, 0, 0, o, p, 0, 0, 1, 1,
 			GDK_INTERP_BILINEAR, 255);
+		#ifndef NO_ANIMATIONS
+		// It's important to unref the animation instead of the image
+		g_object_unref(tmpAnimation);
+		#else
 		g_object_unref(tmpImage);
+		#endif
 		g_object_unref(chessBoardBuf);
 	}
 	else {
@@ -870,9 +1029,16 @@ inline void scale() { /*{{{*/
 		imgy = gdk_pixbuf_get_height(currentImage);
 		scaledAt = zoom;
 		if(scaledImage != NULL) {
-			DEBUG1("Free");
-			g_object_unref(scaledImage);
+			if(G_IS_OBJECT(scaledImage)) {
+				DEBUG1("Free");
+				g_object_unref(scaledImage);
+			}
 			scaledImage = NULL;
+		}
+		if(scaledAt == 1) {
+			// No need to calculate. Just copy.
+			scaledImage = g_object_ref(currentImage);
+			return;
 		}
 		if(imgx > 10 && imgy > 10 && (imgx * zoom < 10 || imgy * zoom < 10)) {
 			/* Don't zoom below 10x10 pixels (except for images that actually are that small) */
@@ -926,6 +1092,15 @@ void forceAutoScaleFactor(enum autoScaleSetting upDown) { /*{{{*/
 			zoom = (scry - rem) * 1.0f / imgy;
 		}
 	}
+
+	#ifndef NO_ANIMATIONS
+	// Don't autoscale animations up
+	// This is absolutely required. Animations lag heavily at
+	// high zoom levels.
+	if(currentImageIsAnimated && zoom > 1) {
+		zoom = 1;
+	}
+	#endif
 
 	/* Now do actually scale */
 	scale();
@@ -2135,7 +2310,11 @@ int main(int argc, char *argv[]) {
 			/* OPTION: -r: Read additional filenames (not folders) from stdin */
 			case 'r':
 				optionReadStdin = TRUE;
+				#ifndef NO_ANIMATIONS
+				memoryArgAnimation = (GdkPixbufAnimation*)1; /* Don't allow - files */
+				#else
 				memoryArgImage = (GdkPixbuf*)1; /* Don't allow - files */
+				#endif
 				break;
 			/* OPTION: -c: Disable the background for transparent images */
 			#ifndef NO_COMPOSITING
