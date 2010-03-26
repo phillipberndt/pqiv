@@ -807,24 +807,30 @@ void sortFiles(int (*compareFunction)(const void*, const void*)) {
 #ifndef NO_ANIMATIONS
 /* Animated images support {{{ */
 gboolean animationIterateCb(gpointer data) {
-	GTimeVal currentTime;
+	int delayTime;
 	gboolean mustRedraw = FALSE;
 
-	if(!currentAnimation) return FALSE;
+	if(!currentAnimation) {
+		animationTimeoutID = 0;
+		return FALSE;
+	}
 
 	// Iterate
-	g_get_current_time(&currentTime);
-	mustRedraw = gdk_pixbuf_animation_iter_advance(animationIterator, &currentTime);
+	mustRedraw = gdk_pixbuf_animation_iter_advance(animationIterator, NULL);
 
-	if(!mustRedraw) return TRUE;
+	if(mustRedraw) {
+		// Load new image
+		currentImage = gdk_pixbuf_animation_iter_get_pixbuf(animationIterator);
+		scaledAt = -1;
+		scale();
+		displayImage();
+	}
 
-	// Load new image
-	currentImage = gdk_pixbuf_animation_iter_get_pixbuf(animationIterator);
-	scaledAt = -1;
-	scale();
-	displayImage();
-
-	return TRUE;
+	delayTime = gdk_pixbuf_animation_iter_get_delay_time(animationIterator);
+	if(delayTime != -1) {
+		animationTimeoutID = g_timeout_add(delayTime, animationIterateCb, NULL);
+	}
+	return FALSE;
 }
 /* }}} */
 #endif
@@ -840,7 +846,6 @@ gboolean loadImage() { /*{{{*/
 	#endif
 	GError *error = NULL;
 	gint i, n, o, p;
-	GTimeVal currentTime;
 
 	DEBUG2("loadImage", currentFile->fileName);
 	if(strcmp(currentFile->fileName, "-") == 0) {
@@ -934,8 +939,7 @@ gboolean loadImage() { /*{{{*/
 		currentAnimation = tmpAnimation;
 
 		// Setup iterator
-		g_get_current_time(&currentTime);
-		animationIterator = gdk_pixbuf_animation_get_iter(tmpAnimation, &currentTime);
+		animationIterator = gdk_pixbuf_animation_get_iter(tmpAnimation, NULL);
 
 		// Get image to-be-displayed
 		tmpImage = gdk_pixbuf_animation_iter_get_pixbuf(animationIterator);
@@ -944,7 +948,10 @@ gboolean loadImage() { /*{{{*/
 		animationImageBuffer = g_slist_alloc();
 
 		// Setup animation callback function
-		animationTimeoutID = g_timeout_add(gdk_pixbuf_animation_iter_get_delay_time(animationIterator), animationIterateCb, NULL);
+		o = gdk_pixbuf_animation_iter_get_delay_time(animationIterator);
+		if(o != -1) {
+			animationTimeoutID = g_timeout_add(o, animationIterateCb, NULL);
+		}
 
 		// We don't support chessboards / autorotation for animated images (yet)
 		currentImage = tmpImage;
