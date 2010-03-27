@@ -1,5 +1,5 @@
 .\" vim:filetype=groff
-.TH pqiv 1 "07 December 2008" "$PACKAGE_VERSION" "pqiv manual"
+.TH pqiv 1 "27 March 2010" "$PACKAGE_VERSION" "pqiv manual"
 .SH NAME
 pqiv \- quick image viewer
 .SH SYNOPSIS
@@ -26,8 +26,7 @@ Auto start slide show
 Follow symlinks. pqiv will not traverse into symlinked directories by default
 as this tends to lead to recursion and other problems. If this option
 is active, pqiv will follow symlinks. An algorithm to prevent recursion is
-implemented. Checking for if a symlink points out of the current node (For
-example symlinks to /) is not.
+implemented.
 .\" unless NO_SORTING
 .TP
 .B -n
@@ -152,6 +151,3 @@ will pop up an "open file" dialog.
 .nf
 Phillip Berndt (mail at pberndt dot com)
 .nf
-.fi
-The original qiv authors are listed on
-.I http://www.klografx.net/qiv/index2.html

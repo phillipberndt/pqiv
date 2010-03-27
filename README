@@ -38,7 +38,7 @@ Unique features:
  * configuration file support
  * external commands support pipelining images
  * search in argument list
- * animated GIF/PNG support
+ * animation support
 
 
 INSTALLATION
@@ -47,8 +47,6 @@ Usual stuff. ./configure && make && make install
 You'll need
  * gtk+-2.0 >= 2.12
  * Corresponding glib, gthread, gpixbuf versions
-
-If you're compiling under cygwin, you'll have to use --no-inotify for ./configure
 
 
 THANKS

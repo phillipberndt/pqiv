@@ -655,6 +655,14 @@ void runProgram(gchar *command) { /*{{{*/
 		/* }}} */
 	}
 	else if(command[0] == '|') {
+		#ifndef NO_ANIMATIONS
+		if(currentImageIsAnimated) {
+			setInfoText("Command piping is not supported for animations");
+			return;
+		}
+		#endif
+
+
 		/* Pipe data {{{ */
 		childArgv[0] = "/bin/sh";
 		childArgv[1] = "-c";
