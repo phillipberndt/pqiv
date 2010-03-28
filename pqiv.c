@@ -2263,15 +2263,18 @@ int main(int argc, char *argv[]) {
 		sprintf(fileName, "%s/.pqivrc", constBuf);
 
 		if(g_file_get_contents(fileName, &buf, NULL, NULL)) {
-			if(!g_shell_parse_argv(buf, &optionFileArgc, &optionFileArgv, NULL)) {
-				die("Failed to parse the options file ~/.pqivrc");
-			}
-			for(i=0; i < optionFileArgc; i++) {
-				options[optionCount] = (char*)malloc(strlen(optionFileArgv[i]));
-				g_stpcpy(options[optionCount], optionFileArgv[i]);
-				if(++optionCount > 250) {
-					die("Too many options; your configuration file "
-						"is restricted to 250 options");
+			g_strstrip(buf);
+			if(buf[0] != 0) {
+				if(!g_shell_parse_argv(buf, &optionFileArgc, &optionFileArgv, NULL)) {
+					die("Failed to parse the options file ~/.pqivrc");
+				}
+				for(i=0; i < optionFileArgc; i++) {
+					options[optionCount] = (char*)malloc(strlen(optionFileArgv[i]));
+					g_stpcpy(options[optionCount], optionFileArgv[i]);
+					if(++optionCount > 250) {
+						die("Too many options; your configuration file "
+							"is restricted to 250 options");
+					}
 				}
 			}
 			/* We can't free due to a bug in ubuntu's GTK version
