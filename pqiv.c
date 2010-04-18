@@ -848,6 +848,7 @@ gboolean loadImage() { /*{{{*/
 	 * Load an image and display it
 	 */
 	GdkPixbuf *tmpImage;
+	GdkPixbuf *tmpImage2;
 	GdkPixbuf *chessBoardBuf;
 	#ifndef NO_ANIMATIONS
 	GdkPixbufAnimation *tmpAnimation;
@@ -864,7 +865,9 @@ gboolean loadImage() { /*{{{*/
 		}
 		tmpAnimation = g_object_ref(memoryArgAnimation);
 		if(gdk_pixbuf_animation_is_static_image(tmpAnimation)) {
-			tmpImage = gdk_pixbuf_copy(gdk_pixbuf_animation_get_static_image(tmpAnimation));
+			tmpImage2 = gdk_pixbuf_apply_embedded_orientation(gdk_pixbuf_animation_get_static_image(tmpAnimation));
+			tmpImage = gdk_pixbuf_copy(tmpImage2);
+			g_object_unref(tmpImage2);
 			if(!tmpImage) {
 				g_printerr("Failed to load %s\n", currentFile->fileName);
 				g_object_unref(tmpAnimation);
@@ -894,7 +897,9 @@ gboolean loadImage() { /*{{{*/
 			return FALSE;
 		}
 		if(gdk_pixbuf_animation_is_static_image(tmpAnimation)) {
-			tmpImage = gdk_pixbuf_copy(gdk_pixbuf_animation_get_static_image(tmpAnimation));
+			tmpImage2 = gdk_pixbuf_apply_embedded_orientation(gdk_pixbuf_animation_get_static_image(tmpAnimation));
+			tmpImage = gdk_pixbuf_copy(tmpImage2);
+			g_object_unref(tmpImage2);
 			if(!tmpImage) {
 				g_printerr("Failed to load %s\n", currentFile->fileName);
 				g_object_unref(tmpAnimation);
@@ -993,17 +998,6 @@ gboolean loadImage() { /*{{{*/
 		/* If the image has no alpha channel, just display the image */
 		currentImage = tmpImage;
 	}
-
-	/* Rotate image */
-	#if GDK_PIXBUF_MAJOR >= 2 && GDK_PIXBUF_MINOR >= 12
-	if(gdk_pixbuf_get_option(currentImage, "orientation") != NULL) {
-		tmpImage = gdk_pixbuf_apply_embedded_orientation(currentImage);
-		g_object_unref(currentImage);
-		currentImage = tmpImage;
-	}
-	#else
-		#warning "Automatic image rotation requires GDK Pixbuf >= 2.12. Feature disabled!"
-	#endif
 
 	#ifndef NO_INOTIFY
 	/* Update inotify watch to manage automatic reloading {{{ */ 
