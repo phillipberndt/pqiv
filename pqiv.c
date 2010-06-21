@@ -18,7 +18,7 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  * 
  */
-#define RELEASE "0.11-beta1"
+#define RELEASE "0.11"
 
 /* Includes {{{ */
 #include <stdio.h>

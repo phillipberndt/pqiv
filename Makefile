@@ -4,7 +4,7 @@
 DESTDIR="/"
 PREFIX="/usr"
 OPTIONFLAGS= lib/strnatcmp.c       
-BINARY_NAME="qiv"
+BINARY_NAME="pqiv"
 
 # Fixed settings
 REQUIRED_PACKAGES=gtk+-2.0 gthread-2.0 pango glib-2.0
