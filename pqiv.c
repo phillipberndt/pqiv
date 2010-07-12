@@ -174,6 +174,8 @@ void autoScaleFactor();
 void resizeAndPosWindow();
 void displayImage();
 inline void scale();
+void getMonitorSize(gint *, gint *);
+void getMonitorSizeR(GdkRectangle *);
 /* }}} */
 /* Error, debug and info message stuff {{{ */
 /* Debugging {{{ */
@@ -1062,13 +1064,10 @@ void forceAutoScaleFactor(enum autoScaleSetting upDown) { /*{{{*/
 	 * to the window/screen size
 	 */
 	gint imgx, imgy, scrx, scry, rem;
-	GdkScreen *screen;
 
-	screen = gtk_widget_get_screen(window);
 	imgx = gdk_pixbuf_get_width(currentImage);
 	imgy = gdk_pixbuf_get_height(currentImage);
-	scrx = gdk_screen_get_width(screen);
-	scry = gdk_screen_get_height(screen);
+	getMonitorSize(&scrx, &scry);
 
 	if(isFullscreen == TRUE) {
 		rem = 0;
@@ -1159,6 +1158,20 @@ void rotate(gboolean left) { /*{{{*/
 } /*}}}*/
 /* }}} */
 /* Draw image to screen {{{ */
+void getMonitorSize(gint *scrx, gint *scry) {
+	GdkRectangle rectangle;
+	getMonitorSizeR(&rectangle);
+	*scrx = rectangle.width;
+	*scry = rectangle.height;
+}
+void getMonitorSizeR(GdkRectangle *rectangle) {/*{{{*/
+	GdkScreen *screen;
+	gint monitor;
+
+	screen = gtk_widget_get_screen(window);
+	monitor = gdk_screen_get_monitor_at_window(gtk_widget_get_screen(window), window->window);
+	gdk_screen_get_monitor_geometry(screen, monitor, rectangle);
+}/*}}}*/
 #ifndef NO_COMPOSITING
 gboolean exposeCb(GtkWidget *widget, GdkEventExpose *event, gpointer data) { /*{{{*/
 	/**
@@ -1262,25 +1275,23 @@ void setFullscreen(gboolean fullscreen) { /*{{{*/
 	 */
 	GdkCursor *cursor;
 	GdkPixmap *source;
-	GdkScreen *screen;
 	gint scrx, scry;
+	GdkRectangle scr;
 
 	DEBUG1("Fullscreen");
 	scaledAt = -1;
 	isFullscreen = fullscreen;
 	if(fullscreen == TRUE) {
 		/* This is needed because of crappy window managers :/ */
-		screen = gtk_widget_get_screen(window);
-		scrx = gdk_screen_get_width(screen);
-		scry = gdk_screen_get_height(screen);
+		getMonitorSizeR(&scr);
 		gtk_window_set_resizable(GTK_WINDOW(window), TRUE);
 		handlePendingEvents();
 		/* For users without window managers */
 		gdk_window_fullscreen(window->window);
 		handlePendingEvents();
-		gtk_window_move(GTK_WINDOW(window), 0, 0);
-		gtk_widget_set_size_request(window, scrx, scry);
-		gtk_window_resize(GTK_WINDOW(window), scrx, scry);
+		gtk_window_move(GTK_WINDOW(window), scr.x, scr.y);
+		gtk_widget_set_size_request(window, scr.width, scr.height);
+		gtk_window_resize(GTK_WINDOW(window), scr.width, scr.height);
 		handlePendingEvents();
 		/* This is done by event cb now
 		 * gtk_window_set_resizable(GTK_WINDOW(window), FALSE);*/
@@ -1309,14 +1320,12 @@ void resizeAndPosWindow() { /*{{{*/
 	 * on the screen
 	 */
 	gint imgx, imgy, scrx, scry;
-	GdkScreen *screen;
+	GdkRectangle scr;
 	DEBUG1("Resize");
 
 	imgx = gdk_pixbuf_get_width(scaledImage);
 	imgy = gdk_pixbuf_get_height(scaledImage);
-	screen = gtk_widget_get_screen(window);
-	scrx = gdk_screen_get_width(screen);
-	scry = gdk_screen_get_height(screen);
+	getMonitorSizeR(&scr);
 
 	gtk_widget_set_size_request(imageWidget, imgx, imgy);
 
@@ -1330,7 +1339,7 @@ void resizeAndPosWindow() { /*{{{*/
 		handlePendingEvents();
 		gtk_window_set_resizable(GTK_WINDOW(window), FALSE);
 		if(optionWindowPosition[2] == -1) {
-			gtk_window_move(GTK_WINDOW(window), (scrx - imgx) / 2, (scry - imgy) / 2);
+			gtk_window_move(GTK_WINDOW(window), scr.x + (scr.width - imgx) / 2, scr.y + (scr.height - imgy) / 2);
 		}
 		else if(optionWindowPosition[2] == 1) {
 			gtk_window_move(GTK_WINDOW(window), optionWindowPosition[0], 
@@ -1340,9 +1349,9 @@ void resizeAndPosWindow() { /*{{{*/
 	}
 	else {
 		/* Fullscreen mode: Center image widget */
-		gtk_widget_set_size_request(mouseEventBox, scrx, scry);
-		gtk_fixed_move(GTK_FIXED(fixed), imageWidget, (scrx - imgx) / 2 + moveX,
-			(scry - imgy) / 2 + moveY);
+		gtk_widget_set_size_request(mouseEventBox, scr.width, scr.height);
+		gtk_fixed_move(GTK_FIXED(fixed), imageWidget, (scr.width - imgx) / 2 + moveX,
+			(scr.height - imgy) / 2 + moveY);
 	}
 } /*}}}*/
 void displayImage() { /*{{{*/
@@ -1986,7 +1995,7 @@ gboolean mouseButtonCb(GtkWidget *widget, GdkEventButton *event, gpointer data) 
 	/**
 	 * Callback for mouse events
 	 */
-	GdkScreen *screen; gint scrx, scry, i;
+	gint scrx, scry, i;
 	static guint32 timeOfButtonPress;
 	if(event->button == 1) {
 		/* Button 1 for scrolling */
@@ -1996,9 +2005,8 @@ gboolean mouseButtonCb(GtkWidget *widget, GdkEventButton *event, gpointer data) 
 			#endif
 			)) {
 			if(isFullscreen == TRUE) {
-				screen = gtk_widget_get_screen(window);
-				scrx = gdk_screen_get_width(screen) / 2;
-				scry = gdk_screen_get_height(screen) / 2;
+				getMonitorSize(&scrx, &scry);
+				scrx /= 2; scry /= 2;
 				gdk_display_warp_pointer(gdk_display_get_default(),
 					gdk_display_get_default_screen(gdk_display_get_default()), scrx, scry);
 			}
@@ -2018,9 +2026,8 @@ gboolean mouseButtonCb(GtkWidget *widget, GdkEventButton *event, gpointer data) 
 	}
 	if(event->button == 3 && isFullscreen == TRUE) {
 		/* BIND: Button 3/Drag: Zoom in and out in fullscreen */
-		screen = gtk_widget_get_screen(window);
-		scrx = gdk_screen_get_width(screen) / 2;
-		scry = gdk_screen_get_height(screen) / 2;
+		getMonitorSize(&scrx, &scry);
+		scrx /= 2; scry /= 2;
 
 		if(event->type == GDK_BUTTON_PRESS) {
 			gdk_display_warp_pointer(gdk_display_get_default(),
@@ -2070,14 +2077,13 @@ gint mouseMotionCb(GtkWidget *widget, GdkEventMotion *event, gpointer data) {
 	 * Callback for mouse motion
 	 * (Moving & zooming)
 	 */
-	GdkScreen *screen; gint scrx, scry;
+	gint scrx, scry;
 	if(mouseScrollEnabled == FALSE) {
 		return 0;
 	}
 	if(isFullscreen == TRUE) {
-		screen = gtk_widget_get_screen(window);
-		scrx = gdk_screen_get_width(screen) / 2;
-		scry = gdk_screen_get_height(screen) / 2;
+		getMonitorSize(&scrx, &scry);
+		scrx /= 2; scry /= 2;
 
 		/* Don't perform too small movement (Improves performance a lot!) */
 		if(abs(event->x - scrx) + abs(event->y - scry) < 4) {
@@ -2140,7 +2146,7 @@ gboolean showCb(GtkWidget *widget, GdkEventConfigure *event, gpointer data) {/*{
 gint configureCbKnownSize = 0;
 gboolean configureCb(GtkWidget *widget, GdkEventConfigure *event, gpointer data) {/*{{{*/
 	gint imgx, imgy, scrx, scry;
-	GdkScreen *screen;
+	GdkRectangle scr;
 
 	DEBUG1("Received configure-event");
 
@@ -2149,16 +2155,14 @@ gboolean configureCb(GtkWidget *widget, GdkEventConfigure *event, gpointer data)
 		configureCbKnownSize = event->width << 4 | event->height;
 		imgx = gdk_pixbuf_get_width(scaledImage);
 		imgy = gdk_pixbuf_get_height(scaledImage);
-		screen = gtk_widget_get_screen(window);
-		scrx = gdk_screen_get_width(screen);
-		scry = gdk_screen_get_height(screen);
+		getMonitorSizeR(&scr);
 
 		if(isFullscreen) {
-			gtk_window_move(GTK_WINDOW(window), 0, 0);
-			gtk_widget_set_size_request(window, scrx, scry);
-			gtk_window_resize(GTK_WINDOW(window), scrx, scry);
-			gtk_fixed_move(GTK_FIXED(fixed), imageWidget, (scrx - imgx) / 2 + moveX,
-				(scry - imgy) / 2 + moveY);
+			gtk_window_move(GTK_WINDOW(window), scr.x, scr.y);
+			gtk_widget_set_size_request(window, scr.width, scr.height);
+			gtk_window_resize(GTK_WINDOW(window), scr.width, scr.height);
+			gtk_fixed_move(GTK_FIXED(fixed), imageWidget, (scr.width - imgx) / 2 + moveX,
+				(scr.height - imgy) / 2 + moveY);
 		}
 		else {
 			gtk_fixed_move(GTK_FIXED(fixed), imageWidget, 0, 0);
