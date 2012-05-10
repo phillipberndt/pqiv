@@ -1,7 +1,8 @@
 PQIV README
--------------------------------------------------------------------------------
+===========
 
-ABOUT PQIV
+About pqiv
+----------
 
 Originally, PQIV was written as a drop-in replacement for QIV
 (http://spiegl.de/qiv/), as QIV was unmaintained and used imlib, a deprecated
@@ -17,7 +18,8 @@ May 2009, both programs are useable again and their features are likely to
 diverge.
 
 
-FEATURES
+Features
+--------
 
 Originating from qiv:
  * moving & zooming image in fullscreen mode.
@@ -41,20 +43,23 @@ Unique features:
  * animation support
 
 
-INSTALLATION
+Installation
+------------
 
-Usual stuff. ./configure && make && make install
+Usual stuff. `./configure && make && make install`
 You'll need
  * gtk+-2.0 >= 2.12
  * Corresponding glib, gthread, gpixbuf versions
 
 
-THANKS
+Thanks
+------
 
-This program uses Martin Pool's natsort algorithm [http://sourcefrog.net/projects/natsort/]
+This program uses Martin Pool's natsort algorithm <http://sourcefrog.net/projects/natsort/>
 
 
-CONTRIBUTORS
+Contributors
+------------
 
  * Nir Tzachar
  * Yaakov (Cygwin Ports)
@@ -67,10 +72,11 @@ CONTRIBUTORS
  * Brandon
 
 
-KNOWN PROBLEMS
+Known problems
+--------------
 
  * If you experience problems with file encodings, try setting the environment
-   variable G_FILENAME_ENCODING to match your file system's encoding
+   variable `G_FILENAME_ENCODING` to match your file system's encoding
  * It seems that GTK buffers images in memory even after they are freed. If you
    reload images (press 'r') often, the memory consumed by the procress will
    increase. However, it doesn't do so linearly and reaches a limit, so it's
@@ -78,7 +84,8 @@ KNOWN PROBLEMS
    report that as a bug!
 
 
-CODING-STYLE
+Coding-style
+------------
 
 I personally dislike the typical C coding style. Which means I won't ever use
 it in pqiv code. Here's what I do:
@@ -91,7 +98,14 @@ it in pqiv code. Here's what I do:
  * Variable names are camelCase
 
 
-CHANGELOG
+Changelog
+---------
+
+pqiv 0.12
+ * Included patch to correctly fullscreen on Xinerama dual screen setups
+   (Thanks to by Alexander Sulfrian)
+ * glib 2.30 compatibility fixes (remove gconvert.h include, see Gentoo bug #415325)
+ * Keypad support for movement (See Debian bug #671401)
 
 pqiv 0.11
  * Updated configure-script (for enhanced non-linux compatibility)
@@ -105,7 +119,7 @@ pqiv 0.10
    things up
  * Rewrote file sorting, supports shuffle mode now as well
  * Improved handling of ~/.pqivrc
- * -<n> supports inserting the filename at arbitrary positions
+ * -&lt;n&gt; supports inserting the filename at arbitrary positions
  * Replaced most algorithms with corresponding GLib functions
 
 pqiv 0.9
@@ -162,5 +176,5 @@ pqiv 0.4 rc1
  * Many bugfixes (i.e. fullscreen on startup)
  * Ability to execute external commands
 
-pqiv <0.4:
+pqiv &lt;0.4:
  See the old python release for information on that
