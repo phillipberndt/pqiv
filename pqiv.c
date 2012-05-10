@@ -1722,11 +1722,13 @@ gboolean keyboardCb(GtkWidget *widget, GdkEventKey *event, gpointer data) { /*{{
 			/* }}} */
 		/* BIND: PgUp: Jump 10 images forwards {{{ */
 		case GDK_Page_Up:
+		case GDK_KP_Page_Up:
 			jumpFiles(optionReverseMovement ? -10 : 10);
 			break;
 			/* }}} */
 		/* BIND: PgDn: Jump 10 images backwards {{{ */
 		case GDK_Page_Down:
+		case GDK_KP_Page_Down:
 			jumpFiles(optionReverseMovement ? 10: -10);
 			break;
 			/* }}} */
@@ -1817,6 +1819,7 @@ gboolean keyboardCb(GtkWidget *widget, GdkEventKey *event, gpointer data) { /*{{
 			/* }}} */
 		/* BIND: +: Zoom in {{{ */
 		case GDK_plus:
+		case GDK_KP_Add:
 			scaleBy(event->state & GDK_CONTROL_MASK ? .2 : .05);
 			resizeAndPosWindow();
 			displayImage();
@@ -1825,6 +1828,7 @@ gboolean keyboardCb(GtkWidget *widget, GdkEventKey *event, gpointer data) { /*{{
 			/* }}} */
 		/* BIND: -: Zoom out {{{ */
 		case GDK_minus:
+		case GDK_KP_Subtract:
 			scaleBy(-(event->state & GDK_CONTROL_MASK ? .2 : .05));
 			resizeAndPosWindow();
 			displayImage();
@@ -1833,6 +1837,7 @@ gboolean keyboardCb(GtkWidget *widget, GdkEventKey *event, gpointer data) { /*{{
 			/* }}} */
 		/* BIND: 0: Autoscale down {{{ */
 		case GDK_0:
+		case GDK_KP_0:
 			forceAutoScaleFactor(ON);
 			moveX = moveY = 0;
 			resizeAndPosWindow();
