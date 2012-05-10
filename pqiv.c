@@ -24,7 +24,6 @@
 #include <stdio.h>
 #include <gtk/gtk.h>
 #include <glib.h>
-#include <glib/gconvert.h>
 #include <glib/gstdio.h>
 #include <gdk/gdkkeysyms.h>
 #include <sys/types.h>
@@ -559,7 +558,7 @@ gboolean copyFile(gchar *src, gchar *dst) { /*{{{*/
 
 	if((sourceFile = g_mapped_file_new(src, FALSE, NULL)) == NULL) return FALSE;
 	retval = g_file_set_contents(dst, g_mapped_file_get_contents(sourceFile), g_mapped_file_get_length(sourceFile), NULL);
-	g_mapped_file_free(sourceFile);
+	g_mapped_file_unref(sourceFile);
 	
 	return retval;
 } /*}}}*/
