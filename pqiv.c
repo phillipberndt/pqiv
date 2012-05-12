@@ -1274,7 +1274,6 @@ void setFullscreen(gboolean fullscreen) { /*{{{*/
 	 */
 	GdkCursor *cursor;
 	GdkPixmap *source;
-	gint scrx, scry;
 	GdkRectangle scr;
 
 	DEBUG1("Fullscreen");
@@ -1318,7 +1317,7 @@ void resizeAndPosWindow() { /*{{{*/
 	 * Resize the window and place it centered
 	 * on the screen
 	 */
-	gint imgx, imgy, scrx, scry;
+	gint imgx, imgy;
 	GdkRectangle scr;
 	DEBUG1("Resize");
 
@@ -2153,7 +2152,7 @@ gboolean showCb(GtkWidget *widget, GdkEventConfigure *event, gpointer data) {/*{
 }/*}}}*/
 gint configureCbKnownSize = 0;
 gboolean configureCb(GtkWidget *widget, GdkEventConfigure *event, gpointer data) {/*{{{*/
-	gint imgx, imgy, scrx, scry;
+	gint imgx, imgy;
 	GdkRectangle scr;
 
 	DEBUG1("Received configure-event");
