@@ -1739,17 +1739,21 @@ gboolean keyboardCb(GtkWidget *widget, GdkEventKey *event, gpointer data) { /*{{
 			/* }}} */
 		/* BIND: Cursor keys: Move (Fullscreen) {{{ */
 		case GDK_Down:
+		case GDK_KP_Down:
 		case GDK_Up:
+		case GDK_KP_Up:
 		case GDK_Right:
+		case GDK_KP_Right:
 		case GDK_Left:
+		case GDK_KP_Left:
 			if(isFullscreen) {
-				if(event->keyval == GDK_Down) {
+				if(event->keyval == GDK_Down || event->keyval == GDK_KP_Down) {
 					i = (event->state & GDK_CONTROL_MASK ? 50 : 10);
-				} else if(event->keyval == GDK_Up) {
+				} else if(event->keyval == GDK_Up || event->keyval == GDK_KP_Up) {
 					i = -(event->state & GDK_CONTROL_MASK ? 50 : 10);
-				} else if(event->keyval == GDK_Right) {
+				} else if(event->keyval == GDK_Right || event->keyval == GDK_KP_Right) {
 					n = (event->state & GDK_CONTROL_MASK ? 50 : 10);
-				} else if(event->keyval == GDK_Left) {
+				} else if(event->keyval == GDK_Left || event->keyval == GDK_KP_Left) {
 					n = -(event->state & GDK_CONTROL_MASK ? 50 : 10);
 				}
 
