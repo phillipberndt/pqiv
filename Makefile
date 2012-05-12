@@ -19,7 +19,7 @@ pqiv: pqiv.c
 debug: pqiv.c
 	$(CC) $(LDFLAGS) $(CFLAGS) `pkg-config --cflags $(REQUIRED_PACKAGES)` $(OPTIONFLAGS) -Wall -ggdb pqiv.c `pkg-config --libs $(REQUIRED_PACKAGES)` -o pqiv
 vdebug: pqiv.c
-	$(CC) $(LDFLAGS) $(CGLAGS) `pkg-config --cflags $(REQUIRED_PACKAGES)` -Wall -ggdb -DDEBUG `pkg-config --libs $(REQUIRED_PACKAGES)` $(OPTIONFLAGS) -o pqiv pqiv.c
+	$(CC) $(LDFLAGS) $(CGLAGS) `pkg-config --cflags $(REQUIRED_PACKAGES)` $(OPTIONFLAGS) -Wall -ggdb -DDEBUG pqiv.c `pkg-config --libs $(REQUIRED_PACKAGES)` -o pqiv
 
 # The manpage stuff is kind of hackish, but it seems that I can't rely on the C
 # preprocessor (drac from gentoo reported "missing terminating ' character"
