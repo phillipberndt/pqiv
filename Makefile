@@ -58,7 +58,7 @@ mininstall:
 # Package generation
 package: 
 	mkdir pqiv-$(PACKAGE_VERSION)/
-	cp -r lib *.c pqiv.1.template gpl.txt configure Makefile README pqiv-$(PACKAGE_VERSION)/
+	cp -r lib *.c pqiv.1.template gpl.txt configure Makefile README.markdown pqiv-$(PACKAGE_VERSION)/
 	tar cjf pqiv-$(PACKAGE_VERSION).tbz pqiv-$(PACKAGE_VERSION)/
 	rm -rf pqiv-$(PACKAGE_VERSION)
 deb:
