@@ -101,6 +101,9 @@ it in pqiv code. Here's what I do:
 Changelog
 ---------
 
+pqiv 0.13 (WIP)
+ * Added an option -T to let the user control the window's title
+
 pqiv 0.12
  * Included patch to correctly fullscreen on Xinerama dual screen setups
    (Thanks to by Alexander Sulfrian)

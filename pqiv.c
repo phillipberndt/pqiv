@@ -1,5 +1,5 @@
 /**
- * vim:ft=c:fileencoding=utf-8:fdm=marker:ts=8:noet
+ * vim:ft=c:fileencoding=utf-8:fdm=marker:ts=8:sw=8:noet
  *
  * pqiv - pretty quick image viewer
  * Copyright (c) Phillip Berndt, 2007-2009
@@ -142,6 +142,7 @@ static gboolean currentImageIsAnimated = FALSE;
 static int inotifyFd = 0;
 static int inotifyWd = -1;
 #endif
+static gchar *windowTitle = "pqiv: $FILENAME ($WIDTHx$HEIGHT) $ZOOM% [$IMAGE_NUMBER/$IMAGE_COUNT]";
 
 /* Program options */
 static gboolean optionHideInfoBox = FALSE;
@@ -199,27 +200,74 @@ void setInfoText(gchar *text) {
 	 * Will look like "pqiv: file (size) zoom [nr/count] (text)"
 	 * If text is NULL the "(text)" part will be stripped
 	 */
+	gchar *sIter, *sIter2, *sTmp;
 	GString *newText = g_string_new(NULL);
-	gchar *displayName;
-	displayName = g_filename_display_name(currentFile->fileName);
-	if(text == NULL) {
-		g_string_printf(newText, "pqiv: %s (%dx%d) %d%% [%d/%d]",
-			displayName,
-			gdk_pixbuf_get_width(scaledImage),
-			gdk_pixbuf_get_height(scaledImage), (int)(zoom * 100), currentFile->nr + 1,
-			lastFile->nr + 1);
+	GString *newInfoText = g_string_new(NULL);
+	sIter = windowTitle;
+	gchar *displayName = g_filename_display_name(currentFile->fileName);
+
+
+	while(*sIter) {
+		sIter2 = g_strstr_len(sIter, -1, "$");
+		if(!sIter2) {
+			g_string_append(newText, sIter);
+			break;
+		}
+		g_string_append_len(newText, sIter, (gssize)(sIter2 - sIter));
+
+		sIter = sIter2 + 1;
+
+		if(g_strstr_len(sIter, 12, "BASEFILENAME") != NULL) {
+			sTmp = g_filename_display_basename(currentFile->fileName);
+			g_string_append(newText, sTmp);
+			g_free(sTmp);
+			sIter += 12;
+		}
+		else if(g_strstr_len(sIter, 8, "FILENAME") != NULL) {
+			g_string_append(newText, displayName);
+			sIter += 8;
+		}
+		else if(g_strstr_len(sIter, 5, "WIDTH") != NULL) {
+			g_string_append_printf(newText, "%d", gdk_pixbuf_get_width(scaledImage));
+			sIter += 5;
+		}
+		else if(g_strstr_len(sIter, 6, "HEIGHT") != NULL) {
+			g_string_append_printf(newText, "%d", gdk_pixbuf_get_height(scaledImage));
+			sIter += 6;
+		}
+		else if(g_strstr_len(sIter, 4, "ZOOM") != NULL) {
+			g_string_append_printf(newText, "%d", (int)(zoom * 100));
+			sIter += 4;
+		}
+		else if(g_strstr_len(sIter, 12, "IMAGE_NUMBER") != NULL) {
+			g_string_append_printf(newText, "%d", currentFile->nr + 1);
+			sIter += 12;
+		}
+		else if(g_strstr_len(sIter, 11, "IMAGE_COUNT") != NULL) {
+			g_string_append_printf(newText, "%d", lastFile->nr + 1);
+			sIter += 11;
+		}
+		else {
+			g_string_append_c(newText, '$');
+		}
 	}
-	else {
-		g_string_printf(newText, "pqiv: %s (%dx%d) %d%% [%d/%d] (%s)",
-			displayName,
-			gdk_pixbuf_get_width(scaledImage),
-			gdk_pixbuf_get_height(scaledImage), (int)(zoom * 100), currentFile->nr + 1,
-			lastFile->nr + 1, text);
+
+	g_string_printf(newInfoText, "%s (%dx%d) %d%% [%d/%d]",
+		displayName,
+		gdk_pixbuf_get_width(scaledImage),
+		gdk_pixbuf_get_height(scaledImage), (int)(zoom * 100), currentFile->nr + 1,
+		lastFile->nr + 1);
+
+	if(text != NULL) {
+		g_string_append_printf(newText, " (%s)", text);
+		g_string_append_printf(newInfoText, " (%s)", text);
 	}
+
 	g_free(displayName);
 	gtk_window_set_title(GTK_WINDOW(window), newText->str);
-	gtk_label_set_text(GTK_LABEL(infoLabel), newText->str + 6);
+	gtk_label_set_text(GTK_LABEL(infoLabel), newInfoText->str);
 	g_string_free(newText, TRUE);
+	g_string_free(newInfoText, TRUE);
 }
 /* }}} */
 void helpMessage(gchar claim) { /* {{{ */
@@ -271,6 +319,8 @@ void helpMessage(gchar claim) { /* {{{ */
                 " -d n           Slideshow interval \n"
                 " -t             Scale images up to fill the whole screen \n"
                 "                Use twice to deactivate scaling completely \n"
+		" -T             Set the window title \n"
+		"                See man page for variables \n"
                 " -r             Read additional filenames (not folders) from stdin \n"
                 " -c             Disable the background for transparent images \n"
                 "                See manpage for what happens if you use this option more than once \n"
@@ -2300,7 +2350,7 @@ int main(int argc, char *argv[]) {
 
 	memset(aliases, 0, sizeof(aliases));
 	opterr = 0;
-	while((option = getopt(optionCount, options, "ifFsSRnthrcwqz:P:p:d:a:1:2:3:4:5:6:7:8:9:")) > 0) {
+	while((option = getopt(optionCount, options, "ifFsSRnthrcwqz:T:P:p:d:a:1:2:3:4:5:6:7:8:9:")) > 0) {
 		switch(option) {
 			/* OPTION: -i: Hide info box */
 			case 'i':
@@ -2348,6 +2398,11 @@ int main(int argc, char *argv[]) {
 			/* ADD: Use twice to deactivate scaling completely */
 			case 't':
 				autoScale = (autoScale + 1) % 3;
+				break;
+			/* OPTION: -T: Set the window title */
+			/* ADD: See man page for variables */
+			case 'T':
+				windowTitle = g_strdup((gchar*)optarg);
 				break;
 			/* OPTION: -r: Read additional filenames (not folders) from stdin */
 			case 'r':
