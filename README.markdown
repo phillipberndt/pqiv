@@ -61,15 +61,16 @@ This program uses Martin Pool's natsort algorithm <http://sourcefrog.net/project
 Contributors
 ------------
 
- * Nir Tzachar
- * Yaakov (Cygwin Ports)
- * David Lindquist
- * Tinoucas
- * John Keeping
- * Rene Saarsoo
- * Alexandros Diamantidis (Reverse-movement-direction code, fixed code typos)
  * Alexander Sulfrian
+ * Alexandros Diamantidis (Reverse-movement-direction code, fixed code typos)
  * Brandon
+ * David Lindquist
+ * Hanspeter Gysin
+ * John Keeping
+ * Nir Tzachar
+ * Rene Saarsoo
+ * Tinoucas
+ * Yaakov (Cygwin Ports)
 
 
 Known problems

@@ -2280,7 +2280,7 @@ int main(int argc, char *argv[]) {
 /* Variable definitions {{{ */
 	GdkColor color;
 	GtkWidget *fileChooser;
-	gchar option;
+	int option;
 	gchar *fileName;
 	gchar *buf;
 	const gchar *constBuf;
