@@ -1,0 +1,153 @@
+.\" vim:filetype=groff
+.TH pqiv 1 "09 June 2013" "" "pqiv manual"
+.SH NAME
+pqiv \- quick image viewer
+.SH SYNOPSIS
+.B "pqiv" [options] <file(s) or folder(s)>
+.SH DESCRIPTION
+pqiv is a simple image viewer inspired by qiv.
+.SH OPTIONS
+.TP
+.B -a, --keyboard-alias=nf
+Define n as a keyboard alias for f. For example, `-a af' will give you fullscreen with the `a' key.
+.TP
+.B -c, --transparent-background
+Borderless transparent window. Click on the window to show the window borders,
+click again to hide them.  This will only work in compositing window managers.
+.TP
+.B -d, --slideshow-interval=n
+Set the interval for the slideshow mode
+.TP
+.B -f, --fullscreen
+Start in fullscreen mode
+.TP 
+.B -i, --hide-info-box
+Initially hide the info box
+.TP
+.B -n, --sort
+Sort files in natural order
+.TP
+.B -P, --window-position=POSITION
+Set initial window position. Use `x,y' to position the window at the specific
+coordinates, or `off' to not position the window at all. The default behavior
+is to center the window.
+.TP
+.B -R, --reverse-cursor-keys
+Reverse the meaning of the cursor keys
+.TP
+.B -s, --slideshow
+Initially activate slideshow mode
+.TP
+.B -t, --scale-images-up
+Scale images up to fill the whole screen
+.TP
+.B -T, --window-title=TITLE
+Set the title of the window. You have some variables available:
+
+.po 7
+
+.TP
+.I $BASEFILENAME
+The base file name of the current file (e.g. `image.png')
+
+.TP
+.I $FILENAME
+The file name of the current file (e.g. `/home/user/image.png')
+
+.TP
+.I $WIDTH
+The width of the current image in pixels
+
+.TP
+.I $HEIGHT
+The height of the current image in pixels
+
+.TP
+.I $ZOOM
+The current zoom level
+
+.TP
+.I $IMAGE_NUMBER
+The index of the current image
+
+.TP
+.I $IMAGE_COUNT
+The total numer of images
+
+.po 0
+
+The default is `pqiv: $FILENAME ($WIDTHx$HEIGHT) $ZOOM% [$IMAGE_NUMBER/$IMAGE_COUNT]'
+
+.TP
+.B -z, --zoom-level=FLOAT
+Set initial zoom level as a floating point number (1.0 is 100%)
+.TP
+.B -1, --command-1=COMMAND
+Bind the external COMMAND to key 1. Likewise, you can use -2 to -9 for those keys.
+Extended usage:
+
+.po 7
+
+.TP
+.I Show command output in a window
+Prefix the command with 
+.RI `>'
+to display it's output in an overlay window.
+
+.TP
+.I Pipe the image through a filter
+Prefix the command with 
+.RI `|' 
+to write the image to the program's stdin and read an image from its stdout.
+The output is not cached, so reloading the image will revert to the old state.
+
+.po 0
+
+.TP
+.B --disable-scaling
+Disable scaling of images
+.TP
+.B --shuffle
+Shuffle files
+
+.PP
+You can use the file
+.RI ~/.pqivrc
+to make any of there default. The file's syntax is (mostly) those of desktop-files. Create a section
+.I options
+and use the long option names for the key names. For example,
+
+.po 5
+
+[options]
+.br
+fullscreen=1
+.br
+slideshow-interval=5
+
+.po 0
+
+would be a valid configuration file.  
+The old syntax from pqiv <= 0.13, where the file was prepended to the argument
+vector, is still supported, but limited in that in new versions of pqiv,
+doubling an option will no longer revert its effect. So if you have `-f' in
+your configuration file, another `-f' on the command line will no longer
+unfullscreen pqiv. Migrate to the new syntax if you want to regain this
+possibility.
+
+.PP
+pqiv will display all files you specified on the command line. Directories will
+be searched recursively for files supported by gtk+
+(for example: bmp, gif, jpeg, png, wbmp, xpm, svg). The special file
+.B -
+will cause pqiv to read a file from stdin.
+
+.SH USAGE
+In pqiv, you can use both mouse and keyboard to navigate through the images. Execute
+.B "pqiv" -h
+to get more information on the key bindings.
+
+.SH AUTHOR
+.nf
+Phillip Berndt (mail at pberndt dot com)
+.nf
