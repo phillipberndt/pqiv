@@ -1,0 +1,153 @@
+.\" vim:filetype=groff
+.TH pqiv 1 "27 March 2010" "$PACKAGE_VERSION" "pqiv manual"
+.SH NAME
+pqiv \- quick image viewer
+.SH SYNOPSIS
+.B $BINARY_NAME [options] <file(s) or folder(s)>
+.SH DESCRIPTION
+pqiv is a simple image viewer inspired by qiv.
+.SH OPTIONS
+.TP
+.B -i
+Suppress the yellow info box in pqiv
+.TP
+.B -f
+Start pqiv in fullscreen mode
+.\" unless NO_FADING
+.TP
+.B -F
+Make qiv fade between images. Currently this does only work for images of equal size.
+.\" end
+.TP
+.B -s
+Auto start slide show
+.TP
+.B -S
+Follow symlinks. pqiv will not traverse into symlinked directories by default
+as this tends to lead to recursion and other problems. If this option
+is active, pqiv will follow symlinks. An algorithm to prevent recursion is
+implemented.
+.\" unless NO_SORTING
+.TP
+.B -n
+Sort the file list using natsort. Use twice to shuffle the list.
+.\" end
+.TP
+.B -d n
+Interval for the slideshow function, in seconds
+.TP
+.B -t
+If used once:  Scale small images up to fill the whole screen
+.br
+If used twice: Do not shrink image(s) larger than the screen to fit
+.TP
+.B -r
+Read filename(s) from STDIN.
+.TP
+.B -c
+pqiv will draw this well-known chessboard background for transparent images per
+default. Use this option to deactivate this behaviour.
+.\" unless NO_COMPOSITING
+If you use this option twice (and your wm supports it), it will cause the window to be transparent.
+Use it three times to make the window stay in the background and use it for times to also disable
+controls. You can make pqiv behave like a desktop widget this way.
+.\" end
+.\" unless NO_INOTIFY
+.TP
+.B -w
+Watch open files for changes and reload them if necessary
+.\" end
+.TP
+.B -z n
+Set initial zoom level in percent. This is only useful in conjunction with -t.
+.TP
+-p n
+Select interpolation type for resizing operations. Valid values for n:
+.br
+.po 5
+1: GDK_INTERP_NEAREST, copy the nearest pixel value
+.br
+2: GDK_INTERP_TILES, tile the image
+.br
+3: GDK_INTERP_BILINEAR, use bilinear interpolation
+.br
+4: GDK_INTERP_HYPER, use hyper interpolation
+.br
+.po 0
+.TP
+.B -P 
+Set window position.
+.br
+.po 5
+left,top: Set initial window position
+.br
+.po 5
+off:      Deactivate positioning
+.br
+.po 0
+Defaults to center of screen.
+.TP
+.B -a <key><new-key>
+Maps <key> to <new-key>. For example, "-a=+" will make "=" an alias for zooming
+in.
+.TP
+.B -R
+Reverse the meaning of the cursor and Page Up/Down keys. For example, pressing
+the "down" cursor key will normally make the image move up. With this option,
+the image will instead move down.
+.\" unless NO_COMMANDS
+.TP
+.B -<n>
+Use those options (n \in 0..9) to define a command, which will be executed when
+you press the corresponding key in pqiv. The last occurance of "$1" will be replaced
+by the current file's name.
+.br
+.po 5
+Prepend the command with
+.B >
+to show the command's output in a dialog window.
+.br
+.po 5
+Prepend the command with
+.B |
+to let pqiv pipe the displayed image to your command and read/reload it from
+the command's output.
+.po 0
+.br
+.TP
+.B -q
+Behave (mostly) like the original qiv. With this option pqiv will call
+.I qiv-command n file
+when you press a number key n, where n will be replaced by the key you pressed
+and file by the name of the current image.
+.\" end
+.\" unless NO_CONFIG_FILE
+.PP
+The contents of
+.B ~/.pqivrc
+will be prepended to pqiv's argv. So if you want to make an slideshow interval
+of 1 second the default for pqiv, put
+.nf
+	-d1
+.fi
+into that file.
+.PP
+.\" end
+pqiv will display all files you specified on the command line. Directories will
+be searched recursively for files supported by gtk+
+(for example: bmp, gif, jpeg, png, wbmp, xpm, svg). Unless you specified
+.B -r
+the special file
+.B -
+will cause pqiv to read a file from stdin.
+.SH USAGE
+In pqiv, you can use both mouse and keyboard to navigate through the images. Execute
+.B $BINARY_NAME -h
+to get more information on the key bindings.
+.PP
+If you call pqiv without a TTY on stdin (ie. from GUI) without parameters, pqiv
+will pop up an "open file" dialog.
+.SH AUTHOR
+.nf
+Phillip Berndt (mail at pberndt dot com)
+.nf
