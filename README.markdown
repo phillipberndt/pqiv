@@ -102,8 +102,14 @@ it in pqiv code. Here's what I do:
 Changelog
 ---------
 
-pqiv 0.13 (WIP)
+pqiv 1.0
  * Added an option -T to let the user control the window's title
+ * Fixed a wrong type bug on Raspberry PI
+
+ This will be the final release in the GTK 2 series. The upcoming version is a
+ complete rewrite from scratch based on GTK 3 (backwards compatible with GTK 2)
+ and Cairo, with several improvements and better compatibility. A developer
+ preview is available in the *rewrite* branch at github.
 
 pqiv 0.12
  * Included patch to correctly fullscreen on Xinerama dual screen setups
