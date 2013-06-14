@@ -246,7 +246,6 @@ gchar keyboard_aliases[127] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 gint option_scale = 1;
 gboolean scale_override = FALSE;
 const gchar *option_window_title = "pqiv: $FILENAME ($WIDTHx$HEIGHT) $ZOOM% [$IMAGE_NUMBER/$IMAGE_COUNT]";
-gboolean option_show_info_text = TRUE;
 guint option_slideshow_interval = 5;
 gboolean option_hide_info_box = FALSE;
 gboolean option_start_fullscreen = FALSE;
@@ -1569,7 +1568,7 @@ void update_info_text(const gchar *action) {/*{{{*/
 	}
 
 	// Update info text
-	if(option_show_info_text) {
+	if(!option_hide_info_box) {
 		current_info_text = g_strdup_printf("%s (%dx%d) %03.2f%% [%d/%d]", display_name,
 			cairo_image_surface_get_width(CURRENT_FILE->image_surface),
 			cairo_image_surface_get_height(CURRENT_FILE->image_surface),
@@ -2006,7 +2005,7 @@ gboolean window_key_press_callback(GtkWidget *widget, GdkEventKey *event, gpoint
 
 		case GDK_KEY_i:
 		case GDK_KEY_I:
-			option_show_info_text = !option_show_info_text;
+			option_hide_info_box = !option_hide_info_box;
 			update_info_text(NULL);
 			gtk_widget_queue_draw(GTK_WIDGET(main_window));
 			break;
