@@ -772,7 +772,7 @@ gboolean image_loaded_handler(gconstpointer info_text) {/*{{{*/
 			}
 			// In both cases: If the height exceeds 80% screen size, scale
 			// down
-			if(image_height * current_scale_level > screen_height * .8) {
+			if(option_scale > 0 && image_height * current_scale_level > screen_height * .8) {
 				current_scale_level = screen_height * .8 / image_height;
 			}
 		}
@@ -1673,8 +1673,18 @@ gboolean window_draw_callback(GtkWidget *widget, cairo_t *cr, gpointer user_data
 		int image_width = cairo_image_surface_get_width(CURRENT_FILE->image_surface);
 		int image_height = cairo_image_surface_get_height(CURRENT_FILE->image_surface);
 
-		int x = (main_window_width - current_scale_level * image_width) / 2;
-		int y = (main_window_height - current_scale_level * image_height) / 2;
+		int x;
+		int y;
+
+		if(option_scale > 0) {
+			x = (main_window_width - current_scale_level * image_width) / 2;
+			y = (main_window_height - current_scale_level * image_height) / 2;
+		}
+		else {
+			// When scaling is disabled always use the upper left corder to avoid
+			// problems with window managers ignoring the large window size request.
+			x = y = 0;
+		}
 
 		cairo_save(cr);
 
@@ -1745,7 +1755,13 @@ void set_scale_level_to_fit() {/*{{{*/
 		int image_height = cairo_image_surface_get_height(CURRENT_FILE->image_surface);
 
 		current_scale_level = 1.0;
-		if(option_scale > 0 || !main_window_in_fullscreen || scale_override) {
+
+		// Only scale if scaling is not disabled. The alternative is to also
+		// scale for no-scaling mode if (!main_window_in_fullscreen ||
+		// scale_override). This effectively disables the no-scaling mode
+		// in non-fullscreen. I implemented that this way, but changed it
+		// per user request.
+		if(option_scale > 0) {
 			if(option_scale > 1 || scale_override) {
 				// Scale up
 				if(image_width * current_scale_level < main_window_width) {
