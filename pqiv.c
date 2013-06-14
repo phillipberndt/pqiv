@@ -1800,8 +1800,14 @@ gboolean window_configure_callback(GtkWidget *widget, GdkEventConfigure *event, 
 
 	if(main_window_width != event->width || main_window_height != event->height) {
 		// Update window size
-		main_window_width = event->width;
-		main_window_height = event->height;
+		if(main_window_in_fullscreen) {
+			main_window_width = screen_geometry.width;
+			main_window_height = screen_geometry.height;
+		}
+		else {
+			main_window_width = event->width;
+			main_window_height = event->height;
+		}
 
 		// Rescale the image, unless overridden by the user
 		if(option_initial_scale_used) {
@@ -2275,6 +2281,7 @@ gboolean window_state_callback(GtkWidget *widget, GdkEventWindowState *event, gp
 			// Rescale the image and remove shift when leaving fullscreen
 			current_shift_x = 0;
 			current_shift_y = 0;
+			gtk_window_get_size(main_window, &main_window_width, &main_window_height);
 			if(option_initial_scale_used) {
 				g_idle_add(set_scale_level_to_fit_callback, NULL);
 			}
