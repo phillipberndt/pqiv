@@ -1676,7 +1676,7 @@ gboolean window_draw_callback(GtkWidget *widget, cairo_t *cr, gpointer user_data
 		int x;
 		int y;
 
-		if(option_scale > 0) {
+		if(option_scale > 0 || main_window_in_fullscreen) {
 			x = (main_window_width - current_scale_level * image_width) / 2;
 			y = (main_window_height - current_scale_level * image_height) / 2;
 		}
@@ -1757,11 +1757,10 @@ void set_scale_level_to_fit() {/*{{{*/
 		current_scale_level = 1.0;
 
 		// Only scale if scaling is not disabled. The alternative is to also
-		// scale for no-scaling mode if (!main_window_in_fullscreen ||
-		// scale_override). This effectively disables the no-scaling mode
-		// in non-fullscreen. I implemented that this way, but changed it
-		// per user request.
-		if(option_scale > 0) {
+		// scale for no-scaling mode if (!main_window_in_fullscreen). This
+		// effectively disables the no-scaling mode in non-fullscreen. I
+		// implemented that this way, but changed it per user request.
+		if(option_scale > 0 || scale_override) {
 			if(option_scale > 1 || scale_override) {
 				// Scale up
 				if(image_width * current_scale_level < main_window_width) {
@@ -1896,7 +1895,7 @@ gboolean window_key_press_callback(GtkWidget *widget, GdkEventKey *event, gpoint
 		case GDK_KEY_plus:
 		case GDK_KEY_KP_Add:
 			current_scale_level *= 1.1;
-			if(current_scale_level > 1 && option_scale != 2) {
+			if((option_scale == 1 && current_scale_level > 1) || option_scale == 0) {
 				scale_override = TRUE;
 			}
 			if(main_window_in_fullscreen) {
@@ -1917,6 +1916,9 @@ gboolean window_key_press_callback(GtkWidget *widget, GdkEventKey *event, gpoint
 				break;
 			}
 			current_scale_level /= 1.1;
+			if((option_scale == 1 && current_scale_level > 1) || option_scale == 0) {
+				scale_override = TRUE;
+			}
 			if(main_window_in_fullscreen) {
 				gtk_widget_queue_draw(GTK_WIDGET(main_window));
 			}
