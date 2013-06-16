@@ -380,10 +380,6 @@ void parse_configuration_file(int *argc, char **argv[]) {/*{{{*/
 		g_key_file_free(key_file);
 
 		// Backwards compatibility: Recognize the old configuration file format
-		//
-		// This really is not completely compatible: -ff will still be fullscreen with this
-		// implementation. We will suggest users to migrate to the new configuration file
-		// format in the manual page.
 		if(error_pointer->code == G_KEY_FILE_ERROR_PARSE) {
 			gchar *options_contents;
 			// We deliberately do not free options_contents below: Its contents are used as the
@@ -398,13 +394,72 @@ void parse_configuration_file(int *argc, char **argv[]) {/*{{{*/
 			gint additional_arguments = 0;
 			gint additional_arguments_max = 10;
 
+			// Add configuration file contents to argument vector
 			char **new_argv = (char **)g_malloc(sizeof(char *) * (*argc + additional_arguments_max + 1));
 			new_argv[0] = (*argv)[0];
-			char *end_of_argument = strchr(options_contents, ' ');
-			while(*options_contents != 0 && (end_of_argument = strchr(options_contents, ' ')) != NULL) {
-				*end_of_argument = 0;
+			char *end_of_argument;
+			while(*options_contents != 0) { 
+				end_of_argument = strchr(options_contents, ' ');
+				if(end_of_argument != NULL) {
+					*end_of_argument = 0;
+				}
+				else {
+					end_of_argument = options_contents + strlen(options_contents) - 1;
+				}
 				gchar *argv_val = options_contents;
 				g_strstrip(argv_val);
+
+				// Try to directly parse boolean options, to reverse their
+				// meaning on the command line
+				if(argv_val[0] == '-') {
+					gboolean direct_parsing_successfull = FALSE;
+					if(argv_val[1] == '-') {
+						// Long option
+						for(GOptionEntry *iter = options; iter->description != NULL || iter->long_name != NULL; iter++) {
+							if(iter->long_name != NULL && iter->arg == G_OPTION_ARG_NONE && g_strcmp0(iter->long_name, argv_val + 2) == 0) {
+								*(gboolean *)(iter->arg_data) = TRUE;
+								iter->flags |= G_OPTION_FLAG_REVERSE;
+								direct_parsing_successfull = TRUE;
+								break;
+							}
+						}
+					}
+					else {
+						// Short option
+						direct_parsing_successfull = TRUE;
+						for(char *arg = argv_val + 1; *arg != 0; arg++) {
+							gboolean found = FALSE;
+							for(GOptionEntry *iter = options; (iter->description != NULL || iter->long_name != NULL) && direct_parsing_successfull; iter++) {
+								if(iter->short_name == *arg) {
+									found = TRUE;
+									if(iter->arg == G_OPTION_ARG_NONE) {
+										*(gboolean *)(iter->arg_data) = TRUE;
+										iter->flags |= G_OPTION_FLAG_REVERSE;
+									}
+									else {
+										direct_parsing_successfull = FALSE;
+
+										// We only want the remainder of the option to be
+										// appended to the argument vector.
+										*(arg - 1) = '-';
+										argv_val = arg - 1;
+									}
+									break;
+								}
+							}
+							if(!found) {
+								g_printerr("Failed to parse the configuration file: Unknown option `%c'\n", *arg);
+								direct_parsing_successfull = FALSE;
+							}
+						}
+					}
+					if(direct_parsing_successfull) {
+						options_contents = end_of_argument + 1;
+						continue;
+					}
+				}
+
+				// Add to argument vector
 				new_argv[1 + additional_arguments] = argv_val;
 				options_contents = end_of_argument + 1;
 				if(++additional_arguments > additional_arguments_max) {
@@ -416,6 +471,8 @@ void parse_configuration_file(int *argc, char **argv[]) {/*{{{*/
 				new_argv[additional_arguments + 1] = g_strstrip(options_contents);
 				additional_arguments++;
 			}
+
+			// Add the real argument vector and make new_argv the new argv
 			new_argv = g_realloc(new_argv, sizeof(char *) * (*argc + additional_arguments + 1));
 			for(int i=1; i<*argc; i++) {
 				new_argv[i + additional_arguments] = (*argv)[i];

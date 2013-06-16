@@ -113,7 +113,7 @@ Shuffle files
 .PP
 You can use the file
 .RI ~/.pqivrc
-to make any of there default. The file's syntax is (mostly) those of desktop-files. Create a section
+to make any of these default. The file's syntax is (mostly) those of desktop-files. Create a section
 .I options
 and use the long option names for the key names. For example,
 
@@ -127,13 +127,21 @@ slideshow-interval=5
 
 .po 0
 
-would be a valid configuration file.  
-The old syntax from pqiv <= 0.13, where the file was prepended to the argument
-vector, is still supported, but limited in that in new versions of pqiv,
-doubling an option will no longer revert its effect. So if you have `-f' in
-your configuration file, another `-f' on the command line will no longer
-unfullscreen pqiv. Migrate to the new syntax if you want to regain this
-possibility.
+would be a valid configuration file. If you set any boolean option in the
+configuration file, its meaning on the command line will be inverted. So with
+the above example file,
+.I -f
+would make pqiv start in window mode.
+The old syntax from pqiv <= 1.0, where the file was prepended to the argument
+vector, is still supported as well. So you can also just store
+.I -f -n 5
+in the file to achieve the same effect.
+
+Please note that while the use of flags in the configuration file inverts their
+meaning on the command line, the same does not apply to double use of flags. In
+old versions of pqiv,
+.I -ff
+would do nothing. This is no longer the case, it will now fullscreen the application.
 
 .PP
 pqiv will display all files you specified on the command line. Directories will
