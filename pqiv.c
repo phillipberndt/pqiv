@@ -979,11 +979,11 @@ gpointer image_loader_thread(gpointer user_data) {/*{{{*/
 	}
 }/*}}}*/
 gboolean initialize_image_loader() {/*{{{*/
+	image_loader_queue = g_async_queue_new();
 	while(!image_loader_load_single(current_image) && file_list->len > 0);
 	if(file_list->len == 0) {
 		return FALSE;
 	}
-	image_loader_queue = g_async_queue_new();
 	#if GLIB_CHECK_VERSION(2, 32, 0)
 		g_thread_new("image-loader", image_loader_thread, NULL);
 	#else
