@@ -2409,7 +2409,7 @@ void window_realize_callback(GtkWidget *widget, gpointer user_data) {/*{{{*/
 				// No window manager present. We need some oher means to fullscreen.
 				// (Not all WMs implement _NET_WM_ACTION_FULLSCREEN, so we can not rely on that)
 				main_window_in_fullscreen = TRUE;
-				gtk_window_move(main_window, 0, 0);
+				gtk_window_move(main_window, screen_geometry.x, screen_geometry.y);
 				gtk_window_resize(main_window, screen_geometry.width, screen_geometry.height);
 				window_state_into_fullscreen_actions();
 			}
@@ -2481,11 +2481,21 @@ void create_window() { /*{{{*/
 		GDK_BUTTON_PRESS_MASK | GDK_BUTTON_RELEASE_MASK | GDK_KEY_PRESS_MASK |
 		GDK_PROPERTY_CHANGE_MASK | GDK_KEY_RELEASE_MASK | GDK_STRUCTURE_MASK); 
 
+	// Initialize the screen geometry variable to the primary screen
+	// Useful if no WM is present
+	GdkScreen *screen = gdk_screen_get_default();
+	guint monitor = gdk_screen_get_primary_monitor(screen);
+	gdk_screen_get_monitor_geometry(screen, monitor, &screen_geometry);
+
 	if(option_start_fullscreen) {
-		// Assume fullscreen right from the start. This allows for correct positioning
-		// in X servers without WMs.
-		/*main_window_in_fullscreen = TRUE;
-		gtk_window_move(main_window, 0, 0);*/ // TODO Is this required?
+		// If no WM is present, move the window to the screen origin and
+		// assume fullscreen right from the start
+		#ifndef _WIN32
+			if(strcmp("unknown", gdk_x11_screen_get_window_manager_name(screen)) == 0) {
+				main_window_in_fullscreen = TRUE;
+				gtk_window_move(main_window, screen_geometry.x, screen_geometry.y);
+			}
+		#endif
 		gtk_window_fullscreen(main_window);
 	}
 	else if(option_window_position.x >= 0) {
@@ -2501,10 +2511,6 @@ void create_window() { /*{{{*/
 	if(option_transparent_background) {
 		gtk_window_set_decorated(main_window, FALSE);
 	}
-
-	GdkScreen *screen = gdk_screen_get_default();
-	guint monitor = gdk_screen_get_primary_monitor(screen);
-	gdk_screen_get_monitor_geometry(screen, monitor, &screen_geometry);
 
 	if(option_transparent_background) {
 		window_screen_activate_rgba();
