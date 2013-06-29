@@ -899,6 +899,15 @@ gboolean image_loader_load_single_destroy_old_image_callback(gpointer old_surfac
 	return FALSE;
 }/*}}}*/
 gboolean image_loader_load_single(size_t id) {/*{{{*/
+	// Valid id?
+	// If only 3 images are loaded and some of them are corrupt, they might
+	// have been removed from the array already, but be still queued because of
+	// the pre-loading.
+	if(id >= file_list->len) {
+		return FALSE;
+	}
+
+	// Already loaded?
 	if(FILE_LIST_ENTRY(id)->image_surface != NULL && !FILE_LIST_ENTRY(id)->surface_is_out_of_date) {
 		return TRUE;
 	}
@@ -916,7 +925,10 @@ gboolean image_loader_load_single(size_t id) {/*{{{*/
 			g_printerr("Failed to load file from memory: %s\n", error_pointer->message);
 			g_clear_error(&error_pointer);
 		}
-		g_object_ref(pixbuf_animation);
+		else {
+			// Make sure the pixbuf is not deleted throughout this (is unreferenced below)
+			g_object_ref(pixbuf_animation);
+		}
 		g_object_unref(loader);
 	}
 	else {
