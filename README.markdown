@@ -78,7 +78,7 @@ Contributors
 Changelog
 ---------
 
-pqiv 2.0 rc1
+pqiv 2.0 rc2
  * Complete rewrite from scratch
  * Based on GTK 3 and Cairo
 
