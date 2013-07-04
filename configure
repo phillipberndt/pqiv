@@ -1,15 +1,26 @@
 #!/bin/bash
 #
-# Optional configure script for backwards compatibility with pqiv 0.13 (pre-gtk3)
-# I still recommend to use it in automated builds to ensure continued
-# compatibility.
+# Configure script, for most users only needed for backwards compatibility with
+# pqiv 1.0 (pre-gtk3). I still recommend to use it in automated builds to
+# ensure continued compatibility.
 #
+
+tempdir() {
+	NAME=tmp_${RANDOM}
+	while [ -d $NAME ]; do
+		NAME=tmp_${RANDOM}
+	done
+	mkdir ${NAME}
+	echo ${NAME}
+}
 
 OLD_OPTIONS="no-sorting no-compositing no-fading no-commands no-config-file no-inotify no-animations binary-name"
 
 PREFIX=/usr
 DESTDIR=
 GTK_VERSION=0
+CROSS=
+BINARY_EXTENSION=
 
 # Help and options
 help() {
@@ -20,6 +31,7 @@ options:
   --prefix=..           Set the prefix for installed files
   --destdir=..          Set the destdir for installed files (for package maintainers)
   --gtk-version=2       Use GTK+-2.0 even if GTK+-3.0 is available
+  --cross=..            Set a cross-compiler prefix (e.g. \`i686-pc-mingw32-')
 
 EOF
 }
@@ -80,6 +92,9 @@ while [ $# -gt 0 ]; do
 		--help)
 			help
 			;;
+		--cross)
+			CROSS=$VALUE
+			;;
 		*)
 			for OLD_OPTION in $OLD_OPTIONS; do
 				if [ "$PARAMETER" = "--${OLD_OPTION}" ]; then
@@ -99,6 +114,49 @@ while [ $# -gt 0 ]; do
 	shift
 done
 
+# If cross-compiling, check if cc is present (usually it's not)
+if [ -n "$CROSS" -a -z "$CC" ]; then
+	echo -n "Checking for cross-compiler cc.. "
+	if ! which ${CROSS}cc >/dev/null 2>&1; then
+		if which ${CROSS}clang >/dev/null 2>&1; then
+			export CC=clang
+		elif which ${CROSS}gcc >/dev/null 2>&1; then
+			export CC=gcc
+		else
+			echo
+			echo
+			echo "No compiler found. Please set the appropriate CC environment variable." >&2
+			exit 1
+		fi
+		echo "using ${CROSS}${CC}"
+	else
+		echo "ok"
+	fi
+fi
+
+# Determine binary extension (for Windows)
+echo -n "Determining executable extension.. "
+DIR=`tempdir`
+cd $DIR
+echo 'int main(int argc, char *argv[]) { return 0; }' > test.c
+${CROSS}${CC:-cc} test.c
+RV=$?
+rm -f test.c
+EXECUTABLE=`ls`
+rm -f $EXECUTABLE
+cd ..
+rmdir $DIR
+if [ "$RV" != 0 ]; then
+	echo "The compiler can't compile executables!?" >&2
+	echo
+	exit 1
+fi
+EXECUTABLE_EXTENSION=${EXECUTABLE#a}
+if [ "$EXECUTABLE_EXTENSION" = ".out" ]; then
+	EXECUTABLE_EXTENSION=
+fi
+echo ${EXECUTABLE_EXTENSION:-(none)}
+
 # Do a rudimental prerequisites check to have user-friendlier error messages
 while read -r LINE; do
 	for VAR in LIBS_GTK3 LIBS_GTK2; do
@@ -108,11 +166,16 @@ while read -r LINE; do
 	done
 done < Makefile
 
+if ! which ${CROSS}pkg-config >/dev/null 2>&1; then
+	echo "Did not find required tool ${CROSS}pkg-config!" >&2
+	exit 1
+fi
+
 echo -n "Checking if GTK, cairo and glib are installed.. "
-if pkg-config --exists $LIBS_GTK3; then
+if ${CROSS}pkg-config --exists $LIBS_GTK3; then
 	echo "ok"
 else
-	if pkg-config --exists $LIBS_GTK2; then
+	if ${CROSS}pkg-config --exists $LIBS_GTK2; then
 		if [ "$GTK_VERSION" = 3 ]; then
 			echo "failed."
 			echo
@@ -139,7 +202,10 @@ cat > config.make <<EOF
 DESTDIR=$DESTDIR
 PREFIX=$PREFIX
 GTK_VERSION=$GTK_VERSION
+CROSS=$CROSS
+EXECUTABLE_EXTENSION=$EXECUTABLE_EXTENSION
 EOF
+[ -n "${CC}" ] && echo "CC=${CC}" >> config.make
 echo
 echo "Done. Run make all install to install pqiv."
 exit 0

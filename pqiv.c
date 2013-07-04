@@ -33,6 +33,7 @@
 #include <unistd.h>
 
 #ifdef _WIN32
+	#define _WIN32_WINNT 0x500
 	#include <windows.h>
 #else
 	#include <sys/wait.h>
@@ -630,7 +631,11 @@ void load_images_handle_parameter(char *param, int level) {/*{{{*/
 	if(g_file_test(param, G_FILE_TEST_IS_DIR) == TRUE) {
 		// Display progress
 		if(g_timer_elapsed(load_images_timer, NULL) > 5.) {
+			#ifdef _WIN32
+			g_print("Loading in %-50.50s ...\r", param);
+			#else
 			g_print("\033[s\033[JLoading in %s ...\033[u", param);
+			#endif
 		}
 
 		GDir *dir_ptr = g_dir_open(param, 0, NULL);
@@ -1118,7 +1123,7 @@ gboolean absolute_image_movement_callback(gpointer user_data) {/*{{{*/
 void relative_image_movement(ptrdiff_t movement) {/*{{{*/
 	// Calculate new position
 	ptrdiff_t pos = current_image + movement;
-	while(pos > file_list->len - 1) {
+	while(pos > 0 && (size_t)pos > file_list->len - 1) {
 		pos -= file_list->len;
 	}
 	while(pos < 0) {
