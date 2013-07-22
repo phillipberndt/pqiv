@@ -786,6 +786,25 @@ gboolean set_option_initial_scale_used_callback(gpointer user_data) {/*{{{*/
 	option_initial_scale_used = TRUE;
 	return FALSE;
 }/*}}}*/
+gboolean main_window_resize_callback(gpointer user_data) {/*{{{*/
+	// If there is no image loaded, abort
+	if(CURRENT_FILE->image_surface == NULL) {
+		return FALSE;
+	}
+
+	// Recalculate the required window size
+	int image_width = cairo_image_surface_get_width(CURRENT_FILE->image_surface);
+	int image_height = cairo_image_surface_get_height(CURRENT_FILE->image_surface);
+	int new_window_width = current_scale_level * image_width;
+	int new_window_height = current_scale_level * image_height;
+
+	// Resize if this has not worked before
+	if(main_window_width >= 0 && (main_window_width != new_window_width || main_window_height != new_window_height)) {
+		gtk_window_resize(main_window, new_window_width, new_window_height);
+	}
+
+	return FALSE;
+}/*}}}*/
 gboolean image_loaded_handler(gconstpointer info_text) {/*{{{*/
 	// Remove any old timeouts etc.
 	if(current_image_animation_iter != NULL) {
@@ -855,6 +874,12 @@ gboolean image_loaded_handler(gconstpointer info_text) {/*{{{*/
 				gtk_window_set_position(main_window, GTK_WIN_POS_CENTER_ALWAYS);
 			}
 			gtk_window_resize(main_window, new_window_width, new_window_height);
+
+			// Some window managers create a race here upon application startup:
+			// They resize, as requested above, and afterwards apply their idea of
+			// window size. To conquer that, we check for the window size again once
+			// all events are handled.
+			g_idle_add(main_window_resize_callback, NULL);
 			
 			// In theory, we do not need to draw manually here. The resizing will
 			// trigger a configure event, which will in particular redraw the
