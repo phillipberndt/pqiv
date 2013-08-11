@@ -13,6 +13,12 @@ Suppress the yellow info box in pqiv
 .TP
 .B -f
 Start pqiv in fullscreen mode
+.TP
+.B -m
+Show mouse cursor in fullscreen mode
+.TP
+.B -k
+Kiosk mode is fullscreen mode with all input disabled
 .\" unless NO_FADING
 .TP
 .B -F
