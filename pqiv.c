@@ -125,6 +125,8 @@ static gshort       loadFilesChecked = 0;
 
 /* Program settings */
 static gboolean isFullscreen = FALSE;
+static gboolean alwaysShowCursor = FALSE;
+static gboolean isKiosk = FALSE;
 static gboolean infoBoxVisible = FALSE;
 static gfloat scaledAt;
 static gfloat zoom;
@@ -307,6 +309,8 @@ void helpMessage(gchar claim) { /* {{{ */
                 "options:\n"
                 " -i             Hide info box \n"
                 " -f             Start in fullscreen mode \n"
+		" -m             Show mouse cursor in fullscreen mode \n"
+		" -k             Kiosk mode is fullscreen mode with all input disabled \n"
                 #ifndef NO_FADING
                 " -F             Fade between images \n"
                 #endif
@@ -1345,13 +1349,15 @@ void setFullscreen(gboolean fullscreen) { /*{{{*/
 		 * gtk_window_set_resizable(GTK_WINDOW(window), FALSE);*/
 
 		/* Hide cursor */
-		source = gdk_bitmap_create_from_data (NULL, emptyCursor,
-                                       16, 16);
-		cursor = gdk_cursor_new_from_pixmap (source, source, (GdkColor*)emptyCursor,
-			(GdkColor*)emptyCursor, 8, 8);
-		gdk_pixmap_unref(source);
-		gdk_window_set_cursor(window->window, cursor);
-		gdk_cursor_unref(cursor);
+		if(!alwaysShowCursor) {
+			source = gdk_bitmap_create_from_data (NULL, emptyCursor,
+					16, 16);
+			cursor = gdk_cursor_new_from_pixmap (source, source, (GdkColor*)emptyCursor,
+				(GdkColor*)emptyCursor, 8, 8);
+			gdk_pixmap_unref(source);
+			gdk_window_set_cursor(window->window, cursor);
+			gdk_cursor_unref(cursor);
+		}
 	}
 	else {
 		gtk_window_set_resizable(GTK_WINDOW(window), TRUE);
@@ -1757,6 +1763,11 @@ gboolean keyboardCb(GtkWidget *widget, GdkEventKey *event, gpointer data) { /*{{
 		event->keyval = aliases[event->keyval];
 	}
 
+	/* Emulated keypresses for wms workarounds need to go through */
+	if(isKiosk && isFullscreen && event->keyval != GDK_space) {
+		return 0;
+	}
+
 	switch(event->keyval) {
 		/* BIND: Backspace: Previous image {{{ */
 		case GDK_BackSpace:
@@ -2054,6 +2065,11 @@ gboolean mouseButtonCb(GtkWidget *widget, GdkEventButton *event, gpointer data) 
 	 */
 	gint scrx, scry, i;
 	static guint32 timeOfButtonPress;
+
+	if(isKiosk) {
+		return 0;
+	}
+
 	if(event->button == 1) {
 		/* Button 1 for scrolling */
 		if(event->type == GDK_BUTTON_PRESS && (isFullscreen == TRUE 
@@ -2350,7 +2366,7 @@ int main(int argc, char *argv[]) {
 
 	memset(aliases, 0, sizeof(aliases));
 	opterr = 0;
-	while((option = getopt(optionCount, options, "ifFsSRnthrcwqz:T:P:p:d:a:1:2:3:4:5:6:7:8:9:")) > 0) {
+	while((option = getopt(optionCount, options, "ifmkFsSRnthrcwqz:T:P:p:d:a:1:2:3:4:5:6:7:8:9:")) > 0) {
 		switch(option) {
 			/* OPTION: -i: Hide info box */
 			case 'i':
@@ -2359,6 +2375,13 @@ int main(int argc, char *argv[]) {
 			/* OPTION: -f: Start in fullscreen mode */
 			case 'f':
 				optionFullScreen = TRUE;
+				break;
+			case 'm':
+				alwaysShowCursor = TRUE;
+				break;
+			case 'k':
+				optionFullScreen = TRUE;
+				isKiosk = TRUE;
 				break;
 			#ifndef NO_FADING
 			/* OPTION: -F: Fade between images */
