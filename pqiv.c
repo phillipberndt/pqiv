@@ -1133,6 +1133,12 @@ void absolute_image_movement(size_t pos) {/*{{{*/
 	// Check which images have to be loaded
 	current_image = pos;
 
+	// If the new image has not been loaded yet, display an information message
+	if(CURRENT_FILE->image_surface == NULL) {
+		update_info_text(NULL);
+		gtk_widget_queue_draw(GTK_WIDGET(main_window));
+	}
+
 	queue_image_load(current_image);
 	if(NEXT_FILE->image_surface == NULL) {
 		queue_image_load(new_next);
@@ -1660,18 +1666,19 @@ void update_info_text(const gchar *action) {/*{{{*/
 	}
 	gchar *display_name = g_filename_display_name(file_name);
 
-	if(CURRENT_FILE->image_surface == NULL) {
-		// Image not loaded yet. Abort.
-		if(current_info_text == NULL) {
-			current_info_text = g_strdup("");
-		}
-		return;
-	}
-
 	// Free old info text
 	if(current_info_text != NULL) {
 		g_free(current_info_text);
 		current_info_text = NULL;
+	}
+
+	if(CURRENT_FILE->image_surface == NULL) {
+		// Image not loaded yet. Use loading information and abort.
+		current_info_text = g_strdup_printf("%s (Image is still loading...)", display_name);
+
+		g_free(file_name);
+		g_free(display_name);
+		return;
 	}
 
 	// Update info text
@@ -1774,14 +1781,13 @@ gboolean window_draw_callback(GtkWidget *widget, cairo_t *cr, gpointer user_data
 	cairo_restore(cr);
 
 	// Draw image
+	int x = 0;
+	int y = 0;
 	if(CURRENT_FILE->image_surface != NULL) {
 		current_image_drawn = TRUE;
 
 		int image_width = cairo_image_surface_get_width(CURRENT_FILE->image_surface);
 		int image_height = cairo_image_surface_get_height(CURRENT_FILE->image_surface);
-
-		int x;
-		int y;
 
 		if(option_scale > 0 || main_window_in_fullscreen) {
 			x = (main_window_width - current_scale_level * image_width) / 2;
@@ -1814,33 +1820,33 @@ gboolean window_draw_callback(GtkWidget *widget, cairo_t *cr, gpointer user_data
 		cairo_paint(cr);
 
 		cairo_restore(cr);
-	
-		// Draw info box
-		if(current_info_text != NULL) {
-			double x1, x2, y1, y2;
-			cairo_save(cr);
-			cairo_set_font_size(cr, 12);
+	}
 
-			if(main_window_in_fullscreen == FALSE) {
-				// Tiling WMs, at least i3, react weird on our window size changing.
-				// Drawing the info box on the image helps to avoid users noticing that.
-				cairo_translate(cr, x < 0 ? 0 : x, y < 0 ? 0 : y);
-			}
+	// Draw info box
+	if(current_info_text != NULL) {
+		double x1, x2, y1, y2;
+		cairo_save(cr);
+		cairo_set_font_size(cr, 12);
 
-			cairo_set_source_rgb(cr, 1., 1., 0.);
-			cairo_translate(cr, 10, 20);
-
-			cairo_text_path(cr, current_info_text);
-			cairo_path_extents(cr, &x1, &y1, &x2, &y2);
-			cairo_new_path(cr);
-			cairo_rectangle(cr, -5, -15, x2 - x1 + 10, y2 - y1 + 10);
-			cairo_close_path(cr);
-			cairo_fill(cr);
-			
-			cairo_set_source_rgb(cr, 0., 0., 0.);
-			cairo_show_text(cr, current_info_text);
-			cairo_restore(cr);
+		if(main_window_in_fullscreen == FALSE) {
+			// Tiling WMs, at least i3, react weird on our window size changing.
+			// Drawing the info box on the image helps to avoid users noticing that.
+			cairo_translate(cr, x < 0 ? 0 : x, y < 0 ? 0 : y);
 		}
+
+		cairo_set_source_rgb(cr, 1., 1., 0.);
+		cairo_translate(cr, 10, 20);
+
+		cairo_text_path(cr, current_info_text);
+		cairo_path_extents(cr, &x1, &y1, &x2, &y2);
+		cairo_new_path(cr);
+		cairo_rectangle(cr, -5, -15, x2 - x1 + 10, y2 - y1 + 10);
+		cairo_close_path(cr);
+		cairo_fill(cr);
+
+		cairo_set_source_rgb(cr, 0., 0., 0.);
+		cairo_show_text(cr, current_info_text);
+		cairo_restore(cr);
 	}
 
 	return TRUE;
@@ -1961,13 +1967,17 @@ gboolean window_key_press_callback(GtkWidget *widget, GdkEventKey *event, gpoint
 	   };
 	 */
 
-	if(CURRENT_FILE->image_surface == NULL) {
-		// Do not handle anything if the image is not loaded yet
-		return FALSE;
-	}
-
 	if(event->keyval < 128 && keyboard_aliases[event->keyval] != 0) {
 		event->keyval = keyboard_aliases[event->keyval];
+	}
+
+	// If the current image is not loaded, only allow non-image related stuff
+	if(CURRENT_FILE->image_surface == NULL && (
+		event->keyval != GDK_KEY_Q &&
+		event->keyval != GDK_KEY_q &&
+		event->keyval != GDK_KEY_f &&
+		event->keyval != GDK_KEY_F)) {
+		return FALSE;
 	}
 
 	switch(event->keyval) {
