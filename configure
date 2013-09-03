@@ -88,9 +88,11 @@ while [ $# -gt 0 ]; do
 			;;
 		-h)
 			help
+			exit 0
 			;;
 		--help)
 			help
+			exit 0
 			;;
 		--cross)
 			CROSS=$VALUE
