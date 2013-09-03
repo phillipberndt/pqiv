@@ -257,10 +257,12 @@ gboolean option_sort = FALSE;
 gboolean option_shuffle = FALSE;
 gboolean option_reverse_cursor_keys = FALSE;
 gboolean option_transparent_background = FALSE;
+gboolean option_watch_directories = FALSE;
 
 gboolean options_keyboard_alias_set_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error);
 gboolean option_window_position_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error);
 gboolean option_scale_level_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error);
+void load_images_handle_parameter(char *param, int level);
 
 struct {
 	gint x;
@@ -288,6 +290,7 @@ GOptionEntry options[] = {
 	{ "scale-images-up", 't', G_OPTION_FLAG_NO_ARG, G_OPTION_ARG_CALLBACK, (gpointer)&option_scale_level_callback, "Scale images up to fill the whole screen", NULL },
 	{ "zoom-level", 'z', 0, G_OPTION_ARG_DOUBLE, &option_initial_scale, "Set initial zoom level (1.0 is 100%)", "FLOAT" },
 	{ "disable-scaling", 0, G_OPTION_FLAG_NO_ARG, G_OPTION_ARG_CALLBACK, (gpointer)&option_scale_level_callback, "Disable scaling of images", NULL },
+	{ "watch-directories", 0, 0, G_OPTION_ARG_NONE, &option_watch_directories, "Watch directories for new files", NULL },
 
 	{ "command-1", '1', 0, G_OPTION_ARG_STRING, &external_image_filter_commands[0], "Bind the external COMMAND to key 1. See manpage for extended usage (commands starting with `>' or `|'). Use 2..9 for further commands.", "COMMAND" },
 	{ "command-2", '2', G_OPTION_FLAG_HIDDEN, G_OPTION_ARG_STRING, &external_image_filter_commands[1], NULL, NULL },
@@ -577,6 +580,28 @@ void parse_command_line(int *argc, char *argv[]) {/*{{{*/
 
 	g_option_context_free(parser);
 }/*}}}*/
+void load_images_directory_watch_callback(GFileMonitor *monitor, GFile *file, GFile *other_file, GFileMonitorEvent event_type, gpointer user_data) {/*{{{*/
+	// The current image holds its own file watch, so we do not have to react
+	// to changes. Deleting images from the list on G_FILE_MONITOR_EVENT_DELETED
+	// would be neat, but traversing the list is an expensive thing to do for
+	// big collections and apart from a wrong total number in the info field
+	// no harm is done if we don't. The remaining event of interest is
+	// G_FILE_MONITOR_EVENT_CREATED.
+
+	if(event_type == G_FILE_MONITOR_EVENT_CREATED) {
+		gchar *name = g_file_get_path(file);
+		if(name != NULL) {
+			// Only process the files themselves, no need to do directory
+			// recursion here
+			if(g_file_test(name, G_FILE_TEST_IS_REGULAR | G_FILE_TEST_IS_SYMLINK)) {
+				// Use the standard loading mechanism. If directory watches are enabled,
+				// the temporary variables used therein are not freed.
+				load_images_handle_parameter(name, 1);
+			}
+			g_free(name);
+		}
+	}
+}/*}}}*/
 void load_images_handle_parameter(char *param, int level) {/*{{{*/
 	// Check for memory image
 	if(level == 0 && g_strcmp0(param, "-") == 0) {
@@ -660,6 +685,19 @@ void load_images_handle_parameter(char *param, int level) {/*{{{*/
 			g_free(dir_entry_full);
 		}
 		g_dir_close(dir_ptr);
+
+		// Add a watch for new files in this directory
+		if(option_watch_directories) {
+			GFile *file_ptr = g_file_new_for_path(param);
+			GFileMonitor *directory_monitor = g_file_monitor_directory(file_ptr, G_FILE_MONITOR_NONE, NULL, NULL);
+			if(directory_monitor != NULL) {
+				g_signal_connect(directory_monitor, "changed", G_CALLBACK(load_images_directory_watch_callback), NULL);
+				// We do not store the directory_monitor anywhere, because it is not used explicitly
+				// again. If this should ever be needed, this is the place where this should be done.
+			}
+			g_object_unref(file_ptr);
+		}
+
 		return;
 	}
 
@@ -730,10 +768,14 @@ void load_images(int *argc, char *argv[]) {/*{{{*/
 		load_images_handle_parameter(argv[i], 0);
 	}
 
-	// Free the temporary stuff
-	g_object_ref_sink(load_images_file_filter);
-	g_free(load_images_file_filter_info);
-	g_tree_unref(load_images_known_paths_tree);
+	// If we do not want to watch directories for changes, we can now drop the variables
+	// we used for loading to free some space
+	if(!option_watch_directories) {
+		g_object_ref_sink(load_images_file_filter);
+		g_free(load_images_file_filter_info);
+		g_tree_unref(load_images_known_paths_tree);
+	}
+
 	g_timer_destroy(load_images_timer);
 
 	if(option_sort || option_shuffle) {
@@ -1054,6 +1096,7 @@ gboolean image_loader_load_single(size_t id) {/*{{{*/
 			}
 		}
 		if(was_current_image) {
+			current_image = current_image < file_list->len - 1 ? current_image + 1 : 0;
 			queue_image_load(current_image);
 		}
 	}
