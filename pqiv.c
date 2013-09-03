@@ -18,7 +18,7 @@
 
 #define _XOPEN_SOURCE 600
 
-#define PQIV_VERSION "2.0-rc2"
+#define PQIV_VERSION "2.0"
 
 #include "lib/strnatcmp.h"
 #include <cairo/cairo.h>
