@@ -80,16 +80,16 @@ Changelog
 
 pqiv 2.1-dev
  * Support for watching directories for new files
- * Downstream Makefile fix: Included LDFLAGS (from Gentoo package)
+ * Downstream Makefile fix: Included LDFLAGS (from Gentoo package, by Tim Harder)
 
 pqiv 2.0
  * Complete rewrite from scratch
  * Based on GTK 3 and Cairo
 
 pqiv ≤ 1.0
- * See the old GTK 2 release for information in that
-   (*gtk2* branch on github)
+ * See the old GTK 2 release for information on that
+   (in the **gtk2** branch on github)
 
 pqiv ≤ 0.3
  * See the old python release for information on that
-   (*python* branch on github)
+   (in the **python** branch on github)
