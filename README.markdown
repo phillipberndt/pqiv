@@ -78,7 +78,11 @@ Contributors
 Changelog
 ---------
 
-pqiv 2.0 rc2
+pqiv 2.1-dev
+ * Support for watching directories for new files
+ * Downstream Makefile fix: Included LDFLAGS (from Gentoo package)
+
+pqiv 2.0
  * Complete rewrite from scratch
  * Based on GTK 3 and Cairo
 
