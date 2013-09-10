@@ -320,7 +320,7 @@ const char *long_description_text = ("Keyboard & Mouse bindings:\n"
 "  h/v                                Flip horizontally/vertically\n"
 "  i                                  Toggle info box\n"
 "  s                                  Toggle slideshow mode\n"
-"  a                                  Hardlink current image to ./.qiv-select\n"
+"  a                                  Hardlink current image to ./.pqiv-select\n"
 );
 
 void set_scale_level_to_fit();
@@ -1442,16 +1442,16 @@ gpointer apply_external_image_filter_thread(gpointer external_filter_ptr) {/*{{{
 
 void hardlink_current_image() {/*{{{*/
 	if((CURRENT_FILE->file_type & FILE_TYPE_MEMORY_IMAGE) != 0) {
-		g_mkdir("./.qiv-select", 0755);
+		g_mkdir("./.pqiv-select", 0755);
 		gchar *store_target = NULL;
 		do {
 			if(store_target != NULL) {
 				g_free(store_target);
 			}
 			#if(GLIB_CHECK_VERSION(2, 28, 0))
-				store_target = g_strdup_printf("./.qiv-select/memory-%" G_GINT64_FORMAT "-%u.png", g_get_real_time(), g_random_int());
+				store_target = g_strdup_printf("./.pqiv-select/memory-%" G_GINT64_FORMAT "-%u.png", g_get_real_time(), g_random_int());
 			#else
-				store_target = g_strdup_printf("./.qiv-select/memory-%u.png", g_random_int());
+				store_target = g_strdup_printf("./.pqiv-select/memory-%u.png", g_random_int());
 			#endif
 		}
 		while(g_file_test(store_target, G_FILE_TEST_EXISTS));
@@ -1462,7 +1462,7 @@ void hardlink_current_image() {/*{{{*/
 			g_free(info_text);
 		}
 		else {
-			update_info_text("Failed to write to the .qiv-select subdirectory");
+			update_info_text("Failed to write to the .pqiv-select subdirectory");
 		}
 
 		g_free(store_target);
@@ -1470,17 +1470,17 @@ void hardlink_current_image() {/*{{{*/
 	}
 
 	gchar *current_file_basename = g_path_get_basename(CURRENT_FILE->file_name);
-	gchar *link_target = g_strdup_printf("./.qiv-select/%s", current_file_basename);
+	gchar *link_target = g_strdup_printf("./.pqiv-select/%s", current_file_basename);
 
 	if(g_file_test(link_target, G_FILE_TEST_EXISTS)) {
 		g_free(link_target);
 		g_free(current_file_basename);
-		update_info_text("File already exists in .qiv-select");
+		update_info_text("File already exists in .pqiv-select");
 		gtk_widget_queue_draw(GTK_WIDGET(main_window));
 		return;
 	}
 
-	g_mkdir("./.qiv-select", 0755);
+	g_mkdir("./.pqiv-select", 0755);
 	if(
 		#ifdef _WIN32
 			CreateHardLink(link_target, CURRENT_FILE->file_name, NULL) == 0
@@ -1499,12 +1499,12 @@ void hardlink_current_image() {/*{{{*/
 			g_free(info_text);
 		}
 		else {
-			update_info_text("Failed to write to the .qiv-select subdirectory");
+			update_info_text("Failed to write to the .pqiv-select subdirectory");
 		}
 		g_free(store_target);
 	}
 	else {
-		update_info_text("Created hard-link into .qiv-select");
+		update_info_text("Created hard-link into .pqiv-select");
 	}
 	g_free(link_target);
 	g_free(current_file_basename);
