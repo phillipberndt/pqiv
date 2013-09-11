@@ -28,7 +28,7 @@ ifeq ($(GTK_VERSION), 3)
 endif
 
 pqiv$(EXECUTABLE_EXTENSION): pqiv.c lib/strnatcmp.o
-	$(CROSS)$(CC) $(PQIV_WARNING_FLAGS) -std=gnu99 -o $@ `$(CROSS)pkg-config --cflags $(LIBS)` $+ `$(CROSS)pkg-config --libs $(LIBS)` $(CFLAGS) $(LDFLAGS)
+	$(CROSS)$(CC) $(CPPFLAGS) $(PQIV_WARNING_FLAGS) -std=gnu99 -o $@ `$(CROSS)pkg-config --cflags $(LIBS)` $+ `$(CROSS)pkg-config --libs $(LIBS)` $(CFLAGS) $(LDFLAGS)
 
 lib/strnatcmp.o: lib/strnatcmp.c
 	$(CROSS)$(CC) -c -o $@ $+ $(CFLAGS)

@@ -81,6 +81,7 @@ Changelog
 pqiv 2.1-dev
  * Support for watching directories for new files
  * Downstream Makefile fix: Included LDFLAGS (from Gentoo package, by Tim Harder)
+ * Also included CPPFLAGS, for completeness
  * Renamed '.qiv-select' directory to '.pqiv-select'
 
 pqiv 2.0
