@@ -36,6 +36,7 @@ lib/strnatcmp.o: lib/strnatcmp.c
 
 install: pqiv$(EXECUTABLE_EXTENSION)
 	install -D pqiv$(EXECUTABLE_EXTENSION) $(DESTDIR)$(PREFIX)/bin/pqiv$(EXECUTABLE_EXTENSION)
+	$(CROSS)strip $(DESTDIR)$(PREFIX)/bin/pqiv$(EXECUTABLE_EXTENSION) || true
 	install -D pqiv.1 $(DESTDIR)$(PREFIX)/share/man/man1/pqiv.1
 
 uninstall:
