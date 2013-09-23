@@ -1598,10 +1598,10 @@ void do_jump_dialog() { /* {{{ */
 	GtkWidget *dlg_window = gtk_dialog_new_with_buttons("pqiv: Jump to image",
 		main_window,
 		GTK_DIALOG_DESTROY_WITH_PARENT | GTK_DIALOG_MODAL,
-		GTK_STOCK_OK,
+		"_OK",
 		GTK_RESPONSE_ACCEPT,
 		NULL);
-	
+
 	GtkWidget *search_entry = gtk_entry_new();
 	gtk_box_pack_start(GTK_BOX(gtk_dialog_get_content_area(GTK_DIALOG(dlg_window))),
 		search_entry,
