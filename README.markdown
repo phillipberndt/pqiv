@@ -83,6 +83,8 @@ pqiv 2.1-dev
  * Downstream Makefile fix: Included LDFLAGS (from Gentoo package, by Tim Harder)
  * Also included CPPFLAGS, for completeness
  * Renamed '.qiv-select' directory to '.pqiv-select'
+ * Added a certain level of autoconf compatibility to the configure script, for automated building
+ * gtk 3.10 stock icon deprecation issue fixed
 
 pqiv 2.0
  * Complete rewrite from scratch
