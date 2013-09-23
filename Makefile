@@ -1,10 +1,11 @@
-CFLAGS=-O3
+CFLAGS=-O2 -g
 CROSS=
 DESTDIR=
 GTK_VERSION=0
 PQIV_WARNING_FLAGS=-Wall -Wextra -Wfloat-equal -Wpointer-arith -Wcast-align -Wstrict-overflow=5 -Wwrite-strings -Waggregate-return -Wunreachable-code -Werror -Wno-unused-parameter
 PREFIX=/usr
 EXECUTABLE_EXTENSION=
+PKG_CONFIG=$(CROSS)pkg-config
 
 ifeq ($(wildcard config.make),config.make)
 	include config.make
@@ -14,7 +15,7 @@ LIBS_GTK3=gtk+-3.0 glib-2.0 cairo gio-2.0
 LIBS_GTK2=gtk+-2.0 glib-2.0 cairo gio-2.0
 
 ifeq ($(GTK_VERSION), 0)
-	ifeq ($(shell pkg-config --errors-to-stdout --print-errors $(LIBS_GTK3)), )
+	ifeq ($(shell $(PKG_CONFIG) --errors-to-stdout --print-errors $(LIBS_GTK3)), )
 		LIBS=$(LIBS_GTK3)
 	else
 		LIBS=$(LIBS_GTK2)
@@ -28,7 +29,7 @@ ifeq ($(GTK_VERSION), 3)
 endif
 
 pqiv$(EXECUTABLE_EXTENSION): pqiv.c lib/strnatcmp.o
-	$(CROSS)$(CC) $(CPPFLAGS) $(PQIV_WARNING_FLAGS) -std=gnu99 -o $@ `$(CROSS)pkg-config --cflags $(LIBS)` $+ `$(CROSS)pkg-config --libs $(LIBS)` $(CFLAGS) $(LDFLAGS)
+	$(CROSS)$(CC) $(CPPFLAGS) $(PQIV_WARNING_FLAGS) -std=gnu99 -o $@ `$(PKG_CONFIG) --cflags $(LIBS)` $+ `$(PKG_CONFIG) --libs $(LIBS)` $(CFLAGS) $(LDFLAGS)
 
 lib/strnatcmp.o: lib/strnatcmp.c
 	$(CROSS)$(CC) -c -o $@ $+ $(CFLAGS)

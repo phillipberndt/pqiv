@@ -21,6 +21,8 @@ DESTDIR=
 GTK_VERSION=0
 CROSS=
 BINARY_EXTENSION=
+CFLAGS=
+PKG_CONFIG=pkg-config
 
 # Help and options
 help() {
@@ -97,6 +99,13 @@ while [ $# -gt 0 ]; do
 		--cross)
 			CROSS=$VALUE
 			;;
+		# Undocumented options for autoconf (esp. dh_auto_configure) compatibility
+		--build)
+			CROSS=${VALUE}-
+			;;
+		--includedir | --mandir | --infodir | --sysconfdir | --localstatedir | --libdir | --libexecdir | --disable-maintainer-mode | --disable-dependency-tracking)
+			echo "autoconf option ${PARAMETER} ignored"
+			;;
 		*)
 			for OLD_OPTION in $OLD_OPTIONS; do
 				if [ "$PARAMETER" = "--${OLD_OPTION}" ]; then
@@ -168,16 +177,25 @@ while read -r LINE; do
 	done
 done < Makefile
 
-if ! which ${CROSS}pkg-config >/dev/null 2>&1; then
-	echo "Did not find required tool ${CROSS}pkg-config!" >&2
-	exit 1
+if [ -n "${CROSS}" ]; then
+	echo -n "Checking for pkg-config.. "
+	PKG_CONFIG=${CROSS}pkg-config
+	if ! which ${PKG_CONFIG} >/dev/null 2>&1; then
+		echo
+		echo "Did not find a specialized tool ${CROSS}pkg-config, defaulting to pkg-config" >&2
+		echo "If you really ARE cross-compiling, the build might therefore fail!" >&2
+		echo
+		PKG_CONFIG=pkg-config
+	else
+		echo "${PKG_CONFIG}"
+	fi
 fi
 
 echo -n "Checking if GTK, cairo and glib are installed.. "
-if ${CROSS}pkg-config --exists $LIBS_GTK3; then
+if $PKG_CONFIG --exists $LIBS_GTK3; then
 	echo "ok"
 else
-	if ${CROSS}pkg-config --exists $LIBS_GTK2; then
+	if $PKG_CONFIG --exists $LIBS_GTK2; then
 		if [ "$GTK_VERSION" = 3 ]; then
 			echo "failed."
 			echo
@@ -200,14 +218,20 @@ else
 fi
 
 echo "Writing config.make."
-cat > config.make <<EOF
+(
+cat <<EOF
 DESTDIR=$DESTDIR
 PREFIX=$PREFIX
 GTK_VERSION=$GTK_VERSION
 CROSS=$CROSS
 EXECUTABLE_EXTENSION=$EXECUTABLE_EXTENSION
+PKG_CONFIG=$PKG_CONFIG
 EOF
+if [ -n "$CFLAGS" ]; then
+	echo "CFLAGS+=$CFLAGS"
+fi
+) > config.make
 [ -n "${CC}" ] && echo "CC=${CC}" >> config.make
 echo
-echo "Done. Run make all install to install pqiv."
+echo "Done. Run \`make install' to install pqiv."
 exit 0
