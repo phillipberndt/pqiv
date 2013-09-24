@@ -9,7 +9,10 @@ pqiv is a simple image viewer inspired by qiv.
 .SH OPTIONS
 .TP
 .B -a, --keyboard-alias=nf
-Define n as a keyboard alias for f. For example, `-a af' will give you fullscreen with the `a' key.
+Define n as a keyboard alias for f. For example, `-a af' will give you
+fullscreen with the `a' key. Multiple aliases can be set by concatenating them
+to the option's value: `-a afwa' will make `a' toggle fullscreen and `w' create a
+link to the current image.
 .TP
 .B -c, --transparent-background
 Borderless transparent window. Click on the window to show the window borders,
@@ -20,7 +23,7 @@ Set the interval for the slideshow mode
 .TP
 .B -f, --fullscreen
 Start in fullscreen mode
-.TP 
+.TP
 .B -i, --hide-info-box
 Initially hide the info box
 .TP

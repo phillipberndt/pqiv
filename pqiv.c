@@ -280,7 +280,7 @@ GOptionEntry options[] = {
 	{ "shuffle", 0, 0, G_OPTION_ARG_NONE, &option_shuffle, "Shuffle files", NULL },
 
 	{ NULL, 0, 0, 0, NULL, "advanced", "Setup the behavior of pqiv" },
-	{ "keyboard-alias", 'a', 0, G_OPTION_ARG_CALLBACK, (gpointer)&options_keyboard_alias_set_callback, "Define n as a keyboard alias for f", "nf" },
+	{ "keyboard-alias", 'a', 0, G_OPTION_ARG_CALLBACK, (gpointer)&options_keyboard_alias_set_callback, "Define n as a keyboard alias for f", "nfnf.." },
 	{ "transparent-background", 'c', 0, G_OPTION_ARG_NONE, &option_transparent_background, "Borderless transparent window", NULL },
 	{ "slideshow-interval", 'd', 0, G_OPTION_ARG_INT, &option_slideshow_interval, "Set slideshow interval", "n" },
 	{ "hide-info-box", 'i', 0, G_OPTION_ARG_NONE, &option_hide_info_box, "Initially hide the info box", NULL },
@@ -333,12 +333,15 @@ void unload_image(file_t *image);
 // }}}
 /* Command line handling, creation of the image list {{{ */
 gboolean options_keyboard_alias_set_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error) {/*{{{*/
-	if(strlen(value) != 2) {
-		g_set_error(error, G_OPTION_ERROR, G_OPTION_ERROR_FAILED, "The argument to the alias option must have exactly two characters: The one to be mapped from and the one to be mapped to.");
+	if(strlen(value) % 2 != 0) {
+		g_set_error(error, G_OPTION_ERROR, G_OPTION_ERROR_FAILED, "The argument to the alias option must have a multiple of two characters: Every odd one is mapped to the even one following it.");
 		return FALSE;
 	}
 
-	keyboard_aliases[(size_t)value[0]] = value[1];
+	for(size_t i=0; value[i] != 0; i+=2) {
+		keyboard_aliases[(size_t)value[i]] = value[i+1];
+	}
+
 	return TRUE;
 }/*}}}*/
 gboolean option_window_position_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error) {/*{{{*/
