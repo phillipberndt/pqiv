@@ -217,6 +217,7 @@ gboolean main_window_in_fullscreen = FALSE;
 GdkRectangle screen_geometry = { 0, 0, 0, 0 };
 
 cairo_pattern_t *background_checkerboard_pattern = NULL;
+cairo_surface_t *last_visible_image_surface = NULL;
 gchar *current_info_text = NULL;
 
 
@@ -264,6 +265,9 @@ gboolean option_shuffle = FALSE;
 gboolean option_reverse_cursor_keys = FALSE;
 gboolean option_transparent_background = FALSE;
 gboolean option_watch_directories = FALSE;
+gboolean option_fading = FALSE;
+
+double fading_current_alpha_stage = 0;
 
 gboolean options_keyboard_alias_set_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error);
 gboolean option_window_position_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error);
@@ -297,6 +301,7 @@ GOptionEntry options[] = {
 	{ "zoom-level", 'z', 0, G_OPTION_ARG_DOUBLE, &option_initial_scale, "Set initial zoom level (1.0 is 100%)", "FLOAT" },
 	{ "disable-scaling", 0, G_OPTION_FLAG_NO_ARG, G_OPTION_ARG_CALLBACK, (gpointer)&option_scale_level_callback, "Disable scaling of images", NULL },
 	{ "watch-directories", 0, 0, G_OPTION_ARG_NONE, &option_watch_directories, "Watch directories for new files", NULL },
+	{ "fade", 'F', 0, G_OPTION_ARG_NONE, (gpointer)&option_fading, "Fade between images", NULL },
 
 	{ "command-1", '1', 0, G_OPTION_ARG_STRING, &external_image_filter_commands[0], "Bind the external COMMAND to key 1. See manpage for extended usage (commands starting with `>' or `|'). Use 2..9 for further commands.", "COMMAND" },
 	{ "command-2", '2', G_OPTION_FLAG_HIDDEN, G_OPTION_ARG_STRING, &external_image_filter_commands[1], NULL, NULL },
@@ -335,6 +340,7 @@ void update_info_text(const char *);
 void queue_draw();
 gboolean main_window_center();
 void window_screen_changed_callback(GtkWidget *widget, GdkScreen *previous_screen, gpointer user_data);
+gboolean fading_timeout_callback(gpointer user_data);
 void queue_image_load(size_t);
 void unload_image(file_t *image);
 // }}}
@@ -1215,6 +1221,12 @@ void absolute_image_movement(size_t pos) {/*{{{*/
 	if(PREVIOUS_FILE->image_surface == NULL) {
 		queue_image_load(new_prev);
 	}
+
+	// Activate fading
+	if(option_fading) {
+		fading_current_alpha_stage = .0;
+		g_timeout_add(20, fading_timeout_callback, NULL);
+	}
 }/*}}}*/
 gboolean absolute_image_movement_callback(gpointer user_data) {/*{{{*/
 	absolute_image_movement((size_t)user_data);
@@ -1540,6 +1552,11 @@ gboolean slideshow_timeout_callback(gpointer user_data) {/*{{{*/
 	relative_image_movement(1);
 	return TRUE;
 }/*}}}*/
+gboolean fading_timeout_callback(gpointer user_data) {/*{{{*/
+	fading_current_alpha_stage += .05;
+	gtk_widget_queue_draw(GTK_WIDGET(main_window));
+	return (fading_current_alpha_stage < 1.); // FALSE aborts the source
+}/*}}}*/
 // }}}
 /* Jump dialog {{{ */
 gboolean jump_dialog_search_list_filter_callback(GtkTreeModel *model, GtkTreeIter *iter, gpointer user_data) { /* {{{ */
@@ -1841,20 +1858,25 @@ void setup_checkerboard_pattern() {/*{{{*/
     cairo_pattern_set_extend(background_checkerboard_pattern, CAIRO_EXTEND_REPEAT);
     cairo_pattern_set_filter(background_checkerboard_pattern, CAIRO_FILTER_NEAREST);
 }/*}}}*/
-gboolean window_draw_callback(GtkWidget *widget, cairo_t *cr, gpointer user_data) {/*{{{*/
-	// Draw black background
-	cairo_save(cr);
-	cairo_set_source_rgba(cr, 0., 0., 0., option_transparent_background ? 0. : 1.);
-	cairo_set_operator(cr, CAIRO_OPERATOR_SOURCE);
-	cairo_paint(cr);
-	cairo_restore(cr);
-
+gboolean window_draw_callback(GtkWidget *widget, cairo_t *cr_arg, gpointer user_data) {/*{{{*/
 	// Draw image
 	int x = 0;
 	int y = 0;
 	if(CURRENT_FILE->image_surface != NULL) {
-		current_image_drawn = TRUE;
+		// Create an image surface to draw to first
+		// We use this for fading and to display the last image if the current image is
+		// still unavailable
+		cairo_surface_t *temporary_image_surface = cairo_surface_create_similar_image(cairo_get_target(cr_arg), CAIRO_FORMAT_ARGB32, main_window_width, main_window_height);
+		cairo_t *cr = cairo_create(temporary_image_surface);
 
+		// Draw black background
+		cairo_save(cr);
+		cairo_set_source_rgba(cr, 0., 0., 0., option_transparent_background ? 0. : 1.);
+		cairo_set_operator(cr, CAIRO_OPERATOR_SOURCE);
+		cairo_paint(cr);
+		cairo_restore(cr);
+
+		// Draw the image & background pattern
 		int image_width = cairo_image_surface_get_width(CURRENT_FILE->image_surface);
 		int image_height = cairo_image_surface_get_height(CURRENT_FILE->image_surface);
 
@@ -1889,33 +1911,72 @@ gboolean window_draw_callback(GtkWidget *widget, cairo_t *cr, gpointer user_data
 		cairo_paint(cr);
 
 		cairo_restore(cr);
+
+		// If currently fading, draw the surface along with the old image
+		if(option_fading && fading_current_alpha_stage < 1. && last_visible_image_surface != NULL) {
+			cairo_set_source_surface(cr_arg, last_visible_image_surface, 0, 0);
+			cairo_set_operator(cr_arg, CAIRO_OPERATOR_SOURCE);
+			cairo_paint(cr_arg);
+
+			cairo_set_source_surface(cr_arg, temporary_image_surface, 0, 0);
+			cairo_paint_with_alpha(cr_arg, fading_current_alpha_stage);
+
+			cairo_destroy(cr);
+			cairo_surface_destroy(temporary_image_surface);
+		}
+		else {
+			// Draw the temporary surface to the screen
+			cairo_set_source_surface(cr_arg, temporary_image_surface, 0, 0);
+			cairo_set_operator(cr_arg, CAIRO_OPERATOR_SOURCE);
+			cairo_paint(cr_arg);
+
+			// Store the surface, for fading and to have something to display if no
+			// image is loaded (see below)
+			if(last_visible_image_surface != NULL) {
+				cairo_surface_destroy(last_visible_image_surface);
+			}
+			// Do not destroy the surface here, we will do that in the next run
+			last_visible_image_surface = temporary_image_surface;
+			cairo_destroy(cr);
+		}
+
+		current_image_drawn = TRUE;
+	}
+	else {
+		// The image has not yet been loaded. If available, draw from the
+		// temporary image surface from the last call
+		if(last_visible_image_surface != NULL) {
+			cairo_set_source_surface(cr_arg, last_visible_image_surface, 0, 0);
+			cairo_set_operator(cr_arg, CAIRO_OPERATOR_SOURCE);
+			cairo_paint(cr_arg);
+		}
 	}
 
-	// Draw info box
+	// Draw info box (directly to the screen)
 	if(current_info_text != NULL) {
 		double x1, x2, y1, y2;
-		cairo_save(cr);
-		cairo_set_font_size(cr, 12);
+		cairo_save(cr_arg);
+		cairo_set_font_size(cr_arg, 12);
 
 		if(main_window_in_fullscreen == FALSE) {
 			// Tiling WMs, at least i3, react weird on our window size changing.
 			// Drawing the info box on the image helps to avoid users noticing that.
-			cairo_translate(cr, x < 0 ? 0 : x, y < 0 ? 0 : y);
+			cairo_translate(cr_arg, x < 0 ? 0 : x, y < 0 ? 0 : y);
 		}
 
-		cairo_set_source_rgb(cr, 1., 1., 0.);
-		cairo_translate(cr, 10, 20);
+		cairo_set_source_rgb(cr_arg, 1., 1., 0.);
+		cairo_translate(cr_arg, 10, 20);
 
-		cairo_text_path(cr, current_info_text);
-		cairo_path_extents(cr, &x1, &y1, &x2, &y2);
-		cairo_new_path(cr);
-		cairo_rectangle(cr, -5, -15, x2 - x1 + 10, y2 - y1 + 10);
-		cairo_close_path(cr);
-		cairo_fill(cr);
+		cairo_text_path(cr_arg, current_info_text);
+		cairo_path_extents(cr_arg, &x1, &y1, &x2, &y2);
+		cairo_new_path(cr_arg);
+		cairo_rectangle(cr_arg, -5, -15, x2 - x1 + 10, y2 - y1 + 10);
+		cairo_close_path(cr_arg);
+		cairo_fill(cr_arg);
 
-		cairo_set_source_rgb(cr, 0., 0., 0.);
-		cairo_show_text(cr, current_info_text);
-		cairo_restore(cr);
+		cairo_set_source_rgb(cr_arg, 0., 0., 0.);
+		cairo_show_text(cr_arg, current_info_text);
+		cairo_restore(cr_arg);
 	}
 
 	return TRUE;

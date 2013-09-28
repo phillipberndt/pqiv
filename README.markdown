@@ -38,6 +38,7 @@ Features
  * Supports external image filters (e.g. `convert`)
  * Supports animated images
  * Preloads the next image in the background
+ * Fade between images
 
 
 Installation
@@ -85,6 +86,8 @@ pqiv 2.1-dev
  * Renamed '.qiv-select' directory to '.pqiv-select'
  * Added a certain level of autoconf compatibility to the configure script, for automated building
  * gtk 3.10 stock icon deprecation issue fixed
+ * Reimplemented fading between images
+ * Display the last image while the current image has not been loaded
 
 pqiv 2.0
  * Complete rewrite from scratch
