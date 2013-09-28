@@ -320,6 +320,7 @@ const char *long_description_text = ("Keyboard & Mouse bindings:\n"
 "  h/v                                Flip horizontally/vertically\n"
 "  i                                  Toggle info box\n"
 "  s                                  Toggle slideshow mode\n"
+"  ctrl +/-                           Change slideshow interval\n"
 "  a                                  Hardlink current image to ./.pqiv-select\n"
 );
 
@@ -2057,6 +2058,19 @@ gboolean window_key_press_callback(GtkWidget *widget, GdkEventKey *event, gpoint
 
 		case GDK_KEY_plus:
 		case GDK_KEY_KP_Add:
+			if(event->state & GDK_CONTROL_MASK) {
+				option_slideshow_interval += 1;
+				if(slideshow_timeout_id != 0) {
+					g_source_remove(slideshow_timeout_id);
+					slideshow_timeout_id = g_timeout_add(option_slideshow_interval * 1000, slideshow_timeout_callback, NULL);
+				}
+				gchar *info_text = g_strdup_printf("Slideshow interval set to %d seconds", option_slideshow_interval);
+				update_info_text(info_text);
+				gtk_widget_queue_draw(GTK_WIDGET(main_window));
+				g_free(info_text);
+				break;
+			}
+
 			current_scale_level *= 1.1;
 			if((option_scale == 1 && current_scale_level > 1) || option_scale == 0) {
 				scale_override = TRUE;
@@ -2075,6 +2089,21 @@ gboolean window_key_press_callback(GtkWidget *widget, GdkEventKey *event, gpoint
 
 		case GDK_KEY_minus:
 		case GDK_KEY_KP_Subtract:
+			if(event->state & GDK_CONTROL_MASK) {
+				if(option_slideshow_interval >= 2) {
+					option_slideshow_interval -= 1;
+				}
+				if(slideshow_timeout_id != 0) {
+					g_source_remove(slideshow_timeout_id);
+					slideshow_timeout_id = g_timeout_add(option_slideshow_interval * 1000, slideshow_timeout_callback, NULL);
+				}
+				gchar *info_text = g_strdup_printf("Slideshow interval set to %d seconds", option_slideshow_interval);
+				update_info_text(info_text);
+				gtk_widget_queue_draw(GTK_WIDGET(main_window));
+				g_free(info_text);
+				break;
+			}
+
 			if(current_scale_level <= 0.01) {
 				break;
 			}
