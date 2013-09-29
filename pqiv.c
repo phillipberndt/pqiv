@@ -1968,6 +1968,12 @@ gboolean window_configure_callback(GtkWidget *widget, GdkEventConfigure *event, 
 		old_window_x = event->x;
 		old_window_y = event->y;
 
+		// In fullscreen, the position should always match the upper left point
+		// of the screen. Some WMs get this wrong.
+		if(main_window_in_fullscreen && (event->x != screen_geometry.x || event->y != screen_geometry.y)) {
+			gtk_window_move(main_window, screen_geometry.x, screen_geometry.y);
+		}
+
 		// Execute the "screen changed" callback, because the monitor at the window might have changed
 		window_screen_changed_callback(NULL, NULL, NULL);
 	}
