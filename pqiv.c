@@ -1866,7 +1866,11 @@ gboolean window_draw_callback(GtkWidget *widget, cairo_t *cr_arg, gpointer user_
 		// Create an image surface to draw to first
 		// We use this for fading and to display the last image if the current image is
 		// still unavailable
-		cairo_surface_t *temporary_image_surface = cairo_surface_create_similar_image(cairo_get_target(cr_arg), CAIRO_FORMAT_ARGB32, main_window_width, main_window_height);
+		#if CAIRO_VERSION >= CAIRO_VERSION_ENCODE(1, 12, 0)
+			cairo_surface_t *temporary_image_surface = cairo_surface_create_similar_image(cairo_get_target(cr_arg), CAIRO_FORMAT_ARGB32, main_window_width, main_window_height);
+		#else
+			cairo_surface_t *temporary_image_surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, main_window_width, main_window_height);
+		#endif
 		cairo_t *cr = cairo_create(temporary_image_surface);
 
 		// Draw black background
