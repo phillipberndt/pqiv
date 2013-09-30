@@ -268,6 +268,7 @@ gboolean option_watch_directories = FALSE;
 gboolean option_fading = FALSE;
 
 double fading_current_alpha_stage = 0;
+gint64 fading_initial_time;
 
 gboolean options_keyboard_alias_set_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error);
 gboolean option_window_position_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error);
@@ -1225,6 +1226,7 @@ void absolute_image_movement(size_t pos) {/*{{{*/
 	// Activate fading
 	if(option_fading) {
 		fading_current_alpha_stage = .0;
+		fading_initial_time = g_get_monotonic_time();
 		g_timeout_add(20, fading_timeout_callback, NULL);
 	}
 }/*}}}*/
@@ -1553,7 +1555,9 @@ gboolean slideshow_timeout_callback(gpointer user_data) {/*{{{*/
 	return TRUE;
 }/*}}}*/
 gboolean fading_timeout_callback(gpointer user_data) {/*{{{*/
-	fading_current_alpha_stage += .05;
+	double new_stage = (g_get_monotonic_time() - fading_initial_time) / 1e6 * 2;
+	new_stage = (new_stage < 0.) ? 0. : ((new_stage > 1.) ? 1. : new_stage);
+	fading_current_alpha_stage = new_stage;
 	gtk_widget_queue_draw(GTK_WIDGET(main_window));
 	return (fading_current_alpha_stage < 1.); // FALSE aborts the source
 }/*}}}*/
