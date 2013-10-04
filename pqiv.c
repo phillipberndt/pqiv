@@ -33,7 +33,13 @@
 #include <unistd.h>
 
 #ifdef _WIN32
-	#define _WIN32_WINNT 0x500
+	#ifndef _WIN32_WINNT
+		#define _WIN32_WINNT 0x500
+	#else
+		#if _WIN32_WINNT < 0x800
+			#error Microsoft Windows supported is limited to Windows 2000 and higher.
+		#endif
+	#endif
 	#include <windows.h>
 #else
 	#include <sys/wait.h>
