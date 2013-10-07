@@ -834,6 +834,11 @@ gboolean main_window_resize_callback(gpointer user_data) {/*{{{*/
 		return FALSE;
 	}
 
+	// In in fullscreen, also abort
+	if(main_window_in_fullscreen) {
+		return FALSE;
+	}
+
 	// Recalculate the required window size
 	int image_width = cairo_image_surface_get_width(CURRENT_FILE->image_surface);
 	int image_height = cairo_image_surface_get_height(CURRENT_FILE->image_surface);
@@ -1208,7 +1213,10 @@ void absolute_image_movement(size_t pos) {/*{{{*/
 
 	// Activate fading
 	if(option_fading) {
-		fading_current_alpha_stage = .0;
+		// It is important to initialize this variable with a positive,
+		// non-null value, as 0. is used to indicate that no fading currently
+		// takes place.
+		fading_current_alpha_stage = DBL_EPSILON;
 		fading_initial_time = g_get_monotonic_time();
 		g_timeout_add(20, fading_timeout_callback, NULL);
 	}
@@ -1904,7 +1912,7 @@ gboolean window_draw_callback(GtkWidget *widget, cairo_t *cr_arg, gpointer user_
 		cairo_restore(cr);
 
 		// If currently fading, draw the surface along with the old image
-		if(option_fading && fading_current_alpha_stage < 1. && last_visible_image_surface != NULL) {
+		if(option_fading && fading_current_alpha_stage < 1. && fading_current_alpha_stage > 0. && last_visible_image_surface != NULL) {
 			cairo_set_source_surface(cr_arg, last_visible_image_surface, 0, 0);
 			cairo_set_operator(cr_arg, CAIRO_OPERATOR_SOURCE);
 			cairo_paint(cr_arg);
