@@ -850,8 +850,8 @@ gboolean main_window_resize_callback(gpointer user_data) {/*{{{*/
 	int new_window_width = current_scale_level * image_width;
 	int new_window_height = current_scale_level * image_height;
 
-	// Resize if this has not worked before
-	if(main_window_width >= 0 && (main_window_width != new_window_width || main_window_height != new_window_height)) {
+	// Resize if this has not worked before, but accept a slight deviation (might be round-off error)
+	if(main_window_width >= 0 && abs(main_window_width - new_window_width) + abs(main_window_height - new_window_height) > 1) {
 		gtk_window_resize(main_window, new_window_width, new_window_height);
 	}
 
@@ -913,7 +913,9 @@ gboolean image_loaded_handler(gconstpointer info_text) {/*{{{*/
 		// Update geometry hints
 		GdkGeometry hints;
 		hints.min_aspect = hints.max_aspect = image_width * 1.0 / image_height;
-		gtk_window_set_geometry_hints(main_window, NULL, &hints, GDK_HINT_ASPECT);
+		if(main_window_visible) {
+			gtk_window_set_geometry_hints(main_window, NULL, &hints, GDK_HINT_ASPECT);
+		}
 
 		// Resize the window
 		int new_window_width = current_scale_level * image_width;
@@ -925,14 +927,22 @@ gboolean image_loaded_handler(gconstpointer info_text) {/*{{{*/
 			else if(option_window_position.x != -1) {
 				gtk_window_set_position(main_window, GTK_WIN_POS_CENTER_ALWAYS);
 			}
-			gtk_window_resize(main_window, new_window_width, new_window_height);
+			if(!main_window_visible) {
+				gtk_window_set_default_size(main_window, new_window_width, new_window_height);
+				gtk_window_set_geometry_hints(main_window, NULL, &hints, GDK_HINT_ASPECT);
+				main_window_width = new_window_width;
+				main_window_height = new_window_height;
 
-			// Some window managers create a race here upon application startup:
-			// They resize, as requested above, and afterwards apply their idea of
-			// window size. To conquer that, we check for the window size again once
-			// all events are handled.
-			g_idle_add(main_window_resize_callback, NULL);
-			
+				// Some window managers create a race here upon application startup:
+				// They resize, as requested above, and afterwards apply their idea of
+				// window size. To conquer that, we check for the window size again once
+				// all events are handled.
+				g_idle_add(main_window_resize_callback, NULL);
+			}
+			else {
+				gtk_window_resize(main_window, new_window_width, new_window_height);
+			}
+
 			// In theory, we do not need to draw manually here. The resizing will
 			// trigger a configure event, which will in particular redraw the
 			// window. But this does not work for tiling WMs. As _NET_WM_ACTION_RESIZE
@@ -941,7 +951,7 @@ gboolean image_loaded_handler(gconstpointer info_text) {/*{{{*/
 			queue_draw();
 		}
 		else {
-			// else: No configure event here, but that's fine: current_scale_level already 
+			// else: No configure event here, but that's fine: current_scale_level already
 			// has the correct value
 			queue_draw();
 		}
@@ -1141,6 +1151,12 @@ gboolean initialize_image_loader() {/*{{{*/
 	#else
 		g_thread_create(image_loader_thread, NULL, FALSE, NULL);
 	#endif
+	if(NEXT_FILE->image_surface == NULL) {
+		queue_image_load(current_image < file_list->len - 1 ? current_image + 1 : 0);
+	}
+	if(PREVIOUS_FILE->image_surface == NULL) {
+		queue_image_load(current_image > 0 ? current_image - 1 : file_list->len - 1);
+	}
 	return TRUE;
 }/*}}}*/
 void queue_image_load(size_t id) {/*{{{*/
@@ -2688,11 +2704,9 @@ int main(int argc, char *argv[]) {
 	}
 
 	setup_checkerboard_pattern();
-	initialize_image_loader();
-
 	create_window();
-
-	absolute_image_movement(current_image);
+	initialize_image_loader();
+	image_loaded_handler(NULL);
 
 	if(option_start_with_slideshow_mode) {
 		slideshow_timeout_id = g_timeout_add(option_slideshow_interval * 1000, slideshow_timeout_callback, NULL);
