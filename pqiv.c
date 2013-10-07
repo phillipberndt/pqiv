@@ -284,27 +284,19 @@ struct {
 // Hint: Only types G_OPTION_ARG_NONE, G_OPTION_ARG_STRING, G_OPTION_ARG_DOUBLE/INTEGER and G_OPTION_ARG_CALLBACK are
 // implemented for option parsing.
 GOptionEntry options[] = {
-	{ NULL, 0, 0, 0, NULL, "main", "Main application options" },
-
-	{ "fullscreen", 'f', 0, G_OPTION_ARG_NONE, &option_start_fullscreen, "Start in fullscreen mode", NULL },
-	{ "sort", 'n', 0, G_OPTION_ARG_NONE, &option_sort, "Sort files in natural order", NULL },
-	{ "slideshow", 's', 0, G_OPTION_ARG_NONE, &option_start_with_slideshow_mode, "Activate slideshow mode", NULL },
-	{ "shuffle", 0, 0, G_OPTION_ARG_NONE, &option_shuffle, "Shuffle files", NULL },
-
-	{ NULL, 0, 0, 0, NULL, "advanced", "Setup the behavior of pqiv" },
 	{ "keyboard-alias", 'a', 0, G_OPTION_ARG_CALLBACK, (gpointer)&options_keyboard_alias_set_callback, "Define n as a keyboard alias for f", "nfnf.." },
 	{ "transparent-background", 'c', 0, G_OPTION_ARG_NONE, &option_transparent_background, "Borderless transparent window", NULL },
 	{ "slideshow-interval", 'd', 0, G_OPTION_ARG_INT, &option_slideshow_interval, "Set slideshow interval", "n" },
+	{ "fullscreen", 'f', 0, G_OPTION_ARG_NONE, &option_start_fullscreen, "Start in fullscreen mode", NULL },
+	{ "fade", 'F', 0, G_OPTION_ARG_NONE, (gpointer)&option_fading, "Fade between images", NULL },
 	{ "hide-info-box", 'i', 0, G_OPTION_ARG_NONE, &option_hide_info_box, "Initially hide the info box", NULL },
+	{ "sort", 'n', 0, G_OPTION_ARG_NONE, &option_sort, "Sort files in natural order", NULL },
 	{ "window-position", 'P', 0, G_OPTION_ARG_CALLBACK, (gpointer)&option_window_position_callback, "Set initial window position (`x,y' or `off' to not position the window at all)", "POSITION" },
 	{ "reverse-cursor-keys", 'R', 0, G_OPTION_ARG_NONE, &option_reverse_cursor_keys, "Reverse the meaning of the cursor keys", NULL },
-	{ "window-title", 'T', 0, G_OPTION_ARG_STRING, &option_window_title, "Set the title of the window. See manpage for available variables.", "TITLE" },
+	{ "slideshow", 's', 0, G_OPTION_ARG_NONE, &option_start_with_slideshow_mode, "Activate slideshow mode", NULL },
 	{ "scale-images-up", 't', G_OPTION_FLAG_NO_ARG, G_OPTION_ARG_CALLBACK, (gpointer)&option_scale_level_callback, "Scale images up to fill the whole screen", NULL },
+	{ "window-title", 'T', 0, G_OPTION_ARG_STRING, &option_window_title, "Set the title of the window. See manpage for available variables.", "TITLE" },
 	{ "zoom-level", 'z', 0, G_OPTION_ARG_DOUBLE, &option_initial_scale, "Set initial zoom level (1.0 is 100%)", "FLOAT" },
-	{ "disable-scaling", 0, G_OPTION_FLAG_NO_ARG, G_OPTION_ARG_CALLBACK, (gpointer)&option_scale_level_callback, "Disable scaling of images", NULL },
-	{ "watch-directories", 0, 0, G_OPTION_ARG_NONE, &option_watch_directories, "Watch directories for new files", NULL },
-	{ "fade", 'F', 0, G_OPTION_ARG_NONE, (gpointer)&option_fading, "Fade between images", NULL },
-	{ "fade-duration", 0, 0, G_OPTION_ARG_DOUBLE, &option_fading_duration, "Adjust fades' duration", "SECONDS" },
 
 	{ "command-1", '1', 0, G_OPTION_ARG_STRING, &external_image_filter_commands[0], "Bind the external COMMAND to key 1. See manpage for extended usage (commands starting with `>' or `|'). Use 2..9 for further commands.", "COMMAND" },
 	{ "command-2", '2', G_OPTION_FLAG_HIDDEN, G_OPTION_ARG_STRING, &external_image_filter_commands[1], NULL, NULL },
@@ -315,6 +307,11 @@ GOptionEntry options[] = {
 	{ "command-7", '7', G_OPTION_FLAG_HIDDEN, G_OPTION_ARG_STRING, &external_image_filter_commands[6], NULL, NULL },
 	{ "command-8", '8', G_OPTION_FLAG_HIDDEN, G_OPTION_ARG_STRING, &external_image_filter_commands[7], NULL, NULL },
 	{ "command-9", '9', G_OPTION_FLAG_HIDDEN, G_OPTION_ARG_STRING, &external_image_filter_commands[8], NULL, NULL },
+
+	{ "disable-scaling", 0, G_OPTION_FLAG_NO_ARG, G_OPTION_ARG_CALLBACK, (gpointer)&option_scale_level_callback, "Disable scaling of images", NULL },
+	{ "fade-duration", 0, 0, G_OPTION_ARG_DOUBLE, &option_fading_duration, "Adjust fades' duration", "SECONDS" },
+	{ "shuffle", 0, 0, G_OPTION_ARG_NONE, &option_shuffle, "Shuffle files", NULL },
+	{ "watch-directories", 0, 0, G_OPTION_ARG_NONE, &option_watch_directories, "Watch directories for new files", NULL },
 
 	{ NULL, 0, 0, 0, NULL, NULL, NULL }
 };
@@ -421,7 +418,7 @@ void parse_configuration_file(int *argc, char **argv[]) {/*{{{*/
 			char **new_argv = (char **)g_malloc(sizeof(char *) * (*argc + additional_arguments_max + 1));
 			new_argv[0] = (*argv)[0];
 			char *end_of_argument;
-			while(*options_contents != 0) { 
+			while(*options_contents != 0) {
 				end_of_argument = strchr(options_contents, ' ');
 				if(end_of_argument != NULL) {
 					*end_of_argument = 0;
@@ -438,7 +435,7 @@ void parse_configuration_file(int *argc, char **argv[]) {/*{{{*/
 					gboolean direct_parsing_successfull = FALSE;
 					if(argv_val[1] == '-') {
 						// Long option
-						for(GOptionEntry *iter = options; iter->description != NULL || iter->long_name != NULL; iter++) {
+						for(GOptionEntry *iter = options; iter->description != NULL; iter++) {
 							if(iter->long_name != NULL && iter->arg == G_OPTION_ARG_NONE && g_strcmp0(iter->long_name, argv_val + 2) == 0) {
 								*(gboolean *)(iter->arg_data) = TRUE;
 								iter->flags |= G_OPTION_FLAG_REVERSE;
@@ -452,7 +449,7 @@ void parse_configuration_file(int *argc, char **argv[]) {/*{{{*/
 						direct_parsing_successfull = TRUE;
 						for(char *arg = argv_val + 1; *arg != 0; arg++) {
 							gboolean found = FALSE;
-							for(GOptionEntry *iter = options; (iter->description != NULL || iter->long_name != NULL) && direct_parsing_successfull; iter++) {
+							for(GOptionEntry *iter = options; iter->description != NULL && direct_parsing_successfull; iter++) {
 								if(iter->short_name == *arg) {
 									found = TRUE;
 									if(iter->arg == G_OPTION_ARG_NONE) {
@@ -515,7 +512,7 @@ void parse_configuration_file(int *argc, char **argv[]) {/*{{{*/
 		return;
 	}
 
-	for(GOptionEntry *iter = options; iter->description != NULL || iter->long_name != NULL; iter++) {
+	for(GOptionEntry *iter = options; iter->description != NULL; iter++) {
 		if(iter->long_name != NULL) {
 			switch(iter->arg) {
 				case G_OPTION_ARG_NONE: {
@@ -572,23 +569,7 @@ void parse_command_line(int *argc, char *argv[]) {/*{{{*/
 	g_option_context_set_description(parser, long_description_text);
 	g_option_context_set_help_enabled(parser, TRUE);
 	g_option_context_set_ignore_unknown_options(parser, FALSE);
-
-	GOptionGroup *group = NULL;
-	for(GOptionEntry *iter = options; iter->description != NULL || iter->long_name != NULL; iter++) {
-		if(iter->long_name == NULL) {
-			// Our hack to indicate a new option group
-			GOptionGroup *new_group = g_option_group_new(iter->description, iter->arg_description, iter->arg_description, NULL, NULL);
-			if(group == NULL) {
-				g_option_context_set_main_group(parser, new_group);
-			}
-			else {
-				g_option_context_add_group(parser, new_group);
-			}
-			group = new_group;
-			g_option_group_add_entries(group, iter + 1);
-		}
-	}
-
+	g_option_context_add_main_entries(parser, options, NULL);
 	g_option_context_add_group(parser, gtk_get_option_group(TRUE));
 
 	GError *error_pointer = NULL;
