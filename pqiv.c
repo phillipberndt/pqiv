@@ -266,6 +266,7 @@ gboolean option_reverse_cursor_keys = FALSE;
 gboolean option_transparent_background = FALSE;
 gboolean option_watch_directories = FALSE;
 gboolean option_fading = FALSE;
+double option_fading_duration = .5;
 
 double fading_current_alpha_stage = 0;
 gint64 fading_initial_time;
@@ -303,6 +304,7 @@ GOptionEntry options[] = {
 	{ "disable-scaling", 0, G_OPTION_FLAG_NO_ARG, G_OPTION_ARG_CALLBACK, (gpointer)&option_scale_level_callback, "Disable scaling of images", NULL },
 	{ "watch-directories", 0, 0, G_OPTION_ARG_NONE, &option_watch_directories, "Watch directories for new files", NULL },
 	{ "fade", 'F', 0, G_OPTION_ARG_NONE, (gpointer)&option_fading, "Fade between images", NULL },
+	{ "fade-duration", 0, 0, G_OPTION_ARG_DOUBLE, &option_fading_duration, "Adjust fades' duration", "SECONDS" },
 
 	{ "command-1", '1', 0, G_OPTION_ARG_STRING, &external_image_filter_commands[0], "Bind the external COMMAND to key 1. See manpage for extended usage (commands starting with `>' or `|'). Use 2..9 for further commands.", "COMMAND" },
 	{ "command-2", '2', G_OPTION_FLAG_HIDDEN, G_OPTION_ARG_STRING, &external_image_filter_commands[1], NULL, NULL },
@@ -1555,7 +1557,7 @@ gboolean slideshow_timeout_callback(gpointer user_data) {/*{{{*/
 	return TRUE;
 }/*}}}*/
 gboolean fading_timeout_callback(gpointer user_data) {/*{{{*/
-	double new_stage = (g_get_monotonic_time() - fading_initial_time) / 1e6 * 2;
+	double new_stage = (g_get_monotonic_time() - fading_initial_time) / (1e6 * option_fading_duration);
 	new_stage = (new_stage < 0.) ? 0. : ((new_stage > 1.) ? 1. : new_stage);
 	fading_current_alpha_stage = new_stage;
 	gtk_widget_queue_draw(GTK_WIDGET(main_window));
