@@ -190,6 +190,7 @@ size_t current_image = 0;
 
 // We asynchroniously load images in a separate thread
 GAsyncQueue *image_loader_queue;
+GCancellable *image_loader_cancellable;
 
 // Filter for path traversing upon building the file list
 GtkFileFilter *load_images_file_filter;
@@ -997,7 +998,7 @@ gboolean image_loader_load_single(size_t id) {/*{{{*/
 
 	GError *error_pointer = NULL;
 	GdkPixbufAnimation *pixbuf_animation = NULL;
-	
+
 	if((FILE_LIST_ENTRY(id)->file_type & FILE_TYPE_MEMORY_IMAGE) != 0) {
 		GdkPixbufLoader *loader = gdk_pixbuf_loader_new();
 		if(gdk_pixbuf_loader_write(loader, FILE_LIST_ENTRY(id)->file_data, FILE_LIST_ENTRY(id)->file_data_length, &error_pointer)) {
@@ -1015,10 +1016,23 @@ gboolean image_loader_load_single(size_t id) {/*{{{*/
 		g_object_unref(loader);
 	}
 	else {
-		pixbuf_animation = gdk_pixbuf_animation_new_from_file(FILE_LIST_ENTRY(id)->file_name, &error_pointer);
+		g_cancellable_reset(image_loader_cancellable);
+		GFile *input_file = g_file_new_for_path(FILE_LIST_ENTRY(id)->file_name);
+		GFileInputStream *input_file_stream = g_file_read(input_file, image_loader_cancellable, &error_pointer);
+		if(input_file_stream != NULL) {
+			pixbuf_animation = gdk_pixbuf_animation_new_from_stream(G_INPUT_STREAM(input_file_stream), image_loader_cancellable, &error_pointer);
+			g_object_unref(input_file_stream);
+		}
+		g_object_unref(input_file);
 		if(pixbuf_animation == NULL) {
-			g_printerr("Failed to open file %s: %s\n", FILE_LIST_ENTRY(id)->file_name, error_pointer->message);
-			g_clear_error(&error_pointer);
+			if(error_pointer->code == G_IO_ERROR_CANCELLED) {
+				g_clear_error(&error_pointer);
+				return FALSE;
+			}
+			else {
+				g_printerr("Failed to open file %s: %s\n", FILE_LIST_ENTRY(id)->file_name, error_pointer->message);
+				g_clear_error(&error_pointer);
+			}
 		}
 	}
 
@@ -1133,6 +1147,7 @@ gpointer image_loader_thread(gpointer user_data) {/*{{{*/
 }/*}}}*/
 gboolean initialize_image_loader() {/*{{{*/
 	image_loader_queue = g_async_queue_new();
+	image_loader_cancellable = g_cancellable_new();
 	while(!image_loader_load_single(current_image) && file_list->len > 0);
 	if(file_list->len == 0) {
 		return FALSE;
@@ -1149,6 +1164,10 @@ gboolean initialize_image_loader() {/*{{{*/
 		queue_image_load(current_image > 0 ? current_image - 1 : file_list->len - 1);
 	}
 	return TRUE;
+}/*}}}*/
+void abort_pending_image_loads() {/*{{{*/
+	while(g_async_queue_try_pop(image_loader_queue) != NULL);
+	g_cancellable_cancel(image_loader_cancellable);
 }/*}}}*/
 void queue_image_load(size_t id) {/*{{{*/
 	size_t *id_ptr = g_new(size_t, 1);
@@ -1173,6 +1192,9 @@ void unload_image(file_t *image) {/*{{{*/
 	}
 }/*}}}*/
 void absolute_image_movement(size_t pos) {/*{{{*/
+	// No need to continue the other pending loads
+	abort_pending_image_loads();
+
 	// Check which images have to be unloaded
 	size_t old_prev = current_image > 0 ? current_image - 1 : file_list->len - 1;
 	size_t old_next = current_image < file_list->len - 1 ? current_image + 1 : 0;
@@ -2102,8 +2124,20 @@ gboolean window_key_press_callback(GtkWidget *widget, GdkEventKey *event, gpoint
 		event->keyval = keyboard_aliases[event->keyval];
 	}
 
-	// If the current image is not loaded, only allow non-image related stuff
+	// If the current image is not loaded, only allow stuff unrelated to the current image
 	if(CURRENT_FILE->image_surface == NULL && (
+		event->keyval != GDK_KEY_space &&
+		event->keyval != GDK_KEY_Page_Up &&
+		event->keyval != GDK_KEY_KP_Page_Up &&
+		event->keyval != GDK_KEY_Page_Down &&
+		event->keyval != GDK_KEY_KP_Page_Down &&
+		event->keyval != GDK_KEY_BackSpace &&
+		event->keyval != GDK_KEY_j &&
+		event->keyval != GDK_KEY_J &&
+		event->keyval != GDK_KEY_i &&
+		event->keyval != GDK_KEY_I &&
+		event->keyval != GDK_KEY_s &&
+		event->keyval != GDK_KEY_S &&
 		event->keyval != GDK_KEY_Q &&
 		event->keyval != GDK_KEY_q &&
 		event->keyval != GDK_KEY_f &&
@@ -2348,7 +2382,7 @@ gboolean window_key_press_callback(GtkWidget *widget, GdkEventKey *event, gpoint
 			break;
 
 		case GDK_KEY_Q:
-		case GDK_KEY_q: 
+		case GDK_KEY_q:
 		case GDK_KEY_Escape:
 			gtk_main_quit();
 			break;
