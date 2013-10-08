@@ -11,8 +11,8 @@ ifeq ($(wildcard config.make),config.make)
 	include config.make
 endif
 
-LIBS_GTK3=gtk+-3.0 glib-2.0 cairo gio-2.0
-LIBS_GTK2=gtk+-2.0 glib-2.0 cairo gio-2.0
+LIBS_GTK3=gtk+-3.0 glib-2.0 cairo gio-2.0 gdk-pixbuf-2.0
+LIBS_GTK2=gtk+-2.0 glib-2.0 cairo gio-2.0 gdk-pixbuf-2.0
 
 ifeq ($(GTK_VERSION), 0)
 	ifeq ($(shell $(PKG_CONFIG) --errors-to-stdout --print-errors $(LIBS_GTK3)), )

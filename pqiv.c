@@ -1020,7 +1020,42 @@ gboolean image_loader_load_single(size_t id) {/*{{{*/
 		GFile *input_file = g_file_new_for_path(FILE_LIST_ENTRY(id)->file_name);
 		GFileInputStream *input_file_stream = g_file_read(input_file, image_loader_cancellable, &error_pointer);
 		if(input_file_stream != NULL) {
-			pixbuf_animation = gdk_pixbuf_animation_new_from_stream(G_INPUT_STREAM(input_file_stream), image_loader_cancellable, &error_pointer);
+			#if (GDK_PIXBUF_MAJOR > 2 || (GDK_PIXBUF_MAJOR == 2 && GDK_PIXBUF_MINOR >= 28))
+				pixbuf_animation = gdk_pixbuf_animation_new_from_stream(G_INPUT_STREAM(input_file_stream), image_loader_cancellable, &error_pointer);
+			#else
+				#define IMAGE_LOADER_BUFFER_SIZE (1024 * 512)
+
+				GdkPixbufLoader *loader = gdk_pixbuf_loader_new();
+				guchar *buffer = g_malloc(IMAGE_LOADER_BUFFER_SIZE);
+				if(buffer == NULL) {
+					g_printerr("Failed to allocate memory to load image\n");
+					g_object_unref(loader);
+					g_object_unref(input_file_stream);
+					g_object_unref(input_file);
+					return FALSE;
+				}
+				while(TRUE) {
+					gssize bytes_read = g_input_stream_read(G_INPUT_STREAM(input_file_stream), buffer, IMAGE_LOADER_BUFFER_SIZE, image_loader_cancellable, &error_pointer);
+					if(bytes_read == 0) {
+						// All OK, finish the image loader
+						gdk_pixbuf_loader_close(loader, &error_pointer);
+						pixbuf_animation = gdk_pixbuf_loader_get_animation(loader);
+						g_object_ref(pixbuf_animation); // see above
+						break;
+					}
+					if(bytes_read == -1) {
+						// Error. Handle this below.
+						break;
+					}
+					// In all other cases, write to image loader
+					if(!gdk_pixbuf_loader_write(loader, buffer, bytes_read, &error_pointer)) {
+						// In case of an error, abort.
+						break;
+					}
+				}
+				g_free(buffer);
+				g_object_unref(loader);
+			#endif
 			g_object_unref(input_file_stream);
 		}
 		g_object_unref(input_file);
