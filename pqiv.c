@@ -905,13 +905,11 @@ gboolean image_loaded_handler(gconstpointer info_text) {/*{{{*/
 			}
 		}
 
-		// Update geometry hints (we enforce them below)
-		GdkGeometry hints;
-		hints.min_aspect = hints.max_aspect = image_width * 1.0 / image_height;
-
-		// Resize the window
+		// Resize the window and update geometry hints (we enforce them below)
 		int new_window_width = current_scale_level * image_width;
 		int new_window_height = current_scale_level * image_height;
+		GdkGeometry hints;
+		hints.min_aspect = hints.max_aspect = new_window_width * 1.0 / new_window_height;
 		if(main_window_width >= 0 && (main_window_width != new_window_width || main_window_height != new_window_height)) {
 			if(option_window_position.x >= 0) {
 				g_idle_add(window_move_helper_callback, NULL);
