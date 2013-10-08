@@ -88,6 +88,7 @@ pqiv 2.1-dev
  * gtk 3.10 stock icon deprecation issue fixed
  * Reimplemented fading between images
  * Display the last image while the current image has not been loaded
+ * Gave users the option to abort the loading of huge images
 
 pqiv 2.0
  * Complete rewrite from scratch
