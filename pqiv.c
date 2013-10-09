@@ -2018,16 +2018,18 @@ gboolean window_draw_callback(GtkWidget *widget, cairo_t *cr_arg, gpointer user_
 
 		cairo_set_source_rgb(cr_arg, 1., 1., 0.);
 		cairo_translate(cr_arg, 10, 20);
-
 		cairo_text_path(cr_arg, current_info_text);
+		cairo_path_t *text_path = cairo_copy_path(cr_arg);
 		cairo_path_extents(cr_arg, &x1, &y1, &x2, &y2);
 		cairo_new_path(cr_arg);
 		cairo_rectangle(cr_arg, -5, -15, x2 - x1 + 10, y2 - y1 + 10);
 		cairo_close_path(cr_arg);
 		cairo_fill(cr_arg);
-
 		cairo_set_source_rgb(cr_arg, 0., 0., 0.);
-		cairo_show_text(cr_arg, current_info_text);
+		cairo_append_path(cr_arg, text_path);
+		cairo_fill(cr_arg);
+		cairo_path_destroy(text_path);
+
 		cairo_restore(cr_arg);
 	}
 
