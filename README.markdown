@@ -48,10 +48,12 @@ Usual stuff. `./configure && make && make install`. Actually, the configure scri
 is optional for now.
 
 You'll need
- * gtk+-3.0 *or* gtk+-2.0
- * glib-2.0
- * cairo
- * gio-2.0
+ * gtk+ 3.0 *or* gtk+ 2.8
+ * gdk-pixbuf 2.2 (included in gtk+)
+ * glib 2.8
+ * cairo 1.6
+ * gio 2.0
+ * gdk 2.8
 
 Thanks
 ------

@@ -192,10 +192,10 @@ if [ -n "${CROSS}" ]; then
 fi
 
 echo -n "Checking if GTK, cairo and glib are installed.. "
-if $PKG_CONFIG --exists $LIBS_GTK3; then
+if $PKG_CONFIG --exists "$LIBS_GTK3"; then
 	echo "ok"
 else
-	if $PKG_CONFIG --exists $LIBS_GTK2; then
+	if $PKG_CONFIG --exists "$LIBS_GTK2"; then
 		if [ "$GTK_VERSION" = 3 ]; then
 			echo "failed."
 			echo
