@@ -19,7 +19,7 @@ diverge.
 
 In the meantime, I have had some new ideas and learned (from my daily use)
 about which features were really useful and which were merely overhead. In 2013
-I decided to rewrite pqiv from scratch which these in mind, this time using the 
+I decided to rewrite pqiv from scratch which these in mind, this time using the
 third version of GTK and its backend, cairo. The code was tested on numerous
 platforms, and is also backwards compatible with GTK 2.
 
@@ -29,14 +29,14 @@ Features
 
  * Command line image viewer
  * Directory traversing to view whole directories
+ * Watch files and directories for changes
  * Natural order sorting of the images
- * A Statusbar showing information on the current image
- * Transparency support
+ * A status bar showing information on the current image
+ * Transparency and animation support
  * Moving, zooming, rotation, flipping
- * Slideshow
+ * Slideshows
  * Highly customizable
  * Supports external image filters (e.g. `convert`)
- * Supports animated images
  * Preloads the next image in the background
  * Fade between images
 
