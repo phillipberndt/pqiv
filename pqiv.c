@@ -931,9 +931,14 @@ gboolean image_loaded_handler(gconstpointer info_text) {/*{{{*/
 		hints.min_aspect = hints.max_aspect = new_window_width * 1.0 / new_window_height;
 		if(main_window_width >= 0 && (main_window_width != new_window_width || main_window_height != new_window_height)) {
 			if(option_window_position.x >= 0) {
+				// This is upon startup. Do not attempt to move the window
+				// directly to the startup position, this won't work. WMs don't
+				// like being told what to do.. ;-) Wait till the window is visible,
+				// then move it away.
 				g_idle_add(window_move_helper_callback, NULL);
 			}
 			else if(option_window_position.x != -1) {
+				// Tell the WM to center the window
 				gtk_window_set_position(main_window, GTK_WIN_POS_CENTER_ALWAYS);
 			}
 			if(!main_window_visible) {
@@ -2708,6 +2713,17 @@ gboolean window_state_callback(GtkWidget *widget, GdkEventWindowState *event, gp
 			window_state_into_fullscreen_actions();
 		}
 		else {
+			// Move the window back to the center of the screen.  We must do
+			// this manually, at least Mutter ignores the position hint at this
+			// point.
+			if(CURRENT_FILE->image_surface != NULL) {
+				gtk_window_move(main_window,
+					screen_geometry.x + (screen_geometry.width - cairo_image_surface_get_width(CURRENT_FILE->image_surface) * current_scale_level) / 2,
+					screen_geometry.y + (screen_geometry.height - cairo_image_surface_get_height(CURRENT_FILE->image_surface) * current_scale_level) / 2
+				);
+			}
+			gtk_window_set_position(main_window, GTK_WIN_POS_CENTER_ALWAYS);
+
 			GdkWindow *window = gtk_widget_get_window(GTK_WIDGET(main_window));
 			gdk_window_set_cursor(window, NULL);
 
