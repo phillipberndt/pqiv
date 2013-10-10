@@ -219,7 +219,14 @@ gboolean main_window_in_fullscreen = FALSE;
 GdkRectangle screen_geometry = { 0, 0, 0, 0 };
 
 cairo_pattern_t *background_checkerboard_pattern = NULL;
+
+// Those two surfaces are here to store scaled image versions (to reduce
+// processor load) and to store the last visible image to have something to
+// display while fading and while the (new) current image has not been loaded
+// yet.
 cairo_surface_t *last_visible_image_surface = NULL;
+cairo_surface_t *current_scaled_image_surface = NULL;
+
 gchar *current_info_text = NULL;
 
 
@@ -786,6 +793,12 @@ void load_images(int *argc, char *argv[]) {/*{{{*/
 }/*}}}*/
 // }}}
 /* (A-)synchronous image loading and image operations {{{ */
+void invalidate_current_scaled_image_surface() {/*{{{*/
+	if(current_scaled_image_surface != NULL) {
+		cairo_surface_destroy(current_scaled_image_surface);
+		current_scaled_image_surface = NULL;
+	}
+}/*}}}*/
 gboolean image_animation_timeout_callback(gpointer user_data) {/*{{{*/
 	if((size_t)user_data != current_image) {
 		return FALSE;
@@ -958,6 +971,7 @@ gboolean image_loaded_handler(gconstpointer info_text) {/*{{{*/
 			queue_draw();
 		}
 	}
+	invalidate_current_scaled_image_surface();
 
 	// Show window, if not visible yet
 	if(!main_window_visible) {
@@ -1275,8 +1289,10 @@ void absolute_image_movement(size_t pos) {/*{{{*/
 		// non-null value, as 0. is used to indicate that no fading currently
 		// takes place.
 		fading_current_alpha_stage = DBL_EPSILON;
-		fading_initial_time = g_get_monotonic_time();
-		g_timeout_add(20, fading_timeout_callback, NULL);
+		// We start the clock after the first draw, because it could take some
+		// time to calculate the resized version of the image
+		fading_initial_time = -1;
+		g_idle_add(fading_timeout_callback, NULL);
 	}
 }/*}}}*/
 gboolean absolute_image_movement_callback(gpointer user_data) {/*{{{*/
@@ -1319,6 +1335,7 @@ void transform_current_image(cairo_matrix_t *transformation) {/*{{{*/
 	cairo_surface_destroy(old_surface);
 
 	current_image_drawn = FALSE;
+	invalidate_current_scaled_image_surface();
 	CURRENT_FILE->surface_is_out_of_date = TRUE;
 	set_scale_level_to_fit();
 	image_loaded_handler(NULL);
@@ -1604,6 +1621,12 @@ gboolean slideshow_timeout_callback(gpointer user_data) {/*{{{*/
 	return TRUE;
 }/*}}}*/
 gboolean fading_timeout_callback(gpointer user_data) {/*{{{*/
+	if(fading_initial_time < 0) {
+		// We just started. Leave the image invisible.
+		gtk_widget_queue_draw(GTK_WIDGET(main_window));
+		return TRUE;
+	}
+
 	double new_stage = (g_get_monotonic_time() - fading_initial_time) / (1e6 * option_fading_duration);
 	new_stage = (new_stage < 0.) ? 0. : ((new_stage > 1.) ? 1. : new_stage);
 	fading_current_alpha_stage = new_stage;
@@ -1947,27 +1970,41 @@ gboolean window_draw_callback(GtkWidget *widget, cairo_t *cr_arg, gpointer user_
 			x = y = 0;
 		}
 
-		cairo_save(cr);
+		// Scale the image
+		if(current_scaled_image_surface == NULL) {
+			#if CAIRO_VERSION >= CAIRO_VERSION_ENCODE(1, 12, 0)
+				current_scaled_image_surface = cairo_surface_create_similar_image(cairo_get_target(cr_arg), CAIRO_FORMAT_ARGB32, current_scale_level * image_width, current_scale_level * image_height);
+			#else
+				current_scaled_image_surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, current_scale_level * image_width, current_scale_level * image_height);
+			#endif
+			cairo_t *cr_scale = cairo_create(current_scaled_image_surface);
 
-		cairo_translate(cr, x, y);
-		cairo_translate(cr, current_shift_x, current_shift_y);
-		cairo_scale(cr, current_scale_level, current_scale_level);
+			cairo_scale(cr_scale, current_scale_level, current_scale_level);
+			if(background_checkerboard_pattern != NULL && !option_transparent_background) {
+				cairo_save(cr_scale);
+				cairo_new_path(cr_scale);
+				cairo_rectangle(cr_scale, 1, 1, image_width - 2, image_height - 2);
+				cairo_close_path(cr_scale);
+				cairo_clip(cr_scale);
+				cairo_set_source(cr_scale, background_checkerboard_pattern);
+				cairo_paint(cr_scale);
+				cairo_restore(cr_scale);
+			}
 
-		if(background_checkerboard_pattern != NULL && !option_transparent_background) {
-			cairo_save(cr);
-			cairo_new_path(cr);
-			cairo_rectangle(cr, 1, 1, image_width - 2, image_height - 2);
-			cairo_close_path(cr);
-			cairo_clip(cr);
-			cairo_set_source(cr, background_checkerboard_pattern);
-			cairo_paint(cr);
-			cairo_restore(cr);
+			cairo_set_source_surface(cr_scale, CURRENT_FILE->image_surface, 0, 0);
+			cairo_paint(cr_scale);
+
+			cairo_destroy(cr_scale);
 		}
 
-		cairo_set_source_surface(cr, CURRENT_FILE->image_surface, 0, 0);
+		// Move to the desired coordinates, and draw
+		cairo_translate(cr, x, y);
+		cairo_translate(cr, current_shift_x, current_shift_y);
+		cairo_set_source_surface(cr, current_scaled_image_surface, 0, 0);
+		cairo_set_operator(cr, CAIRO_OPERATOR_SOURCE);
 		cairo_paint(cr);
 
-		cairo_restore(cr);
+		cairo_destroy(cr);
 
 		// If currently fading, draw the surface along with the old image
 		if(option_fading && fading_current_alpha_stage < 1. && fading_current_alpha_stage > 0. && last_visible_image_surface != NULL) {
@@ -1978,8 +2015,12 @@ gboolean window_draw_callback(GtkWidget *widget, cairo_t *cr_arg, gpointer user_
 			cairo_set_source_surface(cr_arg, temporary_image_surface, 0, 0);
 			cairo_paint_with_alpha(cr_arg, fading_current_alpha_stage);
 
-			cairo_destroy(cr);
 			cairo_surface_destroy(temporary_image_surface);
+
+			// If this was the first draw, start the fading clock
+			if(fading_initial_time < 0) {
+				fading_initial_time = g_get_monotonic_time();
+			}
 		}
 		else {
 			// Draw the temporary surface to the screen
@@ -1992,9 +2033,7 @@ gboolean window_draw_callback(GtkWidget *widget, cairo_t *cr_arg, gpointer user_
 			if(last_visible_image_surface != NULL) {
 				cairo_surface_destroy(last_visible_image_surface);
 			}
-			// Do not destroy the surface here, we will do that in the next run
 			last_visible_image_surface = temporary_image_surface;
-			cairo_destroy(cr);
 		}
 
 		current_image_drawn = TRUE;
@@ -2235,6 +2274,7 @@ gboolean window_key_press_callback(GtkWidget *widget, GdkEventKey *event, gpoint
 			if((option_scale == 1 && current_scale_level > 1) || option_scale == 0) {
 				scale_override = TRUE;
 			}
+			invalidate_current_scaled_image_surface();
 			if(main_window_in_fullscreen) {
 				gtk_widget_queue_draw(GTK_WIDGET(main_window));
 			}
@@ -2271,6 +2311,7 @@ gboolean window_key_press_callback(GtkWidget *widget, GdkEventKey *event, gpoint
 			if((option_scale == 1 && current_scale_level > 1) || option_scale == 0) {
 				scale_override = TRUE;
 			}
+			invalidate_current_scaled_image_surface();
 			if(main_window_in_fullscreen) {
 				gtk_widget_queue_draw(GTK_WIDGET(main_window));
 			}
@@ -2289,6 +2330,7 @@ gboolean window_key_press_callback(GtkWidget *widget, GdkEventKey *event, gpoint
 				option_scale = 0;
 			}
 			current_image_drawn = FALSE;
+			invalidate_current_scaled_image_surface();
 			set_scale_level_to_fit();
 			image_loaded_handler(NULL);
 			switch(option_scale) {
@@ -2308,6 +2350,7 @@ gboolean window_key_press_callback(GtkWidget *widget, GdkEventKey *event, gpoint
 		case GDK_KEY_0:
 			current_image_drawn = FALSE;
 			set_scale_level_to_fit();
+			invalidate_current_scaled_image_surface();
 			image_loaded_handler(NULL);
 			break;
 
@@ -2522,6 +2565,7 @@ gboolean window_motion_notify_callback(GtkWidget *widget, GdkEventMotion *event,
 				current_scale_level = .01;
 			}
 			update_info_text(NULL);
+			invalidate_current_scaled_image_surface();
 		}
 
 		gtk_widget_queue_draw(GTK_WIDGET(main_window));
@@ -2617,6 +2661,7 @@ void window_state_into_fullscreen_actions() {/*{{{*/
 	if(option_initial_scale_used) {
 		set_scale_level_to_fit();
 	}
+	invalidate_current_scaled_image_surface();
 	#if GTK_MAJOR_VERSION < 3
 		gtk_widget_queue_draw(GTK_WIDGET(main_window));
 	#endif
@@ -2646,6 +2691,7 @@ gboolean window_state_callback(GtkWidget *widget, GdkEventWindowState *event, gp
 			gdk_window_set_cursor(window, NULL);
 
 			current_image_drawn = FALSE;
+			invalidate_current_scaled_image_surface();
 
 			// Rescale the image and remove shift when leaving fullscreen
 			current_shift_x = 0;
