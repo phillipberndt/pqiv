@@ -825,6 +825,7 @@ gboolean image_animation_timeout_callback(gpointer user_data) {/*{{{*/
 		image_animation_timeout_callback,
 		user_data);
 
+	invalidate_current_scaled_image_surface();
 	gtk_widget_queue_draw(GTK_WIDGET(main_window));
 
 	return FALSE;
