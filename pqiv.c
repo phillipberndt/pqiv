@@ -187,6 +187,7 @@ typedef struct {
 // Storage of the file list
 GPtrArray *file_list;
 size_t current_image = 0;
+ssize_t image_loader_thread_currently_loading_id = -1;
 
 // We asynchroniously load images in a separate thread
 GAsyncQueue *image_loader_queue;
@@ -1045,6 +1046,7 @@ gboolean image_loader_load_single(size_t id) {/*{{{*/
 					}
 					if(bytes_read == -1) {
 						// Error. Handle this below.
+						gdk_pixbuf_loader_close(loader, NULL);
 						break;
 					}
 					// In all other cases, write to image loader
@@ -1168,12 +1170,13 @@ gpointer image_loader_thread(gpointer user_data) {/*{{{*/
 		size_t *id_ptr = g_async_queue_pop(image_loader_queue);
 		if(FILE_LIST_ENTRY(*id_ptr)->image_surface == NULL || FILE_LIST_ENTRY(*id_ptr)->surface_is_out_of_date) {
 			// Load image
+			image_loader_thread_currently_loading_id = *id_ptr;
 			image_loader_load_single(*id_ptr);
+			image_loader_thread_currently_loading_id = -1;
 		}
 
 		if(*id_ptr == current_image && FILE_LIST_ENTRY(*id_ptr)->image_surface != NULL) {
 			current_image_drawn = FALSE;
-
 			g_idle_add((GSourceFunc)image_loaded_handler, NULL);
 		}
 
@@ -1200,9 +1203,11 @@ gboolean initialize_image_loader() {/*{{{*/
 	}
 	return TRUE;
 }/*}}}*/
-void abort_pending_image_loads() {/*{{{*/
+void abort_pending_image_loads(size_t new_pos) {/*{{{*/
 	while(g_async_queue_try_pop(image_loader_queue) != NULL);
-	g_cancellable_cancel(image_loader_cancellable);
+	if(image_loader_thread_currently_loading_id > 0 && (size_t)image_loader_thread_currently_loading_id != new_pos) {
+		g_cancellable_cancel(image_loader_cancellable);
+	}
 }/*}}}*/
 void queue_image_load(size_t id) {/*{{{*/
 	size_t *id_ptr = g_new(size_t, 1);
@@ -1228,7 +1233,7 @@ void unload_image(file_t *image) {/*{{{*/
 }/*}}}*/
 void absolute_image_movement(size_t pos) {/*{{{*/
 	// No need to continue the other pending loads
-	abort_pending_image_loads();
+	abort_pending_image_loads(pos);
 
 	// Check which images have to be unloaded
 	size_t old_prev = current_image > 0 ? current_image - 1 : file_list->len - 1;
