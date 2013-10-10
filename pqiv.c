@@ -237,7 +237,10 @@ gint current_shift_y = 0;
 guint32 last_button_press_time = 0;
 GdkPixbufAnimationIter *current_image_animation_iter = NULL;
 guint current_image_animation_timeout_id = 0;
-guint slideshow_timeout_id = 0;
+
+// -1 means no slideshow, 0 means active slideshow but no current timeout
+// source set, anything bigger than that actually is a slideshow id.
+gint slideshow_timeout_id = -1;
 
 // User options
 gchar *external_image_filter_commands[] = {
@@ -1294,6 +1297,13 @@ void absolute_image_movement(size_t pos) {/*{{{*/
 		fading_initial_time = -1;
 		g_idle_add(fading_timeout_callback, NULL);
 	}
+
+	// If there is an active slideshow, interrupt it until the image has been
+	// drawn
+	if(slideshow_timeout_id > 0) {
+		g_source_remove(slideshow_timeout_id);
+		slideshow_timeout_id = 0;
+	}
 }/*}}}*/
 gboolean absolute_image_movement_callback(gpointer user_data) {/*{{{*/
 	absolute_image_movement((size_t)user_data);
@@ -1617,8 +1627,11 @@ void hardlink_current_image() {/*{{{*/
 	gtk_widget_queue_draw(GTK_WIDGET(main_window));
 }/*}}}*/
 gboolean slideshow_timeout_callback(gpointer user_data) {/*{{{*/
+	// Always abort this source: The clock will run again as soon as the image has been loaded.
+	// The draw callback addes a new timeout if we set the timeout id to zero:
+	slideshow_timeout_id = 0;
 	relative_image_movement(1);
-	return TRUE;
+	return FALSE;
 }/*}}}*/
 gboolean fading_timeout_callback(gpointer user_data) {/*{{{*/
 	if(fading_initial_time < 0) {
@@ -2036,6 +2049,11 @@ gboolean window_draw_callback(GtkWidget *widget, cairo_t *cr_arg, gpointer user_
 			last_visible_image_surface = temporary_image_surface;
 		}
 
+		// If we have an active slideshow, resume now.
+		if(slideshow_timeout_id == 0) {
+			slideshow_timeout_id = g_timeout_add(option_slideshow_interval * 1000, slideshow_timeout_callback, NULL);
+		}
+
 		current_image_drawn = TRUE;
 	}
 	else {
@@ -2259,7 +2277,7 @@ gboolean window_key_press_callback(GtkWidget *widget, GdkEventKey *event, gpoint
 		case GDK_KEY_KP_Add:
 			if(event->state & GDK_CONTROL_MASK) {
 				option_slideshow_interval += 1;
-				if(slideshow_timeout_id != 0) {
+				if(slideshow_timeout_id > 0) {
 					g_source_remove(slideshow_timeout_id);
 					slideshow_timeout_id = g_timeout_add(option_slideshow_interval * 1000, slideshow_timeout_callback, NULL);
 				}
@@ -2293,7 +2311,7 @@ gboolean window_key_press_callback(GtkWidget *widget, GdkEventKey *event, gpoint
 				if(option_slideshow_interval >= 2) {
 					option_slideshow_interval -= 1;
 				}
-				if(slideshow_timeout_id != 0) {
+				if(slideshow_timeout_id > 0) {
 					g_source_remove(slideshow_timeout_id);
 					slideshow_timeout_id = g_timeout_add(option_slideshow_interval * 1000, slideshow_timeout_callback, NULL);
 				}
@@ -2430,9 +2448,11 @@ gboolean window_key_press_callback(GtkWidget *widget, GdkEventKey *event, gpoint
 
 		case GDK_KEY_s:
 		case GDK_KEY_S:
-			if(slideshow_timeout_id != 0) {
-				g_source_remove(slideshow_timeout_id);
-				slideshow_timeout_id = 0;
+			if(slideshow_timeout_id >= 0) {
+				if(slideshow_timeout_id > 0) {
+					g_source_remove(slideshow_timeout_id);
+				}
+				slideshow_timeout_id = -1;
 				update_info_text("Slideshow disabled");
 			}
 			else {
