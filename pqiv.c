@@ -188,8 +188,8 @@ typedef struct {
 // Storage of the file list
 BOSTree *file_tree;
 BOSTree *file_sorted_tree;
-size_t current_image = 0;
-ssize_t image_loader_thread_currently_loading_id = -1;
+BOSNode *current_file_node = NULL;
+BOSNode *image_loader_thread_currently_loading = NULL;
 
 // We asynchroniously load images in a separate thread
 GAsyncQueue *image_loader_queue;
@@ -200,13 +200,19 @@ GtkFileFilter *load_images_file_filter;
 GtkFileFilterInfo *load_images_file_filter_info;
 GTimer *load_images_timer;
 
-// Access to the file list file_list
-// TODO Now that I use bostree instead of the file list as well, I can stop
-//      using id's alltogether: The current image's id is bostree_rank(image)
-#define FILE_LIST_ENTRY(i) ((file_t*)(bostree_select(file_tree, i)->data))
-#define CURRENT_FILE FILE_LIST_ENTRY(current_image)
-#define PREVIOUS_FILE FILE_LIST_ENTRY(current_image > 0 ? current_image - 1 : bostree_node_count(file_tree) - 1)
-#define NEXT_FILE FILE_LIST_ENTRY(current_image < bostree_node_count(file_tree) - 1 ? current_image + 1 : 0)
+// TODO When accessing a node from a callback I've got to make sure its still valid
+
+// Easy access to the file_t within a node
+#define FILE(x) ((file_t *)(x)->data)
+#define CURRENT_FILE FILE(current_file_node)
+BOSNode *next_file() {
+	BOSNode *ret = bostree_next_node(current_file_node);
+	return ret ? ret : bostree_select(file_tree, 0);
+}
+BOSNode *previous_file() {
+	BOSNode *ret = bostree_previous_node(current_file_node);
+	return ret ? ret : bostree_select(file_tree, bostree_node_count(file_tree) - 1);
+}
 
 // We sometimes need to decide whether we have to draw the image or if it already
 // is. We use this variable for that.
@@ -356,8 +362,8 @@ void queue_draw();
 gboolean main_window_center();
 void window_screen_changed_callback(GtkWidget *widget, GdkScreen *previous_screen, gpointer user_data);
 gboolean fading_timeout_callback(gpointer user_data);
-void queue_image_load(size_t);
-void unload_image(file_t *image);
+void queue_image_load(BOSNode *);
+void unload_image(BOSNode *);
 // }}}
 /* Command line handling, creation of the image list {{{ */
 gboolean options_keyboard_alias_set_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error) {/*{{{*/
@@ -612,7 +618,6 @@ void load_images_directory_watch_callback(GFileMonitor *monitor, GFile *file, GF
 				// Use the standard loading mechanism. If directory watches are enabled,
 				// the temporary variables used therein are not freed.
 				load_images_handle_parameter(name, 1);
-				// TODO Update current_image if name < current_file->name
 			}
 			g_free(name);
 		}
@@ -822,7 +827,7 @@ void invalidate_current_scaled_image_surface() {/*{{{*/
 	}
 }/*}}}*/
 gboolean image_animation_timeout_callback(gpointer user_data) {/*{{{*/
-	if((size_t)user_data != current_image) {
+	if((BOSNode *)user_data != current_file_node) {
 		return FALSE;
 	}
 
@@ -850,11 +855,11 @@ gboolean image_animation_timeout_callback(gpointer user_data) {/*{{{*/
 	return FALSE;
 }/*}}}*/
 void image_file_updated_callback(GFileMonitor *monitor, GFile *file, GFile *other_file, GFileMonitorEvent event_type, gpointer user_data) {/*{{{*/
-	size_t id = (size_t)user_data;
+	BOSNode *node = (BOSNode *)user_data;
 
 	if(event_type == G_FILE_MONITOR_EVENT_CHANGES_DONE_HINT) {
-		FILE_LIST_ENTRY(id)->surface_is_out_of_date = TRUE;
-		queue_image_load(id);
+		((file_t *)node->data)->surface_is_out_of_date = TRUE;
+		queue_image_load(node);
 	}
 }/*}}}*/
 gboolean window_move_helper_callback(gpointer user_data) {/*{{{*/
@@ -1016,7 +1021,7 @@ gboolean image_loaded_handler(gconstpointer info_text) {/*{{{*/
 		current_image_animation_timeout_id = g_timeout_add(
 			gdk_pixbuf_animation_iter_get_delay_time(current_image_animation_iter),
 			image_animation_timeout_callback,
-			(gpointer)current_image);
+			(gpointer)current_file_node);
 	}
 
 	return FALSE;
@@ -1025,26 +1030,19 @@ gboolean image_loader_load_single_destroy_old_image_callback(gpointer old_surfac
 	cairo_surface_destroy((cairo_surface_t *)old_surface);
 	return FALSE;
 }/*}}}*/
-gboolean image_loader_load_single(size_t id) {/*{{{*/
-	// Valid id?
-	// If only 3 images are loaded and some of them are corrupt, they might
-	// have been removed from the array already, but be still queued because of
-	// the pre-loading.
-	if(id >= bostree_node_count(file_tree)) {
-		return FALSE;
-	}
-
+gboolean image_loader_load_single(BOSNode *node) {/*{{{*/
 	// Already loaded?
-	if(FILE_LIST_ENTRY(id)->image_surface != NULL && !FILE_LIST_ENTRY(id)->surface_is_out_of_date) {
+	file_t *file = (file_t *)node->data;
+	if(file->image_surface != NULL && !file->surface_is_out_of_date) {
 		return TRUE;
 	}
 
 	GError *error_pointer = NULL;
 	GdkPixbufAnimation *pixbuf_animation = NULL;
 
-	if((FILE_LIST_ENTRY(id)->file_type & FILE_TYPE_MEMORY_IMAGE) != 0) {
+	if((file->file_type & FILE_TYPE_MEMORY_IMAGE) != 0) {
 		GdkPixbufLoader *loader = gdk_pixbuf_loader_new();
-		if(gdk_pixbuf_loader_write(loader, FILE_LIST_ENTRY(id)->file_data, FILE_LIST_ENTRY(id)->file_data_length, &error_pointer)) {
+		if(gdk_pixbuf_loader_write(loader, file->file_data, file->file_data_length, &error_pointer)) {
 			gdk_pixbuf_loader_close(loader, &error_pointer);
 			pixbuf_animation = gdk_pixbuf_loader_get_animation(loader);
 		}
@@ -1060,7 +1058,7 @@ gboolean image_loader_load_single(size_t id) {/*{{{*/
 	}
 	else {
 		g_cancellable_reset(image_loader_cancellable);
-		GFile *input_file = g_file_new_for_path(FILE_LIST_ENTRY(id)->file_name);
+		GFile *input_file = g_file_new_for_path(file->file_name);
 		GFileInputStream *input_file_stream = g_file_read(input_file, image_loader_cancellable, &error_pointer);
 		if(input_file_stream != NULL) {
 			#if (GDK_PIXBUF_MAJOR > 2 || (GDK_PIXBUF_MAJOR == 2 && GDK_PIXBUF_MINOR >= 28))
@@ -1111,7 +1109,7 @@ gboolean image_loader_load_single(size_t id) {/*{{{*/
 				return FALSE;
 			}
 			else {
-				g_printerr("Failed to open file %s: %s\n", FILE_LIST_ENTRY(id)->file_name, error_pointer->message);
+				g_printerr("Failed to open file %s: %s\n", file->file_name, error_pointer->message);
 				g_clear_error(&error_pointer);
 			}
 		}
@@ -1119,22 +1117,22 @@ gboolean image_loader_load_single(size_t id) {/*{{{*/
 
 	if(pixbuf_animation != NULL) {
 		if(!gdk_pixbuf_animation_is_static_image(pixbuf_animation)) {
-			if(FILE_LIST_ENTRY(id)->pixbuf_animation != NULL) {
-				g_object_unref(FILE_LIST_ENTRY(id)->pixbuf_animation);
+			if(file->pixbuf_animation != NULL) {
+				g_object_unref(file->pixbuf_animation);
 			}
-			FILE_LIST_ENTRY(id)->pixbuf_animation = g_object_ref(pixbuf_animation);
-			FILE_LIST_ENTRY(id)->file_type |= FILE_TYPE_ANIMATION;
+			file->pixbuf_animation = g_object_ref(pixbuf_animation);
+			file->file_type |= FILE_TYPE_ANIMATION;
 		}
 		else {
-			FILE_LIST_ENTRY(id)->file_type &= ~FILE_TYPE_ANIMATION;
+			file->file_type &= ~FILE_TYPE_ANIMATION;
 		}
 
 		// We apparently do not own this pixbuf!
 		GdkPixbuf *pixbuf = gdk_pixbuf_animation_get_static_image(pixbuf_animation);
 
 		if(pixbuf == NULL) {
-			if((FILE_LIST_ENTRY(id)->file_type & FILE_TYPE_MEMORY_IMAGE) == 0) {
-				g_printerr("Failed to load image %s: %s\n", FILE_LIST_ENTRY(id)->file_name, error_pointer->message);
+			if((file->file_type & FILE_TYPE_MEMORY_IMAGE) == 0) {
+				g_printerr("Failed to load image %s: %s\n", file->file_name, error_pointer->message);
 			}
 			else {
 				g_printerr("Failed to load image from memory: %s\n", error_pointer->message);
@@ -1159,8 +1157,8 @@ gboolean image_loader_load_single(size_t id) {/*{{{*/
 			// surface in all functions and unref it afterwards. But we'd still
 			// have to check if the image_surface is NULL when the callbacks
 			// are invoked because the image could have been unloaded.
-			cairo_surface_t *old_surface = FILE_LIST_ENTRY(id)->image_surface;
-			FILE_LIST_ENTRY(id)->image_surface = surface;
+			cairo_surface_t *old_surface = file->image_surface;
+			file->image_surface = surface;
 			if(old_surface != NULL) {
 				g_idle_add(image_loader_load_single_destroy_old_image_callback, old_surface);
 			}
@@ -1169,15 +1167,15 @@ gboolean image_loader_load_single(size_t id) {/*{{{*/
 		g_object_unref(pixbuf_animation);
 	}
 
-	FILE_LIST_ENTRY(id)->surface_is_out_of_date = FALSE;
+	file->surface_is_out_of_date = FALSE;
 
-	if(FILE_LIST_ENTRY(id)->image_surface != NULL) {
-		if(FILE_LIST_ENTRY(id)->file_type == FILE_TYPE_DEFAULT) {
-			GFile *the_file = g_file_new_for_path(FILE_LIST_ENTRY(id)->file_name);
+	if(file->image_surface != NULL) {
+		if(file->file_type == FILE_TYPE_DEFAULT) {
+			GFile *the_file = g_file_new_for_path(file->file_name);
 			if(the_file != NULL) {
-				FILE_LIST_ENTRY(id)->file_monitor = g_file_monitor_file(the_file, G_FILE_MONITOR_NONE, NULL, NULL);
-				if(FILE_LIST_ENTRY(id)->file_monitor != NULL) {
-					g_signal_connect(FILE_LIST_ENTRY(id)->file_monitor, "changed", G_CALLBACK(image_file_updated_callback), (gpointer)id);
+				file->file_monitor = g_file_monitor_file(the_file, G_FILE_MONITOR_NONE, NULL, NULL);
+				if(file->file_monitor != NULL) {
+					g_signal_connect(file->file_monitor, "changed", G_CALLBACK(image_file_updated_callback), (gpointer)node);
 				}
 				g_object_unref(the_file);
 			}
@@ -1186,29 +1184,20 @@ gboolean image_loader_load_single(size_t id) {/*{{{*/
 		return TRUE;
 	}
 	else {
-		BOSNode *image = bostree_lookup(file_tree, FILE_LIST_ENTRY(id)->file_name);
-		unload_image(FILE_LIST_ENTRY(id));
-		bostree_remove(file_tree, image);
-		g_free(image->key);
-		g_free(image->data);
-
-		gboolean was_current_image = id == current_image;
-		size_t remaining_count = bostree_node_count(file_tree);
-		if(id <= current_image) {
-			if(--current_image >= remaining_count) {
-				current_image = 0;
-				if(remaining_count == 0) {
-					g_printerr("No images left to display.\n");
-					if(gtk_main_level() == 0) {
-						exit(1);
-					}
-					gtk_main_quit();
-				}
-			}
+		unload_image(node);
+		if(node == current_file_node) {
+			current_file_node = next_file();
+			queue_image_load(current_file_node);
 		}
-		if(was_current_image) {
-			current_image = current_image < remaining_count - 1 ? current_image + 1 : 0;
-			queue_image_load(current_image);
+		bostree_remove(file_tree, node);
+		g_free(node->key);
+		g_free(node->data);
+		if(bostree_node_count(file_tree) == 0) {
+			g_printerr("No images left to display.\n");
+			if(gtk_main_level() == 0) {
+				exit(1);
+			}
+			gtk_main_quit();
 		}
 	}
 
@@ -1216,26 +1205,25 @@ gboolean image_loader_load_single(size_t id) {/*{{{*/
 }/*}}}*/
 gpointer image_loader_thread(gpointer user_data) {/*{{{*/
 	while(TRUE) {
-		size_t *id_ptr = g_async_queue_pop(image_loader_queue);
-		if(FILE_LIST_ENTRY(*id_ptr)->image_surface == NULL || FILE_LIST_ENTRY(*id_ptr)->surface_is_out_of_date) {
+		BOSNode *node = g_async_queue_pop(image_loader_queue);
+		if(FILE(node)->image_surface == NULL || FILE(node)->surface_is_out_of_date) {
 			// Load image
-			image_loader_thread_currently_loading_id = *id_ptr;
-			image_loader_load_single(*id_ptr);
-			image_loader_thread_currently_loading_id = -1;
+			image_loader_thread_currently_loading = node;
+			image_loader_load_single(node);
+			image_loader_thread_currently_loading = NULL;
 		}
 
-		if(*id_ptr == current_image && FILE_LIST_ENTRY(*id_ptr)->image_surface != NULL) {
+		if(node == current_file_node && FILE(node)->image_surface != NULL) {
 			current_image_drawn = FALSE;
 			g_idle_add((GSourceFunc)image_loaded_handler, NULL);
 		}
-
-		g_free(id_ptr);
 	}
 }/*}}}*/
 gboolean initialize_image_loader() {/*{{{*/
 	image_loader_queue = g_async_queue_new();
 	image_loader_cancellable = g_cancellable_new();
-	while(!image_loader_load_single(current_image) && bostree_node_count(file_tree) > 0);
+	current_file_node = bostree_select(file_tree, 0);
+	while(!image_loader_load_single(current_file_node) && bostree_node_count(file_tree) > 0);
 	if(bostree_node_count(file_tree) == 0) {
 		return FALSE;
 	}
@@ -1244,65 +1232,73 @@ gboolean initialize_image_loader() {/*{{{*/
 	#else
 		g_thread_create(image_loader_thread, NULL, FALSE, NULL);
 	#endif
-	if(NEXT_FILE->image_surface == NULL) {
-		queue_image_load(current_image < bostree_node_count(file_tree) - 1 ? current_image + 1 : 0);
+
+	BOSNode *next = next_file();
+	if(FILE(next)->image_surface == NULL) {
+		queue_image_load(next);
 	}
-	if(PREVIOUS_FILE->image_surface == NULL) {
-		queue_image_load(current_image > 0 ? current_image - 1 : bostree_node_count(file_tree) - 1);
+	BOSNode *previous = previous_file();
+	if(FILE(previous)->image_surface == NULL) {
+		queue_image_load(previous);
 	}
 	return TRUE;
 }/*}}}*/
-void abort_pending_image_loads(size_t new_pos) {/*{{{*/
+void abort_pending_image_loads(BOSNode *new_pos) {/*{{{*/
 	while(g_async_queue_try_pop(image_loader_queue) != NULL);
-	if(image_loader_thread_currently_loading_id > 0 && (size_t)image_loader_thread_currently_loading_id != new_pos) {
+	if(image_loader_thread_currently_loading != NULL && image_loader_thread_currently_loading != new_pos) {
 		g_cancellable_cancel(image_loader_cancellable);
 	}
 }/*}}}*/
-void queue_image_load(size_t id) {/*{{{*/
-	size_t *id_ptr = g_new(size_t, 1);
-	*id_ptr = id;
-	g_async_queue_push(image_loader_queue, id_ptr);
+void queue_image_load(BOSNode *node) {/*{{{*/
+	g_async_queue_push(image_loader_queue, node);
 }/*}}}*/
-void unload_image(file_t *image) {/*{{{*/
-	if(image->image_surface != NULL) {
-		cairo_surface_destroy(image->image_surface);
-		image->image_surface = NULL;
+void unload_image(BOSNode *node) {/*{{{*/
+	file_t *file = FILE(node);
+	if(file->image_surface != NULL) {
+		cairo_surface_destroy(file->image_surface);
+		file->image_surface = NULL;
 	}
-	if(image->pixbuf_animation != NULL) {
-		g_object_unref(image->pixbuf_animation);
-		image->pixbuf_animation = NULL;
+	if(file->pixbuf_animation != NULL) {
+		g_object_unref(file->pixbuf_animation);
+		file->pixbuf_animation = NULL;
 	}
-	if(image->file_monitor != NULL) {
-		g_file_monitor_cancel(image->file_monitor);
-		if(G_IS_OBJECT(image->file_monitor)) {
-			g_object_unref(image->file_monitor);
+	if(file->file_monitor != NULL) {
+		g_file_monitor_cancel(file->file_monitor);
+		if(G_IS_OBJECT(file->file_monitor)) {
+			g_object_unref(file->file_monitor);
 		}
-		image->file_monitor = NULL;
+		file->file_monitor = NULL;
 	}
 }/*}}}*/
-void absolute_image_movement(size_t pos) {/*{{{*/
+gboolean absolute_image_movement(BOSNode *node) {/*{{{*/
 	// No need to continue the other pending loads
-	abort_pending_image_loads(pos);
+	abort_pending_image_loads(node);
 
 	// Check which images have to be unloaded
-	size_t old_prev = current_image > 0 ? current_image - 1 : bostree_node_count(file_tree) - 1;
-	size_t old_next = current_image < bostree_node_count(file_tree) - 1 ? current_image + 1 : 0;
+	BOSNode *old_prev = previous_file();
+	BOSNode *old_next = next_file();
 
-	size_t new_prev = pos > 0 ? pos - 1 : bostree_node_count(file_tree) - 1;
-	size_t new_next = pos < bostree_node_count(file_tree) - 1 ? pos + 1 : 0;
+	BOSNode *new_prev = bostree_previous_node(node);
+	if(!new_prev) {
+		new_prev = bostree_select(file_tree, bostree_node_count(file_tree) - 1);
+	}
+	BOSNode *new_next = bostree_next_node(node);
+	if(!new_next) {
+		new_next = bostree_select(file_tree, 0);
+	}
 
-	if(old_prev != new_next && old_prev != new_prev && old_prev != pos) {
-		unload_image(PREVIOUS_FILE);
+	if(old_prev != new_next && old_prev != new_prev && old_prev != node) {
+		unload_image(old_prev);
 	}
-	if(old_next != new_next && old_next != new_prev && old_next != pos) {
-		unload_image(NEXT_FILE);
+	if(old_next != new_next && old_next != new_prev && old_next != node) {
+		unload_image(old_next);
 	}
-	if((current_image != new_next && current_image != new_prev && current_image != pos) || CURRENT_FILE->surface_is_out_of_date) {
-		unload_image(CURRENT_FILE);
+	if((current_file_node != new_next && current_file_node != new_prev && current_file_node != node) || CURRENT_FILE->surface_is_out_of_date) {
+		unload_image(current_file_node);
 	}
 
 	// Check which images have to be loaded
-	current_image = pos;
+	current_file_node = node;
 
 	// If the new image has not been loaded yet, display an information message
 	if(CURRENT_FILE->image_surface == NULL) {
@@ -1310,11 +1306,11 @@ void absolute_image_movement(size_t pos) {/*{{{*/
 		gtk_widget_queue_draw(GTK_WIDGET(main_window));
 	}
 
-	queue_image_load(current_image);
-	if(NEXT_FILE->image_surface == NULL) {
+	queue_image_load(current_file_node);
+	if(FILE(new_next)->image_surface == NULL) {
 		queue_image_load(new_next);
 	}
-	if(PREVIOUS_FILE->image_surface == NULL) {
+	if(FILE(new_prev)->image_surface == NULL) {
 		queue_image_load(new_prev);
 	}
 
@@ -1336,22 +1332,19 @@ void absolute_image_movement(size_t pos) {/*{{{*/
 		g_source_remove(slideshow_timeout_id);
 		slideshow_timeout_id = 0;
 	}
-}/*}}}*/
-gboolean absolute_image_movement_callback(gpointer user_data) {/*{{{*/
-	absolute_image_movement((size_t)user_data);
+
 	return FALSE;
 }/*}}}*/
 void relative_image_movement(ptrdiff_t movement) {/*{{{*/
 	// Calculate new position
-	ptrdiff_t pos = current_image + movement;
-	while(pos > 0 && (size_t)pos > bostree_node_count(file_tree) - 1) {
-		pos -= bostree_node_count(file_tree);
-	}
+	size_t count = bostree_node_count(file_tree);
+	ptrdiff_t pos = bostree_rank(current_file_node) + movement;
 	while(pos < 0) {
-		pos += bostree_node_count(file_tree);
+		pos += count;
 	}
+	pos %= count;
 
-	absolute_image_movement(pos);
+	absolute_image_movement(bostree_select(file_tree, pos));
 }/*}}}*/
 void transform_current_image(cairo_matrix_t *transformation) {/*{{{*/
 	if(CURRENT_FILE->image_surface == NULL) {
@@ -1498,7 +1491,7 @@ void apply_external_image_filter(gchar *external_filter) {/*{{{*/
 		GPid child_pid;
 		gint child_stdin;
 		gint child_stdout;
-		gsize current_image_at_start = current_image;
+		BOSNode *current_file_node_at_start = current_file_node;
 		if(!g_spawn_async_with_pipes(NULL, argv, NULL,
 			// In win32, the G_SPAWN_DO_NOT_REAP_CHILD is required to get the process handle
 			#ifdef _WIN32
@@ -1554,7 +1547,7 @@ void apply_external_image_filter(gchar *external_filter) {/*{{{*/
 						g_clear_error(&error_pointer);
 					}
 					else {
-						if(current_image_at_start == current_image) {
+						if(current_file_node_at_start == current_file_node) {
 							cairo_surface_t *surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, gdk_pixbuf_get_width(pixbuf), gdk_pixbuf_get_height(pixbuf));
 							cairo_t *sf_cr = cairo_create(surface);
 							gdk_cairo_set_source_pixbuf(sf_cr, pixbuf, 0, 0);
@@ -1567,7 +1560,7 @@ void apply_external_image_filter(gchar *external_filter) {/*{{{*/
 
 					g_object_unref(loader);
 				}
-				
+
 				g_free(image_data);
 			}
 			g_io_channel_unref(stdin_channel);
@@ -1745,11 +1738,11 @@ void jump_dialog_open_image_callback(GtkTreeModel *model, GtkTreePath *path, Gtk
 	 */
 	GValue col_data;
 	memset(&col_data, 0, sizeof(GValue));
-	gtk_tree_model_get_value(model, iter, 0, &col_data);
-	size_t jump_to = g_value_get_long(&col_data);
+	gtk_tree_model_get_value(model, iter, 2, &col_data);
+	BOSNode *jump_to = (BOSNode *)g_value_get_pointer(&col_data);
 	g_value_unset(&col_data);
 
-	g_timeout_add(200, absolute_image_movement_callback, (gpointer)(jump_to - 1));
+	g_timeout_add(200, (GSourceFunc)absolute_image_movement, jump_to);
 } /* }}} */
 void do_jump_dialog() { /* {{{ */
 	/**
@@ -1774,22 +1767,22 @@ void do_jump_dialog() { /* {{{ */
 		0);
 
 	// Build list for searching
-	GtkListStore *search_list = gtk_list_store_new(2, G_TYPE_LONG, G_TYPE_STRING);
-	size_t count = bostree_node_count(file_tree);
-	for(size_t id=0; id<count; id++) {
+	GtkListStore *search_list = gtk_list_store_new(3, G_TYPE_LONG, G_TYPE_STRING, G_TYPE_POINTER);
+	size_t id = 1;
+	for(BOSNode *node = bostree_select(file_tree, 0); node; node = bostree_next_node(node)) {
 		gtk_list_store_append(search_list, &search_list_iter);
 
 		gchar *display_name;
-		if((FILE_LIST_ENTRY(id)->file_type & FILE_TYPE_MEMORY_IMAGE) != 0) {
+		if((FILE(node)->file_type & FILE_TYPE_MEMORY_IMAGE) != 0) {
 			display_name = g_strdup_printf("-");
 		}
 		else {
-			display_name = g_filename_display_name(FILE_LIST_ENTRY(id)->file_name);
+			display_name = g_filename_display_name(FILE(node)->file_name);
 		}
-		// TODO We cannot work with id's here in the tree case
 		gtk_list_store_set(search_list, &search_list_iter,
-			0, id + 1,
+			0, id++,
 			1, display_name,
+			2, node,
 			-1);
 		g_free(display_name);
 	}
@@ -1829,7 +1822,7 @@ void do_jump_dialog() { /* {{{ */
 		0);
 
 	// Jump to active image
-	GtkTreePath *goto_active_path = gtk_tree_path_new_from_indices(current_image, -1);
+	GtkTreePath *goto_active_path = gtk_tree_path_new_from_indices(bostree_rank(current_file_node), -1);
 	gtk_tree_selection_select_path(
 		gtk_tree_view_get_selection(GTK_TREE_VIEW(search_list_box)),
 		goto_active_path);
@@ -1896,7 +1889,7 @@ void update_info_text(const gchar *action) {/*{{{*/
 			cairo_image_surface_get_width(CURRENT_FILE->image_surface),
 			cairo_image_surface_get_height(CURRENT_FILE->image_surface),
 			current_scale_level * 100.,
-			(unsigned int)(current_image + 1),
+			(unsigned int)(bostree_rank(current_file_node) + 1),
 			(unsigned int)(bostree_node_count(file_tree)));
 
 		if(action != NULL) {
@@ -1942,7 +1935,7 @@ void update_info_text(const gchar *action) {/*{{{*/
 			window_title_iter += 4;
 		}
 		else if(g_strstr_len(window_title_iter, 12, "IMAGE_NUMBER") != NULL) {
-			g_string_append_printf(new_window_title, "%d", (unsigned int)(current_image + 1));
+			g_string_append_printf(new_window_title, "%d", (unsigned int)(bostree_rank(current_file_node) + 1));
 			window_title_iter += 12;
 		}
 		else if(g_strstr_len(window_title_iter, 11, "IMAGE_COUNT") != NULL) {
@@ -2396,7 +2389,7 @@ gboolean window_key_press_callback(GtkWidget *widget, GdkEventKey *event, gpoint
 		case GDK_KEY_R:
 			CURRENT_FILE->surface_is_out_of_date = TRUE;
 			update_info_text("Reloading image..");
-			queue_image_load(current_image);
+			queue_image_load(current_file_node);
 			break;
 
 		case GDK_KEY_0:
