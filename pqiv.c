@@ -186,8 +186,8 @@ typedef struct {
 } file_t;
 
 // Storage of the file list
-GPtrArray *file_list;
-BOSTree   *file_tree;
+BOSTree *file_tree;
+BOSTree *file_sorted_tree;
 size_t current_image = 0;
 ssize_t image_loader_thread_currently_loading_id = -1;
 
@@ -201,11 +201,12 @@ GtkFileFilterInfo *load_images_file_filter_info;
 GTimer *load_images_timer;
 
 // Access to the file list file_list
-// TODO Replace with functions acting on the tree if option_sort is on
-#define FILE_LIST_ENTRY(i) ((file_t*)(g_ptr_array_index(file_list, i)))
+// TODO Now that I use bostree instead of the file list as well, I can stop
+//      using id's alltogether: The current image's id is bostree_rank(image)
+#define FILE_LIST_ENTRY(i) ((file_t*)(bostree_select(file_tree, i)->data))
 #define CURRENT_FILE FILE_LIST_ENTRY(current_image)
-#define PREVIOUS_FILE FILE_LIST_ENTRY(current_image > 0 ? current_image - 1 : file_list->len - 1)
-#define NEXT_FILE FILE_LIST_ENTRY(current_image < file_list->len - 1 ? current_image + 1 : 0)
+#define PREVIOUS_FILE FILE_LIST_ENTRY(current_image > 0 ? current_image - 1 : bostree_node_count(file_tree) - 1)
+#define NEXT_FILE FILE_LIST_ENTRY(current_image < bostree_node_count(file_tree) - 1 ? current_image + 1 : 0)
 
 // We sometimes need to decide whether we have to draw the image or if it already
 // is. We use this variable for that.
@@ -622,6 +623,7 @@ void load_images_handle_parameter(char *param, int level) {/*{{{*/
 	if(level == 0 && g_strcmp0(param, "-") == 0) {
 		file_t *file = g_new0(file_t, 1);
 		file->file_type = FILE_TYPE_MEMORY_IMAGE;
+		// TODO + "-number"?
 		file->file_name = g_strdup("-");
 
 		GError *error_ptr = NULL;
@@ -636,8 +638,15 @@ void load_images_handle_parameter(char *param, int level) {/*{{{*/
 		}
 		g_io_channel_unref(stdin_channel);
 
-		// TODO also add to tree, also: "- + number"?
-		g_ptr_array_add(file_list, file);
+		if(!option_sort) {
+			unsigned int *index = (unsigned int *)g_malloc(sizeof(unsigned int));
+			*index = option_shuffle ? g_random_int() : bostree_node_count(file_tree);
+			bostree_insert(file_tree, index, file);
+		}
+		else {
+			bostree_insert(file_tree, file->file_name, file);
+		}
+
 		return;
 	}
 
@@ -650,7 +659,7 @@ void load_images_handle_parameter(char *param, int level) {/*{{{*/
 			realpath(param, absPathPtr) != NULL
 		#endif
 	) {
-		if(bostree_lookup(file_tree, absPathPtr) != NULL) {
+		if(bostree_lookup(file_sorted_tree, absPathPtr) != NULL) {
 			g_free(absPathPtr);
 			return;
 		}
@@ -737,23 +746,32 @@ void load_images_handle_parameter(char *param, int level) {/*{{{*/
 		return;
 	}
 	if(!option_sort) {
-		// We only populate the file list if we do not use sorting
-		// (The search tree is always sorted, by its nature.)
-		g_ptr_array_add(file_list, file);
+		unsigned int *index = (unsigned int *)g_malloc(sizeof(unsigned int));
+		*index = option_shuffle ? g_random_int() : bostree_node_count(file_tree);
+
+		bostree_insert(file_sorted_tree, file->file_name, file);
+		bostree_insert(file_tree, (void *)index, file);
 	}
-	bostree_insert(file_tree, file->file_name, file);
+	else {
+		bostree_insert(file_tree, file->file_name, file);
+	}
 }/*}}}*/
-gint load_images_shuffle_function(file_t **a, file_t **b) {/*{{{*/
-	return g_random_boolean() == TRUE ? 1 : -1;
+int image_tree_integer_compare(const unsigned int *a, const unsigned int *b) {/*{{{*/
+	return *a <= *b;
 }/*}}}*/
 void load_images(int *argc, char *argv[]) {/*{{{*/
 	// Allocate memory for the file list (Used for unsorted and random order file lists)
-	if(!option_sort) {
-		file_list =  g_ptr_array_new();
-	}
+	file_tree = bostree_new(
+		option_sort ? (BOSTree_cmp_function)strnatcasecmp : (BOSTree_cmp_function)image_tree_integer_compare
+	);
 
 	// Allocate memory for the file tree (Used to detect doublettes and for sorted file lists)
-	file_tree = bostree_new((BOSTree_cmp_function)(option_sort ? strnatcasecmp : g_strcmp0));
+	if(option_sort) {
+		file_sorted_tree = file_tree;
+	}
+	else {
+		file_sorted_tree = bostree_new((BOSTree_cmp_function)g_strcmp0);
+	}
 
 	// Allocate memory for the timer
 	load_images_timer = g_timer_new();
@@ -787,17 +805,13 @@ void load_images(int *argc, char *argv[]) {/*{{{*/
 	if(!option_watch_directories) {
 		g_object_ref_sink(load_images_file_filter);
 		g_free(load_images_file_filter_info);
-		if(!option_sort) {
+		if(file_sorted_tree != file_tree) {
 			// Additionally, we can only drop the tree if we do not use sorting
-			bostree_destroy(file_tree);
+			bostree_destroy(file_sorted_tree);
 		}
 	}
 
 	g_timer_destroy(load_images_timer);
-
-	if(option_shuffle && !option_sort) {
-		g_ptr_array_sort(file_list, (GCompareFunc)load_images_shuffle_function);
-	}
 }/*}}}*/
 // }}}
 /* (A-)synchronous image loading and image operations {{{ */
@@ -1016,7 +1030,7 @@ gboolean image_loader_load_single(size_t id) {/*{{{*/
 	// If only 3 images are loaded and some of them are corrupt, they might
 	// have been removed from the array already, but be still queued because of
 	// the pre-loading.
-	if(id >= file_list->len) {
+	if(id >= bostree_node_count(file_tree)) {
 		return FALSE;
 	}
 
@@ -1172,13 +1186,18 @@ gboolean image_loader_load_single(size_t id) {/*{{{*/
 		return TRUE;
 	}
 	else {
+		BOSNode *image = bostree_lookup(file_tree, FILE_LIST_ENTRY(id)->file_name);
 		unload_image(FILE_LIST_ENTRY(id));
-		g_ptr_array_remove_index(file_list, id);
+		bostree_remove(file_tree, image);
+		g_free(image->key);
+		g_free(image->data);
+
 		gboolean was_current_image = id == current_image;
+		size_t remaining_count = bostree_node_count(file_tree);
 		if(id <= current_image) {
-			if(--current_image >= file_list->len) {
+			if(--current_image >= remaining_count) {
 				current_image = 0;
-				if(file_list->len == 0) {
+				if(remaining_count == 0) {
 					g_printerr("No images left to display.\n");
 					if(gtk_main_level() == 0) {
 						exit(1);
@@ -1188,7 +1207,7 @@ gboolean image_loader_load_single(size_t id) {/*{{{*/
 			}
 		}
 		if(was_current_image) {
-			current_image = current_image < file_list->len - 1 ? current_image + 1 : 0;
+			current_image = current_image < remaining_count - 1 ? current_image + 1 : 0;
 			queue_image_load(current_image);
 		}
 	}
@@ -1216,8 +1235,8 @@ gpointer image_loader_thread(gpointer user_data) {/*{{{*/
 gboolean initialize_image_loader() {/*{{{*/
 	image_loader_queue = g_async_queue_new();
 	image_loader_cancellable = g_cancellable_new();
-	while(!image_loader_load_single(current_image) && file_list->len > 0);
-	if(file_list->len == 0) {
+	while(!image_loader_load_single(current_image) && bostree_node_count(file_tree) > 0);
+	if(bostree_node_count(file_tree) == 0) {
 		return FALSE;
 	}
 	#if GLIB_CHECK_VERSION(2, 32, 0)
@@ -1226,10 +1245,10 @@ gboolean initialize_image_loader() {/*{{{*/
 		g_thread_create(image_loader_thread, NULL, FALSE, NULL);
 	#endif
 	if(NEXT_FILE->image_surface == NULL) {
-		queue_image_load(current_image < file_list->len - 1 ? current_image + 1 : 0);
+		queue_image_load(current_image < bostree_node_count(file_tree) - 1 ? current_image + 1 : 0);
 	}
 	if(PREVIOUS_FILE->image_surface == NULL) {
-		queue_image_load(current_image > 0 ? current_image - 1 : file_list->len - 1);
+		queue_image_load(current_image > 0 ? current_image - 1 : bostree_node_count(file_tree) - 1);
 	}
 	return TRUE;
 }/*}}}*/
@@ -1266,11 +1285,11 @@ void absolute_image_movement(size_t pos) {/*{{{*/
 	abort_pending_image_loads(pos);
 
 	// Check which images have to be unloaded
-	size_t old_prev = current_image > 0 ? current_image - 1 : file_list->len - 1;
-	size_t old_next = current_image < file_list->len - 1 ? current_image + 1 : 0;
+	size_t old_prev = current_image > 0 ? current_image - 1 : bostree_node_count(file_tree) - 1;
+	size_t old_next = current_image < bostree_node_count(file_tree) - 1 ? current_image + 1 : 0;
 
-	size_t new_prev = pos > 0 ? pos - 1 : file_list->len - 1;
-	size_t new_next = pos < file_list->len - 1 ? pos + 1 : 0;
+	size_t new_prev = pos > 0 ? pos - 1 : bostree_node_count(file_tree) - 1;
+	size_t new_next = pos < bostree_node_count(file_tree) - 1 ? pos + 1 : 0;
 
 	if(old_prev != new_next && old_prev != new_prev && old_prev != pos) {
 		unload_image(PREVIOUS_FILE);
@@ -1325,11 +1344,11 @@ gboolean absolute_image_movement_callback(gpointer user_data) {/*{{{*/
 void relative_image_movement(ptrdiff_t movement) {/*{{{*/
 	// Calculate new position
 	ptrdiff_t pos = current_image + movement;
-	while(pos > 0 && (size_t)pos > file_list->len - 1) {
-		pos -= file_list->len;
+	while(pos > 0 && (size_t)pos > bostree_node_count(file_tree) - 1) {
+		pos -= bostree_node_count(file_tree);
 	}
 	while(pos < 0) {
-		pos += file_list->len;
+		pos += bostree_node_count(file_tree);
 	}
 
 	absolute_image_movement(pos);
@@ -1756,7 +1775,8 @@ void do_jump_dialog() { /* {{{ */
 
 	// Build list for searching
 	GtkListStore *search_list = gtk_list_store_new(2, G_TYPE_LONG, G_TYPE_STRING);
-	for(size_t id=0; id<file_list->len; id++) {
+	size_t count = bostree_node_count(file_tree);
+	for(size_t id=0; id<count; id++) {
 		gtk_list_store_append(search_list, &search_list_iter);
 
 		gchar *display_name;
@@ -1877,7 +1897,7 @@ void update_info_text(const gchar *action) {/*{{{*/
 			cairo_image_surface_get_height(CURRENT_FILE->image_surface),
 			current_scale_level * 100.,
 			(unsigned int)(current_image + 1),
-			(unsigned int)(file_list->len));
+			(unsigned int)(bostree_node_count(file_tree)));
 
 		if(action != NULL) {
 			gchar *old_info_text = current_info_text;
@@ -1926,7 +1946,7 @@ void update_info_text(const gchar *action) {/*{{{*/
 			window_title_iter += 12;
 		}
 		else if(g_strstr_len(window_title_iter, 11, "IMAGE_COUNT") != NULL) {
-			g_string_append_printf(new_window_title, "%d", (unsigned int)(file_list->len));
+			g_string_append_printf(new_window_title, "%d", (unsigned int)(bostree_node_count(file_tree)));
 			window_title_iter += 11;
 		}
 		else {
@@ -2922,7 +2942,7 @@ int main(int argc, char *argv[]) {
 
 	load_images(&argc, argv);
 
-	if(file_list->len == 0) {
+	if(bostree_node_count(file_tree) == 0) {
 		return 0;
 	}
 
