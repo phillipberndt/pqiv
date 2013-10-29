@@ -229,6 +229,10 @@ GdkRectangle screen_geometry = { 0, 0, 0, 0 };
 
 cairo_pattern_t *background_checkerboard_pattern = NULL;
 
+gboolean gui_initialized = FALSE;
+int global_argc;
+char **global_argv;
+
 // Those two surfaces are here to store scaled image versions (to reduce
 // processor load) and to store the last visible image to have something to
 // display while fading and while the (new) current image has not been loaded
@@ -356,6 +360,7 @@ const char *long_description_text = ("Keyboard & Mouse bindings:\n"
 "  a                                  Hardlink current image to ./.pqiv-select\n"
 );
 
+
 void set_scale_level_to_fit();
 void update_info_text(const char *);
 void queue_draw();
@@ -364,6 +369,7 @@ void window_screen_changed_callback(GtkWidget *widget, GdkScreen *previous_scree
 gboolean fading_timeout_callback(gpointer user_data);
 void queue_image_load(BOSNode *);
 void unload_image(BOSNode *);
+gboolean initialize_gui_callback(gpointer);
 // }}}
 /* Command line handling, creation of the image list {{{ */
 gboolean options_keyboard_alias_set_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error) {/*{{{*/
@@ -759,6 +765,12 @@ void load_images_handle_parameter(char *param, int level) {/*{{{*/
 	}
 	else {
 		bostree_insert(file_tree, file->file_name, file);
+	}
+
+	// When the first image has been processed, we can show the window
+	if(!gui_initialized) {
+		g_idle_add(initialize_gui_callback, NULL);
+		gui_initialized = TRUE;
 	}
 }/*}}}*/
 int image_tree_integer_compare(const unsigned int *a, const unsigned int *b) {/*{{{*/
@@ -2915,7 +2927,29 @@ void create_window() { /*{{{*/
 		window_screen_activate_rgba();
 	}
 }/*}}}*/
+gboolean initialize_gui_callback(gpointer user_data) {/*{{{*/
+	setup_checkerboard_pattern();
+	create_window();
+	initialize_image_loader();
+	image_loaded_handler(NULL);
+
+	if(option_start_with_slideshow_mode) {
+		slideshow_timeout_id = g_timeout_add(option_slideshow_interval * 1000, slideshow_timeout_callback, NULL);
+	}
+
+	return FALSE;
+}/*}}}*/
 // }}}
+
+gpointer load_images_thread(gpointer user_data) {/*{{{*/
+	load_images(&global_argc, global_argv);
+
+	if(bostree_node_count(file_tree) == 0) {
+		exit(0);
+	}
+
+	return NULL;
+}/*}}}*/
 
 int main(int argc, char *argv[]) {
 	#if (!GLIB_CHECK_VERSION(2, 32, 0))
@@ -2933,20 +2967,13 @@ int main(int argc, char *argv[]) {
 		current_scale_level = option_initial_scale;
 	}
 
-	load_images(&argc, argv);
-
-	if(bostree_node_count(file_tree) == 0) {
-		return 0;
-	}
-
-	setup_checkerboard_pattern();
-	create_window();
-	initialize_image_loader();
-	image_loaded_handler(NULL);
-
-	if(option_start_with_slideshow_mode) {
-		slideshow_timeout_id = g_timeout_add(option_slideshow_interval * 1000, slideshow_timeout_callback, NULL);
-	}
+	global_argc = argc;
+	global_argv = argv;
+	#if GLIB_CHECK_VERSION(2, 32, 0)
+		g_thread_new("image-loader", load_images_thread, NULL);
+	#else
+		g_thread_create(load_images_thread, NULL, FALSE, NULL);
+	#endif
 
 	gtk_main();
 
