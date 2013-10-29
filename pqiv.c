@@ -21,6 +21,7 @@
 #define PQIV_VERSION "2.0"
 
 #include "lib/strnatcmp.h"
+#include "lib/bostree.h"
 #include <cairo/cairo.h>
 #include <gio/gio.h>
 #include <glib.h>
@@ -186,6 +187,7 @@ typedef struct {
 
 // Storage of the file list
 GPtrArray *file_list;
+BOSTree   *file_tree;
 size_t current_image = 0;
 ssize_t image_loader_thread_currently_loading_id = -1;
 
@@ -196,10 +198,10 @@ GCancellable *image_loader_cancellable;
 // Filter for path traversing upon building the file list
 GtkFileFilter *load_images_file_filter;
 GtkFileFilterInfo *load_images_file_filter_info;
-GTree *load_images_known_paths_tree;
 GTimer *load_images_timer;
 
 // Access to the file list file_list
+// TODO Replace with functions acting on the tree if option_sort is on
 #define FILE_LIST_ENTRY(i) ((file_t*)(g_ptr_array_index(file_list, i)))
 #define CURRENT_FILE FILE_LIST_ENTRY(current_image)
 #define PREVIOUS_FILE FILE_LIST_ENTRY(current_image > 0 ? current_image - 1 : file_list->len - 1)
@@ -609,6 +611,7 @@ void load_images_directory_watch_callback(GFileMonitor *monitor, GFile *file, GF
 				// Use the standard loading mechanism. If directory watches are enabled,
 				// the temporary variables used therein are not freed.
 				load_images_handle_parameter(name, 1);
+				// TODO Update current_image if name < current_file->name
 			}
 			g_free(name);
 		}
@@ -633,25 +636,28 @@ void load_images_handle_parameter(char *param, int level) {/*{{{*/
 		}
 		g_io_channel_unref(stdin_channel);
 
+		// TODO also add to tree, also: "- + number"?
 		g_ptr_array_add(file_list, file);
 		return;
 	}
 
 	// Check if we already loaded this
-	char intAbsPathPtr[PATH_MAX];
-	char *absPathPtr = NULL;
+	char *absPathPtr = g_malloc(PATH_MAX);
 	if(
 		#ifdef _WIN32
-			GetFullPathNameA(param, PATH_MAX, intAbsPathPtr, NULL) != 0
+			GetFullPathNameA(param, PATH_MAX, absPathPtr, NULL) != 0
 		#else
-			realpath(param, intAbsPathPtr) != NULL
+			realpath(param, absPathPtr) != NULL
 		#endif
 	) {
-		if(g_tree_lookup(load_images_known_paths_tree, intAbsPathPtr) != NULL) {
+		if(bostree_lookup(file_tree, absPathPtr) != NULL) {
+			g_free(absPathPtr);
 			return;
 		}
-		absPathPtr = g_strdup(intAbsPathPtr);
-		g_tree_insert(load_images_known_paths_tree, absPathPtr, (gpointer)1);
+		// We insert below
+	}
+	else {
+		g_free(absPathPtr);
 	}
 
 	// Check if the file exists
@@ -711,7 +717,7 @@ void load_images_handle_parameter(char *param, int level) {/*{{{*/
 		return;
 	}
 
-	// Filter based on formats supported by GdkPixbuf 
+	// Filter based on formats supported by GdkPixbuf
 	if(level > 0) {
 		gchar *param_lowerc = g_utf8_strdown(param, -1);
 		load_images_file_filter_info->filename = load_images_file_filter_info->display_name = param_lowerc;
@@ -722,7 +728,7 @@ void load_images_handle_parameter(char *param, int level) {/*{{{*/
 		g_free(param_lowerc);
 	}
 
-	// Add image to images list
+	// Add image to images list/tree
 	file_t *file = g_new0(file_t, 1);
 	file->file_name = g_strdup(param);
 	if(file->file_name == NULL) {
@@ -730,31 +736,29 @@ void load_images_handle_parameter(char *param, int level) {/*{{{*/
 		g_printerr("Failed to allocate memory for file name loading\n");
 		return;
 	}
-	g_ptr_array_add(file_list, file);
-}/*}}}*/
-gint load_images_sorter_function(file_t **a, file_t **b) {/*{{{*/
-	if(option_shuffle) {
-		return g_random_boolean() == TRUE ? 1 : -1;
+	if(!option_sort) {
+		// We only populate the file list if we do not use sorting
+		// (The search tree is always sorted, by its nature.)
+		g_ptr_array_add(file_list, file);
 	}
-	if(option_sort) {
-		return strnatcasecmp((*a)->file_name, (*b)->file_name);
-	}
-	return 0;
+	bostree_insert(file_tree, file->file_name, file);
 }/*}}}*/
-gint load_images_tree_compare_func(gconstpointer a, gconstpointer b, gpointer user_data) {/*{{{*/
-	return g_strcmp0((const char*)a, (const char*)b);
+gint load_images_shuffle_function(file_t **a, file_t **b) {/*{{{*/
+	return g_random_boolean() == TRUE ? 1 : -1;
 }/*}}}*/
 void load_images(int *argc, char *argv[]) {/*{{{*/
-	// Allocate memory for the file list
-	file_list =  g_ptr_array_new();
+	// Allocate memory for the file list (Used for unsorted and random order file lists)
+	if(!option_sort) {
+		file_list =  g_ptr_array_new();
+	}
 
-	// Allocate memory for the temporary tree
-	load_images_known_paths_tree = g_tree_new_full((GCompareDataFunc)load_images_tree_compare_func, NULL, g_free, NULL);
+	// Allocate memory for the file tree (Used to detect doublettes and for sorted file lists)
+	file_tree = bostree_new((BOSTree_cmp_function)(option_sort ? strnatcasecmp : g_strcmp0));
 
 	// Allocate memory for the timer
 	load_images_timer = g_timer_new();
 	g_timer_start(load_images_timer);
-	
+
 	// Create a GTK filter for image file names
 	load_images_file_filter = gtk_file_filter_new();
 	gtk_file_filter_add_pixbuf_formats(load_images_file_filter);
@@ -783,13 +787,16 @@ void load_images(int *argc, char *argv[]) {/*{{{*/
 	if(!option_watch_directories) {
 		g_object_ref_sink(load_images_file_filter);
 		g_free(load_images_file_filter_info);
-		g_tree_unref(load_images_known_paths_tree);
+		if(!option_sort) {
+			// Additionally, we can only drop the tree if we do not use sorting
+			bostree_destroy(file_tree);
+		}
 	}
 
 	g_timer_destroy(load_images_timer);
 
-	if(option_sort || option_shuffle) {
-		g_ptr_array_sort(file_list, (GCompareFunc)load_images_sorter_function);
+	if(option_shuffle && !option_sort) {
+		g_ptr_array_sort(file_list, (GCompareFunc)load_images_shuffle_function);
 	}
 }/*}}}*/
 // }}}
@@ -1759,6 +1766,7 @@ void do_jump_dialog() { /* {{{ */
 		else {
 			display_name = g_filename_display_name(FILE_LIST_ENTRY(id)->file_name);
 		}
+		// TODO We cannot work with id's here in the tree case
 		gtk_list_store_set(search_list, &search_list_iter,
 			0, id + 1,
 			1, display_name,
@@ -1771,7 +1779,7 @@ void do_jump_dialog() { /* {{{ */
 		jump_dialog_search_list_filter_callback,
 		search_entry,
 		NULL);
-	
+
 	// Create tree view
 	GtkWidget *search_list_box = gtk_tree_view_new_with_model(GTK_TREE_MODEL(search_list_filter));
 	gtk_tree_view_set_search_column(GTK_TREE_VIEW(search_list_box), 0);

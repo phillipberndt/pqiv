@@ -28,10 +28,13 @@ ifeq ($(GTK_VERSION), 3)
 	LIBS=$(LIBS_GTK3)
 endif
 
-pqiv$(EXECUTABLE_EXTENSION): pqiv.c lib/strnatcmp.o
+pqiv$(EXECUTABLE_EXTENSION): pqiv.c lib/strnatcmp.o lib/bostree.o
 	$(CROSS)$(CC) $(CPPFLAGS) $(PQIV_WARNING_FLAGS) -std=gnu99 -o $@ `$(PKG_CONFIG) --cflags "$(LIBS)"` $+ `$(PKG_CONFIG) --libs "$(LIBS)"` $(CFLAGS) $(LDFLAGS)
 
 lib/strnatcmp.o: lib/strnatcmp.c
+	$(CROSS)$(CC) -c -o $@ $+ $(CFLAGS)
+
+lib/bostree.o: lib/bostree.c
 	$(CROSS)$(CC) -c -o $@ $+ $(CFLAGS)
 
 install: pqiv$(EXECUTABLE_EXTENSION)
