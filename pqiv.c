@@ -1064,7 +1064,9 @@ gboolean image_loader_load_single(size_t id) {/*{{{*/
 						// All OK, finish the image loader
 						gdk_pixbuf_loader_close(loader, &error_pointer);
 						pixbuf_animation = gdk_pixbuf_loader_get_animation(loader);
-						g_object_ref(pixbuf_animation); // see above
+						if(pixbuf_animation != NULL) {
+							g_object_ref(pixbuf_animation); // see above
+						}
 						break;
 					}
 					if(bytes_read == -1) {
