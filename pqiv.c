@@ -609,11 +609,7 @@ void parse_command_line(int *argc, char *argv[]) {/*{{{*/
 }/*}}}*/
 void load_images_directory_watch_callback(GFileMonitor *monitor, GFile *file, GFile *other_file, GFileMonitorEvent event_type, gpointer user_data) {/*{{{*/
 	// The current image holds its own file watch, so we do not have to react
-	// to changes. Deleting images from the list on G_FILE_MONITOR_EVENT_DELETED
-	// would be neat, but traversing the list is an expensive thing to do for
-	// big collections and apart from a wrong total number in the info field
-	// no harm is done if we don't. The remaining event of interest is
-	// G_FILE_MONITOR_EVENT_CREATED.
+	// to changes.
 
 	if(event_type == G_FILE_MONITOR_EVENT_CREATED) {
 		gchar *name = g_file_get_path(file);
@@ -628,13 +624,26 @@ void load_images_directory_watch_callback(GFileMonitor *monitor, GFile *file, GF
 			g_free(name);
 		}
 	}
+	else if(file_tree == file_sorted_tree && event_type == G_FILE_MONITOR_EVENT_DELETED) {
+		// We can react on delete events only if the file tree is sorted. If it is not,
+		// the effort to search the node to delete would be too high. The node will be
+		// deleted once the user tries to access it.
+		gchar *name = g_file_get_path(file);
+		BOSNode *node = bostree_lookup(file_tree, name);
+		if(node != NULL && node != current_file_node) {
+			unload_image(node);
+			g_free(node->key);
+			g_free(node->data);
+			bostree_remove(file_tree, node);
+		}
+		g_free(name);
+	}
 }/*}}}*/
 void load_images_handle_parameter(char *param, int level) {/*{{{*/
 	// Check for memory image
 	if(level == 0 && g_strcmp0(param, "-") == 0) {
 		file_t *file = g_new0(file_t, 1);
 		file->file_type = FILE_TYPE_MEMORY_IMAGE;
-		// TODO + "-number"?
 		file->file_name = g_strdup("-");
 
 		GError *error_ptr = NULL;
@@ -760,11 +769,11 @@ void load_images_handle_parameter(char *param, int level) {/*{{{*/
 		unsigned int *index = (unsigned int *)g_malloc(sizeof(unsigned int));
 		*index = option_shuffle ? g_random_int() : bostree_node_count(file_tree);
 
-		bostree_insert(file_sorted_tree, file->file_name, file);
+		bostree_insert(file_sorted_tree, absPathPtr ? absPathPtr : file->file_name, file);
 		bostree_insert(file_tree, (void *)index, file);
 	}
 	else {
-		bostree_insert(file_tree, file->file_name, file);
+		bostree_insert(file_tree, absPathPtr ? absPathPtr : file->file_name, file);
 	}
 
 	// When the first image has been processed, we can show the window
