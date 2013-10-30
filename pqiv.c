@@ -1226,7 +1226,10 @@ gboolean image_loader_load_single(BOSNode *node) {/*{{{*/
 }/*}}}*/
 gpointer image_loader_thread(gpointer user_data) {/*{{{*/
 	while(TRUE) {
-		BOSNode *node = g_async_queue_pop(image_loader_queue);
+		BOSNode *node = bostree_node_weak_unref(g_async_queue_pop(image_loader_queue));
+		if(node == NULL) {
+			continue;
+		}
 		if(FILE(node)->image_surface == NULL || FILE(node)->surface_is_out_of_date) {
 			// Load image
 			image_loader_thread_currently_loading = node;
@@ -1265,13 +1268,14 @@ gboolean initialize_image_loader() {/*{{{*/
 	return TRUE;
 }/*}}}*/
 void abort_pending_image_loads(BOSNode *new_pos) {/*{{{*/
-	while(g_async_queue_try_pop(image_loader_queue) != NULL);
+	BOSNode *ref;
+	while((ref = g_async_queue_try_pop(image_loader_queue)) != NULL) bostree_node_weak_unref(ref);
 	if(image_loader_thread_currently_loading != NULL && image_loader_thread_currently_loading != new_pos) {
 		g_cancellable_cancel(image_loader_cancellable);
 	}
 }/*}}}*/
 void queue_image_load(BOSNode *node) {/*{{{*/
-	g_async_queue_push(image_loader_queue, node);
+	g_async_queue_push(image_loader_queue, bostree_node_weak_ref(node));
 }/*}}}*/
 void unload_image(BOSNode *node) {/*{{{*/
 	file_t *file = FILE(node);
@@ -1291,7 +1295,12 @@ void unload_image(BOSNode *node) {/*{{{*/
 		file->file_monitor = NULL;
 	}
 }/*}}}*/
-gboolean absolute_image_movement(BOSNode *node) {/*{{{*/
+gboolean absolute_image_movement(BOSNode *ref) {/*{{{*/
+	BOSNode *node = bostree_node_weak_unref(ref);
+	if(!node) {
+		return FALSE;
+	}
+
 	// No need to continue the other pending loads
 	abort_pending_image_loads(node);
 
@@ -1365,7 +1374,7 @@ void relative_image_movement(ptrdiff_t movement) {/*{{{*/
 	}
 	pos %= count;
 
-	absolute_image_movement(bostree_select(file_tree, pos));
+	absolute_image_movement(bostree_node_weak_ref(bostree_select(file_tree, pos)));
 }/*}}}*/
 void transform_current_image(cairo_matrix_t *transformation) {/*{{{*/
 	if(CURRENT_FILE->image_surface == NULL) {
@@ -1763,7 +1772,7 @@ void jump_dialog_open_image_callback(GtkTreeModel *model, GtkTreePath *path, Gtk
 	BOSNode *jump_to = (BOSNode *)g_value_get_pointer(&col_data);
 	g_value_unset(&col_data);
 
-	g_timeout_add(200, (GSourceFunc)absolute_image_movement, jump_to);
+	g_timeout_add(200, (GSourceFunc)absolute_image_movement, bostree_node_weak_ref(jump_to));
 } /* }}} */
 void do_jump_dialog() { /* {{{ */
 	/**
@@ -1803,7 +1812,7 @@ void do_jump_dialog() { /* {{{ */
 		gtk_list_store_set(search_list, &search_list_iter,
 			0, id++,
 			1, display_name,
-			2, node,
+			2, bostree_node_weak_ref(node),
 			-1);
 		g_free(display_name);
 	}
@@ -1866,6 +1875,17 @@ void do_jump_dialog() { /* {{{ */
 			gtk_tree_view_get_selection(GTK_TREE_VIEW(search_list_box)),
 			jump_dialog_open_image_callback,
 			NULL);
+	}
+
+	// Free the references again
+	GtkTreeIter iter;
+	memset(&iter, 0, sizeof(GtkTreeIter));
+	if(gtk_tree_model_get_iter_first(gtk_tree_view_get_model(GTK_TREE_VIEW(search_list_box)), &iter)) {
+		GValue col_data;
+		memset(&col_data, 0, sizeof(GValue));
+		gtk_tree_model_get_value(GTK_TREE_MODEL(search_list_filter), &iter, 2, &col_data);
+		bostree_node_weak_unref((BOSNode *)g_value_get_pointer(&col_data));
+		g_value_unset(&col_data);
 	}
 
 	gtk_widget_destroy(dlg_window);
