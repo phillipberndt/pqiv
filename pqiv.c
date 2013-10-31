@@ -291,6 +291,7 @@ gboolean option_reverse_cursor_keys = FALSE;
 gboolean option_transparent_background = FALSE;
 gboolean option_watch_directories = FALSE;
 gboolean option_fading = FALSE;
+gboolean option_lazy_load = FALSE;
 double option_fading_duration = .5;
 
 double fading_current_alpha_stage = 0;
@@ -315,6 +316,7 @@ GOptionEntry options[] = {
 	{ "fullscreen", 'f', 0, G_OPTION_ARG_NONE, &option_start_fullscreen, "Start in fullscreen mode", NULL },
 	{ "fade", 'F', 0, G_OPTION_ARG_NONE, (gpointer)&option_fading, "Fade between images", NULL },
 	{ "hide-info-box", 'i', 0, G_OPTION_ARG_NONE, &option_hide_info_box, "Initially hide the info box", NULL },
+	{ "lazy-load", 'l', 0, G_OPTION_ARG_NONE, &option_lazy_load, "Display the main window as soon as possible", NULL },
 	{ "sort", 'n', 0, G_OPTION_ARG_NONE, &option_sort, "Sort files in natural order", NULL },
 	{ "window-position", 'P', 0, G_OPTION_ARG_CALLBACK, (gpointer)&option_window_position_callback, "Set initial window position (`x,y' or `off' to not position the window at all)", "POSITION" },
 	{ "reverse-cursor-keys", 'R', 0, G_OPTION_ARG_NONE, &option_reverse_cursor_keys, "Reverse the meaning of the cursor keys", NULL },
@@ -777,7 +779,7 @@ void load_images_handle_parameter(char *param, int level) {/*{{{*/
 	}
 
 	// When the first image has been processed, we can show the window
-	if(!gui_initialized) {
+	if(option_lazy_load && !gui_initialized) {
 		g_idle_add(initialize_gui_callback, NULL);
 		gui_initialized = TRUE;
 	}
@@ -2998,11 +3000,17 @@ int main(int argc, char *argv[]) {
 
 	global_argc = argc;
 	global_argv = argv;
-	#if GLIB_CHECK_VERSION(2, 32, 0)
-		g_thread_new("image-loader", load_images_thread, NULL);
-	#else
-		g_thread_create(load_images_thread, NULL, FALSE, NULL);
-	#endif
+	if(option_lazy_load) {
+		#if GLIB_CHECK_VERSION(2, 32, 0)
+			g_thread_new("image-loader", load_images_thread, NULL);
+		#else
+			g_thread_create(load_images_thread, NULL, FALSE, NULL);
+		#endif
+	}
+	else {
+		load_images_thread(NULL);
+		initialize_gui_callback(NULL);
+	}
 
 	gtk_main();
 

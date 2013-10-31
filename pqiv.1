@@ -33,6 +33,18 @@ Set how long pqiv should fade between images. Defaults to 0.5 seconds.
 .B -i, --hide-info-box
 Initially hide the info box
 .TP
+.B -l, --lazy-load
+Create the image list in a background thread and display the main window as
+soon as one image has been found. New images will be added as they are found.
+When combining this with the
+.I --sort
+or
+.I --shuffle
+options, keep in mind that the first image found will be displayed, though it
+might end up not being the first one in the final file list. As with the
+.I --watch-directories
+option, the info box does not automatically update when new images are added.
+.TP
 .B -n, --sort
 Sort files in natural order
 .TP
