@@ -292,6 +292,7 @@ gboolean option_transparent_background = FALSE;
 gboolean option_watch_directories = FALSE;
 gboolean option_fading = FALSE;
 gboolean option_lazy_load = FALSE;
+gboolean option_lowmem = FALSE;
 double option_fading_duration = .5;
 
 double fading_current_alpha_stage = 0;
@@ -337,6 +338,7 @@ GOptionEntry options[] = {
 
 	{ "disable-scaling", 0, G_OPTION_FLAG_NO_ARG, G_OPTION_ARG_CALLBACK, (gpointer)&option_scale_level_callback, "Disable scaling of images", NULL },
 	{ "fade-duration", 0, 0, G_OPTION_ARG_DOUBLE, &option_fading_duration, "Adjust fades' duration", "SECONDS" },
+	{ "low-memory", 0, 0, G_OPTION_ARG_NONE, &option_lowmem, "Try to keep memory usage to a minimum", NULL },
 	{ "shuffle", 0, 0, G_OPTION_ARG_NONE, &option_shuffle, "Shuffle files", NULL },
 	{ "watch-directories", 0, 0, G_OPTION_ARG_NONE, &option_watch_directories, "Watch directories for new files", NULL },
 
@@ -673,22 +675,25 @@ void load_images_handle_parameter(char *param, int level) {/*{{{*/
 	}
 
 	// Check if we already loaded this
-	char *absPathPtr = g_malloc(PATH_MAX);
-	if(
-		#ifdef _WIN32
-			GetFullPathNameA(param, PATH_MAX, absPathPtr, NULL) != 0
-		#else
-			realpath(param, absPathPtr) != NULL
-		#endif
-	) {
-		if(bostree_lookup(file_sorted_tree, absPathPtr) != NULL) {
-			g_free(absPathPtr);
-			return;
+	char *absPathPtr = NULL;
+	if(!option_lowmem) {
+		absPathPtr = g_malloc(PATH_MAX);
+		if(
+			#ifdef _WIN32
+				GetFullPathNameA(param, PATH_MAX, absPathPtr, NULL) != 0
+			#else
+				realpath(param, absPathPtr) != NULL
+			#endif
+		) {
+			if(bostree_lookup(file_sorted_tree, absPathPtr) != NULL) {
+				g_free(absPathPtr);
+				return;
+			}
+			// We insert below
 		}
-		// We insert below
-	}
-	else {
-		g_free(absPathPtr);
+		else {
+			g_free(absPathPtr);
+		}
 	}
 
 	// Check if the file exists
@@ -771,7 +776,9 @@ void load_images_handle_parameter(char *param, int level) {/*{{{*/
 		unsigned int *index = (unsigned int *)g_malloc(sizeof(unsigned int));
 		*index = option_shuffle ? g_random_int() : bostree_node_count(file_tree);
 
-		bostree_insert(file_sorted_tree, absPathPtr ? absPathPtr : file->file_name, file);
+		if(!option_lowmem) {
+			bostree_insert(file_sorted_tree, absPathPtr ? absPathPtr : file->file_name, file);
+		}
 		bostree_insert(file_tree, (void *)index, file);
 	}
 	else {
@@ -797,7 +804,7 @@ void load_images(int *argc, char *argv[]) {/*{{{*/
 	if(option_sort) {
 		file_sorted_tree = file_tree;
 	}
-	else {
+	else if(!option_lowmem) {
 		file_sorted_tree = bostree_new((BOSTree_cmp_function)g_strcmp0);
 	}
 
@@ -834,7 +841,7 @@ void load_images(int *argc, char *argv[]) {/*{{{*/
 		g_object_ref_sink(load_images_file_filter);
 		g_free(load_images_file_filter_info);
 		// Additionally, we can only drop the tree if we do not use sorting
-		if(file_sorted_tree != file_tree) {
+		if(file_sorted_tree != file_tree && !option_lowmem) {
 			for(BOSNode *node = bostree_select(file_sorted_tree, 0); node; node = bostree_next_node(node)) {
 				// node->key is the absPathPtr and must be freed
 				free(node->key);
@@ -1263,14 +1270,17 @@ gboolean initialize_image_loader() {/*{{{*/
 		g_thread_create(image_loader_thread, NULL, FALSE, NULL);
 	#endif
 
-	BOSNode *next = next_file();
-	if(FILE(next)->image_surface == NULL) {
-		queue_image_load(next);
+	if(!option_lowmem) {
+		BOSNode *next = next_file();
+		if(FILE(next)->image_surface == NULL) {
+			queue_image_load(next);
+		}
+		BOSNode *previous = previous_file();
+		if(FILE(previous)->image_surface == NULL) {
+			queue_image_load(previous);
+		}
 	}
-	BOSNode *previous = previous_file();
-	if(FILE(previous)->image_surface == NULL) {
-		queue_image_load(previous);
-	}
+
 	return TRUE;
 }/*}}}*/
 void abort_pending_image_loads(BOSNode *new_pos) {/*{{{*/
@@ -1323,13 +1333,13 @@ gboolean absolute_image_movement(BOSNode *ref) {/*{{{*/
 		new_next = bostree_select(file_tree, 0);
 	}
 
-	if(old_prev != new_next && old_prev != new_prev && old_prev != node) {
+	if((old_prev != new_next && old_prev != new_prev && old_prev != node) || (old_prev != node && option_lowmem)) {
 		unload_image(old_prev);
 	}
-	if(old_next != new_next && old_next != new_prev && old_next != node) {
+	if((old_next != new_next && old_next != new_prev && old_next != node) || (old_next != node && option_lowmem)) {
 		unload_image(old_next);
 	}
-	if((current_file_node != new_next && current_file_node != new_prev && current_file_node != node) || CURRENT_FILE->surface_is_out_of_date) {
+	if((current_file_node != new_next && current_file_node != new_prev && current_file_node != node) || CURRENT_FILE->surface_is_out_of_date || (current_file_node != node && option_lowmem)) {
 		unload_image(current_file_node);
 	}
 
@@ -1343,11 +1353,13 @@ gboolean absolute_image_movement(BOSNode *ref) {/*{{{*/
 	}
 
 	queue_image_load(current_file_node);
-	if(FILE(new_next)->image_surface == NULL) {
-		queue_image_load(new_next);
-	}
-	if(FILE(new_prev)->image_surface == NULL) {
-		queue_image_load(new_prev);
+	if(!option_lowmem) {
+		if(FILE(new_next)->image_surface == NULL) {
+			queue_image_load(new_next);
+		}
+		if(FILE(new_prev)->image_surface == NULL) {
+			queue_image_load(new_prev);
+		}
 	}
 
 	// Activate fading
@@ -2059,12 +2071,22 @@ gboolean window_draw_callback(GtkWidget *widget, cairo_t *cr_arg, gpointer user_
 
 		// Scale the image
 		if(current_scaled_image_surface == NULL) {
-			#if CAIRO_VERSION >= CAIRO_VERSION_ENCODE(1, 12, 0)
-				current_scaled_image_surface = cairo_surface_create_similar_image(cairo_get_target(cr_arg), CAIRO_FORMAT_ARGB32, current_scale_level * image_width, current_scale_level * image_height);
-			#else
-				current_scaled_image_surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, current_scale_level * image_width, current_scale_level * image_height);
-			#endif
-			cairo_t *cr_scale = cairo_create(current_scaled_image_surface);
+			cairo_t *cr_scale;
+			if(option_lowmem) {
+				// If in low memory mode, we do not store the scaled image surface
+				// separately
+				cr_scale = cr;
+				cairo_translate(cr, x, y);
+				cairo_translate(cr, current_shift_x, current_shift_y);
+			}
+			else {
+				#if CAIRO_VERSION >= CAIRO_VERSION_ENCODE(1, 12, 0)
+					current_scaled_image_surface = cairo_surface_create_similar_image(cairo_get_target(cr_arg), CAIRO_FORMAT_ARGB32, current_scale_level * image_width, current_scale_level * image_height);
+				#else
+					current_scaled_image_surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, current_scale_level * image_width, current_scale_level * image_height);
+				#endif
+				cr_scale = cairo_create(current_scaled_image_surface);
+			}
 
 			cairo_scale(cr_scale, current_scale_level, current_scale_level);
 			if(background_checkerboard_pattern != NULL && !option_transparent_background) {
@@ -2081,16 +2103,19 @@ gboolean window_draw_callback(GtkWidget *widget, cairo_t *cr_arg, gpointer user_
 			cairo_set_source_surface(cr_scale, CURRENT_FILE->image_surface, 0, 0);
 			cairo_paint(cr_scale);
 
-			cairo_destroy(cr_scale);
+			if(!option_lowmem) {
+				cairo_destroy(cr_scale);
+			}
 		}
 
 		// Move to the desired coordinates, and draw
-		cairo_translate(cr, x, y);
-		cairo_translate(cr, current_shift_x, current_shift_y);
-		cairo_set_source_surface(cr, current_scaled_image_surface, 0, 0);
-		cairo_set_operator(cr, CAIRO_OPERATOR_SOURCE);
-		cairo_paint(cr);
-
+		if(current_scaled_image_surface != NULL) {
+			cairo_translate(cr, x, y);
+			cairo_translate(cr, current_shift_x, current_shift_y);
+			cairo_set_source_surface(cr, current_scaled_image_surface, 0, 0);
+			cairo_set_operator(cr, CAIRO_OPERATOR_SOURCE);
+			cairo_paint(cr);
+		}
 		cairo_destroy(cr);
 
 		// If currently fading, draw the surface along with the old image
@@ -2120,7 +2145,13 @@ gboolean window_draw_callback(GtkWidget *widget, cairo_t *cr_arg, gpointer user_
 			if(last_visible_image_surface != NULL) {
 				cairo_surface_destroy(last_visible_image_surface);
 			}
-			last_visible_image_surface = temporary_image_surface;
+			if(!option_lowmem || option_fading) {
+				last_visible_image_surface = temporary_image_surface;
+			}
+			else {
+				cairo_surface_destroy(temporary_image_surface);
+				last_visible_image_surface = NULL;
+			}
 		}
 
 		// If we have an active slideshow, resume now.

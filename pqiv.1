@@ -128,6 +128,10 @@ The output is not cached, so reloading the image will revert to the old state.
 .B --disable-scaling
 Disable scaling of images
 .TP
+.B --low-memory
+Try to avoid memory hungry operations: Do not preload the next image, do not
+keep a scaled image in memory for faster redraw operations, etc.
+.TP
 .B --shuffle
 Shuffle files
 .TP
