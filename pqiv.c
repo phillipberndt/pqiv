@@ -833,8 +833,12 @@ void load_images(int *argc, char *argv[]) {/*{{{*/
 	if(!option_watch_directories) {
 		g_object_ref_sink(load_images_file_filter);
 		g_free(load_images_file_filter_info);
+		// Additionally, we can only drop the tree if we do not use sorting
 		if(file_sorted_tree != file_tree) {
-			// Additionally, we can only drop the tree if we do not use sorting
+			for(BOSNode *node = bostree_select(file_sorted_tree, 0); node; node = bostree_next_node(node)) {
+				// node->key is the absPathPtr and must be freed
+				free(node->key);
+			}
 			bostree_destroy(file_sorted_tree);
 		}
 	}
