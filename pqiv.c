@@ -671,22 +671,19 @@ void load_images_handle_parameter(char *param, load_images_state_t state) {/*{{{
 	else {
 		// Check if we already loaded this
 		if(!option_lowmem) {
-			absPathPtr = g_malloc(PATH_MAX);
+			char intAbsPathPtr[PATH_MAX];
 			if(
 				#ifdef _WIN32
-					GetFullPathNameA(param, PATH_MAX, absPathPtr, NULL) != 0
+					GetFullPathNameA(param, PATH_MAX, intAbsPathPtr, NULL) != 0
 				#else
-					realpath(param, absPathPtr) != NULL
+					realpath(param, intAbsPathPtr) != NULL
 				#endif
 			) {
-				if(bostree_lookup(file_sorted_tree, absPathPtr) != NULL) {
-					g_free(absPathPtr);
+				if(bostree_lookup(file_sorted_tree, intAbsPathPtr) != NULL) {
 					return;
 				}
-				// We insert below
-			}
-			else {
-				g_free(absPathPtr);
+				// We insert below, but shrink the pointer to its real size
+				absPathPtr = g_strdup(intAbsPathPtr);
 			}
 		}
 
@@ -700,6 +697,10 @@ void load_images_handle_parameter(char *param, load_images_state_t state) {/*{{{
 
 		// Recurse into directories
 		if(g_file_test(param, G_FILE_TEST_IS_DIR) == TRUE) {
+			if(absPathPtr != NULL) {
+				g_free(absPathPtr);
+			}
+
 			// Display progress
 			if(g_timer_elapsed(load_images_timer, NULL) > 5.) {
 				#ifdef _WIN32
@@ -753,6 +754,9 @@ void load_images_handle_parameter(char *param, load_images_state_t state) {/*{{{
 			load_images_file_filter_info->filename = load_images_file_filter_info->display_name = param_lowerc;
 			if(gtk_file_filter_filter(load_images_file_filter, load_images_file_filter_info) == FALSE) {
 				g_free(param_lowerc);
+				if(absPathPtr != NULL) {
+					g_free(absPathPtr);
+				}
 				return;
 			}
 			g_free(param_lowerc);
@@ -763,6 +767,9 @@ void load_images_handle_parameter(char *param, load_images_state_t state) {/*{{{
 		file->file_name = g_strdup(param);
 		if(file->file_name == NULL) {
 			g_free(file);
+			if(absPathPtr != NULL) {
+				g_free(absPathPtr);
+			}
 			g_printerr("Failed to allocate memory for file name loading\n");
 			return;
 		}
