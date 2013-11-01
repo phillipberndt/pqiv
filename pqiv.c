@@ -301,7 +301,8 @@ gint64 fading_initial_time;
 gboolean options_keyboard_alias_set_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error);
 gboolean option_window_position_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error);
 gboolean option_scale_level_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error);
-void load_images_handle_parameter(char *param, int level);
+typedef enum { PARAMETER, RECURSION, INOTIFY } load_images_state_t;
+void load_images_handle_parameter(char *param, load_images_state_t state);
 
 struct {
 	gint x;
@@ -623,7 +624,7 @@ void load_images_directory_watch_callback(GFileMonitor *monitor, GFile *file, GF
 			if(g_file_test(name, G_FILE_TEST_IS_REGULAR | G_FILE_TEST_IS_SYMLINK)) {
 				// Use the standard loading mechanism. If directory watches are enabled,
 				// the temporary variables used therein are not freed.
-				load_images_handle_parameter(name, 1);
+				load_images_handle_parameter(name, INOTIFY);
 			}
 			g_free(name);
 		}
@@ -643,10 +644,13 @@ void load_images_directory_watch_callback(GFileMonitor *monitor, GFile *file, GF
 		g_free(name);
 	}
 }/*}}}*/
-void load_images_handle_parameter(char *param, int level) {/*{{{*/
+void load_images_handle_parameter(char *param, load_images_state_t state) {/*{{{*/
+	file_t *file;
+	char *absPathPtr = NULL;
+
 	// Check for memory image
-	if(level == 0 && g_strcmp0(param, "-") == 0) {
-		file_t *file = g_new0(file_t, 1);
+	if(state == PARAMETER && g_strcmp0(param, "-") == 0) {
+		file = g_new0(file_t, 1);
 		file->file_type = FILE_TYPE_MEMORY_IMAGE;
 		file->file_name = g_strdup("-");
 
@@ -662,115 +666,116 @@ void load_images_handle_parameter(char *param, int level) {/*{{{*/
 		}
 		g_io_channel_unref(stdin_channel);
 
-		if(!option_sort) {
-			unsigned int *index = (unsigned int *)g_malloc(sizeof(unsigned int));
-			*index = option_shuffle ? g_random_int() : bostree_node_count(file_tree);
-			bostree_insert(file_tree, index, file);
-		}
-		else {
-			bostree_insert(file_tree, file->file_name, file);
-		}
-
-		return;
+		// We will add the file to the file tree below
 	}
-
-	// Check if we already loaded this
-	char *absPathPtr = NULL;
-	if(!option_lowmem) {
-		absPathPtr = g_malloc(PATH_MAX);
-		if(
-			#ifdef _WIN32
-				GetFullPathNameA(param, PATH_MAX, absPathPtr, NULL) != 0
-			#else
-				realpath(param, absPathPtr) != NULL
-			#endif
-		) {
-			if(bostree_lookup(file_sorted_tree, absPathPtr) != NULL) {
+	else {
+		// Check if we already loaded this
+		if(!option_lowmem) {
+			absPathPtr = g_malloc(PATH_MAX);
+			if(
+				#ifdef _WIN32
+					GetFullPathNameA(param, PATH_MAX, absPathPtr, NULL) != 0
+				#else
+					realpath(param, absPathPtr) != NULL
+				#endif
+			) {
+				if(bostree_lookup(file_sorted_tree, absPathPtr) != NULL) {
+					g_free(absPathPtr);
+					return;
+				}
+				// We insert below
+			}
+			else {
 				g_free(absPathPtr);
-				return;
 			}
-			// We insert below
-		}
-		else {
-			g_free(absPathPtr);
-		}
-	}
-
-	// Check if the file exists
-	if(g_file_test(param, G_FILE_TEST_EXISTS) == FALSE) {
-		if(level == 0) {
-			g_printerr("File not found: %s\n", param);
-		}
-		return;
-	}
-
-	// Recurse into directories
-	if(g_file_test(param, G_FILE_TEST_IS_DIR) == TRUE) {
-		// Display progress
-		if(g_timer_elapsed(load_images_timer, NULL) > 5.) {
-			#ifdef _WIN32
-			g_print("Loading in %-50.50s ...\r", param);
-			#else
-			g_print("\033[s\033[JLoading in %s ...\033[u", param);
-			#endif
 		}
 
-		GDir *dir_ptr = g_dir_open(param, 0, NULL);
-		if(dir_ptr == NULL) {
-			if(level == 0) {
-				g_printerr("Failed to open directory: %s\n", param);
+		// Check if the file exists
+		if(g_file_test(param, G_FILE_TEST_EXISTS) == FALSE) {
+			if(state == PARAMETER) {
+				g_printerr("File not found: %s\n", param);
 			}
 			return;
 		}
-		while(TRUE) {
-			const gchar *dir_entry = g_dir_read_name(dir_ptr);
-			if(dir_entry == NULL) {
-				break;
+
+		// Recurse into directories
+		if(g_file_test(param, G_FILE_TEST_IS_DIR) == TRUE) {
+			// Display progress
+			if(g_timer_elapsed(load_images_timer, NULL) > 5.) {
+				#ifdef _WIN32
+				g_print("Loading in %-50.50s ...\r", param);
+				#else
+				g_print("\033[s\033[JLoading in %s ...\033[u", param);
+				#endif
 			}
-			gchar *dir_entry_full = g_strdup_printf("%s%s%s", param, g_str_has_suffix(param, G_DIR_SEPARATOR_S) ? "" : G_DIR_SEPARATOR_S, dir_entry);
-			if(dir_entry_full == NULL) {
-				g_printerr("Failed to allocate memory for file name loading\n");
-				g_dir_close(dir_ptr);
+
+			GDir *dir_ptr = g_dir_open(param, 0, NULL);
+			if(dir_ptr == NULL) {
+				if(state == PARAMETER) {
+					g_printerr("Failed to open directory: %s\n", param);
+				}
 				return;
 			}
-			load_images_handle_parameter(dir_entry_full, level + 1);
-			g_free(dir_entry_full);
-		}
-		g_dir_close(dir_ptr);
-
-		// Add a watch for new files in this directory
-		if(option_watch_directories) {
-			GFile *file_ptr = g_file_new_for_path(param);
-			GFileMonitor *directory_monitor = g_file_monitor_directory(file_ptr, G_FILE_MONITOR_NONE, NULL, NULL);
-			if(directory_monitor != NULL) {
-				g_signal_connect(directory_monitor, "changed", G_CALLBACK(load_images_directory_watch_callback), NULL);
-				// We do not store the directory_monitor anywhere, because it is not used explicitly
-				// again. If this should ever be needed, this is the place where this should be done.
+			while(TRUE) {
+				const gchar *dir_entry = g_dir_read_name(dir_ptr);
+				if(dir_entry == NULL) {
+					break;
+				}
+				gchar *dir_entry_full = g_strdup_printf("%s%s%s", param, g_str_has_suffix(param, G_DIR_SEPARATOR_S) ? "" : G_DIR_SEPARATOR_S, dir_entry);
+				if(dir_entry_full == NULL) {
+					g_printerr("Failed to allocate memory for file name loading\n");
+					g_dir_close(dir_ptr);
+					return;
+				}
+				load_images_handle_parameter(dir_entry_full, RECURSION);
+				g_free(dir_entry_full);
 			}
-			g_object_unref(file_ptr);
+			g_dir_close(dir_ptr);
+
+			// Add a watch for new files in this directory
+			if(option_watch_directories) {
+				GFile *file_ptr = g_file_new_for_path(param);
+				GFileMonitor *directory_monitor = g_file_monitor_directory(file_ptr, G_FILE_MONITOR_NONE, NULL, NULL);
+				if(directory_monitor != NULL) {
+					g_signal_connect(directory_monitor, "changed", G_CALLBACK(load_images_directory_watch_callback), NULL);
+					// We do not store the directory_monitor anywhere, because it is not used explicitly
+					// again. If this should ever be needed, this is the place where this should be done.
+				}
+				g_object_unref(file_ptr);
+			}
+
+			return;
 		}
 
-		return;
-	}
-
-	// Filter based on formats supported by GdkPixbuf
-	if(level > 0) {
-		gchar *param_lowerc = g_utf8_strdown(param, -1);
-		load_images_file_filter_info->filename = load_images_file_filter_info->display_name = param_lowerc;
-		if(gtk_file_filter_filter(load_images_file_filter, load_images_file_filter_info) == FALSE) {
+		// Filter based on formats supported by GdkPixbuf
+		if(state != PARAMETER) {
+			gchar *param_lowerc = g_utf8_strdown(param, -1);
+			load_images_file_filter_info->filename = load_images_file_filter_info->display_name = param_lowerc;
+			if(gtk_file_filter_filter(load_images_file_filter, load_images_file_filter_info) == FALSE) {
+				g_free(param_lowerc);
+				return;
+			}
 			g_free(param_lowerc);
+		}
+
+		// Prepare file structure
+		file = g_new0(file_t, 1);
+		file->file_name = g_strdup(param);
+		if(file->file_name == NULL) {
+			g_free(file);
+			g_printerr("Failed to allocate memory for file name loading\n");
 			return;
 		}
-		g_free(param_lowerc);
 	}
 
 	// Add image to images list/tree
-	file_t *file = g_new0(file_t, 1);
-	file->file_name = g_strdup(param);
-	if(file->file_name == NULL) {
-		g_free(file);
-		g_printerr("Failed to allocate memory for file name loading\n");
-		return;
+	// We need to check if the previous/next images have changed, because they
+	// might have been preloaded and need unloading if so.
+	BOSNode *old_prev = NULL;
+	BOSNode *old_next = NULL;
+	if((option_lazy_load || state == INOTIFY) && current_file_node != NULL) {
+		old_prev = previous_file();
+		old_next = next_file();
 	}
 	if(!option_sort) {
 		unsigned int *index = (unsigned int *)g_malloc(sizeof(unsigned int));
@@ -784,9 +789,17 @@ void load_images_handle_parameter(char *param, int level) {/*{{{*/
 	else {
 		bostree_insert(file_tree, absPathPtr ? absPathPtr : file->file_name, file);
 	}
-
-	// When the first image has been processed, we can show the window
+	if((option_lazy_load || state == INOTIFY) && current_file_node != NULL) {
+		// If the previous/next images have shifted, unload the old ones to save memory
+		if(previous_file() != old_prev && current_file_node != old_prev && old_prev != NULL) {
+			unload_image(old_prev);
+		}
+		if(next_file() != old_next && current_file_node != old_next && old_next != NULL) {
+			unload_image(old_next);
+		}
+	}
 	if(option_lazy_load && !gui_initialized) {
+		// When the first image has been processed, we can show the window
 		g_idle_add(initialize_gui_callback, NULL);
 		gui_initialized = TRUE;
 	}
@@ -832,7 +845,7 @@ void load_images(int *argc, char *argv[]) {/*{{{*/
 
 	// Load the images from the remaining parameters
 	for(int i=1; i<*argc; i++) {
-		load_images_handle_parameter(argv[i], 0);
+		load_images_handle_parameter(argv[i], PARAMETER);
 	}
 
 	// If we do not want to watch directories for changes, we can now drop the variables
