@@ -638,22 +638,20 @@ void load_images_handle_parameter(char *param, int level) {/*{{{*/
 	}
 
 	// Check if we already loaded this
-	char *absPathPtr = g_malloc(PATH_MAX);
+	char intAbsPathPtr[PATH_MAX];
+	char *absPathPtr = NULL;
 	if(
 		#ifdef _WIN32
-			GetFullPathNameA(param, PATH_MAX, absPathPtr, NULL) != 0
+			GetFullPathNameA(param, PATH_MAX, intAbsPathPtr, NULL) != 0
 		#else
-			realpath(param, absPathPtr) != NULL
+			realpath(param, intAbsPathPtr) != NULL
 		#endif
 	) {
-		if(g_tree_lookup(load_images_known_paths_tree, absPathPtr) != NULL) {
-			g_free(absPathPtr);
+		if(g_tree_lookup(load_images_known_paths_tree, intAbsPathPtr) != NULL) {
 			return;
 		}
+		absPathPtr = g_strdup(intAbsPathPtr);
 		g_tree_insert(load_images_known_paths_tree, absPathPtr, (gpointer)1);
-	}
-	else {
-		g_free(absPathPtr);
 	}
 
 	// Check if the file exists
