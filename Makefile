@@ -32,10 +32,10 @@ pqiv$(EXECUTABLE_EXTENSION): pqiv.c lib/strnatcmp.o lib/bostree.o
 	$(CROSS)$(CC) $(CPPFLAGS) $(PQIV_WARNING_FLAGS) -std=gnu99 -o $@ `$(PKG_CONFIG) --cflags "$(LIBS)"` $+ `$(PKG_CONFIG) --libs "$(LIBS)"` $(CFLAGS) $(LDFLAGS)
 
 lib/strnatcmp.o: lib/strnatcmp.c
-	$(CROSS)$(CC) -c -o $@ $+ $(CFLAGS)
+	$(CROSS)$(CC) $(CPPFLAGS) -c -o $@ $+ $(CFLAGS)
 
 lib/bostree.o: lib/bostree.c
-	$(CROSS)$(CC) -c -o $@ $+ $(CFLAGS)
+	$(CROSS)$(CC) $(CPPFLAGS) -DNDEBUG -c -o $@ $+ $(CFLAGS)
 
 install: pqiv$(EXECUTABLE_EXTENSION)
 	install -D pqiv$(EXECUTABLE_EXTENSION) $(DESTDIR)$(PREFIX)/bin/pqiv$(EXECUTABLE_EXTENSION)
@@ -47,7 +47,7 @@ uninstall:
 	rm -f $(DESTDIR)$(PREFIX)/share/man/man1/pqiv.1
 
 clean:
-	rm -f pqiv$(EXECUTABLE_EXTENSION) lib/strnatcmp.o
+	rm -f pqiv$(EXECUTABLE_EXTENSION) lib/strnatcmp.o lib/bostree.o
 
 distclean: clean
 	rm -f config.make
