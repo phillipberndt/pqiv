@@ -187,7 +187,6 @@ typedef struct {
 
 // Storage of the file list
 BOSTree *file_tree;
-BOSTree *file_sorted_tree;
 BOSTree *directory_tree;
 BOSNode *current_file_node = NULL;
 BOSNode *image_loader_thread_currently_loading = NULL;
@@ -630,7 +629,7 @@ void load_images_directory_watch_callback(GFileMonitor *monitor, GFile *file, GF
 			g_free(name);
 		}
 	}
-	else if(file_tree == file_sorted_tree && event_type == G_FILE_MONITOR_EVENT_DELETED) {
+	else if(option_sort && event_type == G_FILE_MONITOR_EVENT_DELETED) {
 		// We can react on delete events only if the file tree is sorted. If it is not,
 		// the effort to search the node to delete would be too high. The node will be
 		// deleted once the user tries to access it.
@@ -670,29 +669,6 @@ void load_images_handle_parameter(char *param, load_images_state_t state) {/*{{{
 		// We will add the file to the file tree below
 	}
 	else {
-		// Check if we already loaded this
-		char intAbsPathPtr[PATH_MAX];
-		if(
-			#ifdef _WIN32
-				GetFullPathNameA(param, PATH_MAX, intAbsPathPtr, NULL) != 0
-			#else
-				realpath(param, intAbsPathPtr) != NULL
-			#endif
-		) {
-			if(bostree_lookup(file_sorted_tree, intAbsPathPtr) != NULL) {
-				return;
-			}
-			// We insert below, but shrink the pointer to its real size
-			absPathPtr = g_strdup(intAbsPathPtr);
-		}
-		else {
-			// This can fail if there are too many levels of nested symlinks,
-			// for example. In such cases we just insert param as-is into the tree
-			if(bostree_lookup(file_sorted_tree, param) != NULL) {
-				return;
-			}
-		}
-
 		// Check if the file exists
 		if(g_file_test(param, G_FILE_TEST_EXISTS) == FALSE) {
 			if(state == PARAMETER) {
@@ -704,12 +680,24 @@ void load_images_handle_parameter(char *param, load_images_state_t state) {/*{{{
 		// Recurse into directories
 		if(g_file_test(param, G_FILE_TEST_IS_DIR) == TRUE) {
 			// Check for recursion
-			if(absPathPtr) {
-				if(bostree_lookup(directory_tree, absPathPtr) != NULL) {
+			char abs_path[PATH_MAX];
+			if(
+				#ifdef _WIN32
+					GetFullPathNameA(param, PATH_MAX, abs_path, NULL) != 0
+				#else
+					realpath(param, abs_path) != NULL
+				#endif
+			) {
+				if(bostree_lookup(directory_tree, abs_path) != NULL) {
 					g_free(absPathPtr);
 					return;
 				}
-				bostree_insert(directory_tree, absPathPtr, NULL);
+				bostree_insert(directory_tree, g_strdup(abs_path), NULL);
+			}
+			else {
+				// TODO If there is a good way to react on too many levels
+				// of symlink nesting (checkable via errno in *ix), somehow
+				// react
 			}
 
 			// Display progress
@@ -765,9 +753,6 @@ void load_images_handle_parameter(char *param, load_images_state_t state) {/*{{{
 			load_images_file_filter_info->filename = load_images_file_filter_info->display_name = param_lowerc;
 			if(gtk_file_filter_filter(load_images_file_filter, load_images_file_filter_info) == FALSE) {
 				g_free(param_lowerc);
-				if(absPathPtr != NULL) {
-					g_free(absPathPtr);
-				}
 				return;
 			}
 			g_free(param_lowerc);
@@ -778,9 +763,6 @@ void load_images_handle_parameter(char *param, load_images_state_t state) {/*{{{
 		file->file_name = g_strdup(param);
 		if(file->file_name == NULL) {
 			g_free(file);
-			if(absPathPtr != NULL) {
-				g_free(absPathPtr);
-			}
 			g_printerr("Failed to allocate memory for file name loading\n");
 			return;
 		}
@@ -798,17 +780,10 @@ void load_images_handle_parameter(char *param, load_images_state_t state) {/*{{{
 	if(!option_sort) {
 		unsigned int *index = (unsigned int *)g_malloc(sizeof(unsigned int));
 		*index = option_shuffle ? g_random_int() : bostree_node_count(file_tree);
-
-		if(!option_lowmem) {
-			bostree_insert(file_sorted_tree, absPathPtr ? absPathPtr : file->file_name, file);
-		}
-		else if(absPathPtr) {
-			g_free(absPathPtr);
-		}
 		bostree_insert(file_tree, (void *)index, file);
 	}
 	else {
-		bostree_insert(file_tree, absPathPtr ? absPathPtr : file->file_name, file);
+		bostree_insert(file_tree, file->file_name, file);
 	}
 	if((option_lazy_load || state == INOTIFY) && current_file_node != NULL) {
 		// If the previous/next images have shifted, unload the old ones to save memory
@@ -833,14 +808,6 @@ void load_images(int *argc, char *argv[]) {/*{{{*/
 	file_tree = bostree_new(
 		option_sort ? (BOSTree_cmp_function)strnatcasecmp : (BOSTree_cmp_function)image_tree_integer_compare
 	);
-
-	// Allocate memory for the file tree (Used to detect doublettes and for sorted file lists)
-	if(option_sort) {
-		file_sorted_tree = file_tree;
-	}
-	else if(!option_lowmem) {
-		file_sorted_tree = bostree_new((BOSTree_cmp_function)g_strcmp0);
-	}
 
 	// The directory tree is used to prevent nested-symlink loops
 	directory_tree = bostree_new((BOSTree_cmp_function)g_strcmp0);
@@ -877,14 +844,6 @@ void load_images(int *argc, char *argv[]) {/*{{{*/
 	if(!option_watch_directories) {
 		g_object_ref_sink(load_images_file_filter);
 		g_free(load_images_file_filter_info);
-		// Additionally, we can only drop the tree if we do not use sorting
-		if(file_sorted_tree != file_tree && !option_lowmem) {
-			for(BOSNode *node = bostree_select(file_sorted_tree, 0); node; node = bostree_next_node(node)) {
-				// node->key is the absPathPtr and must be freed
-				free(node->key);
-			}
-			bostree_destroy(file_sorted_tree);
-		}
 		// Drop the directory tree
 		for(BOSNode *node = bostree_select(directory_tree, 0); node; node = bostree_next_node(node)) {
 			free(node->key);
