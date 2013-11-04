@@ -130,7 +130,9 @@ Disable scaling of images
 .TP
 .B --low-memory
 Try to avoid memory hungry operations: Do not preload the next image, do not
-keep a scaled image in memory for faster redraw operations, etc.
+keep a scaled image in memory for faster redraw operations, etc. The search
+tree to avoid loading images twice is also disabled, but recursively nested
+symlinks will still be detected.
 .TP
 .B --shuffle
 Shuffle files

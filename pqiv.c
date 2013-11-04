@@ -188,6 +188,7 @@ typedef struct {
 // Storage of the file list
 BOSTree *file_tree;
 BOSTree *file_sorted_tree;
+BOSTree *directory_tree;
 BOSNode *current_file_node = NULL;
 BOSNode *image_loader_thread_currently_loading = NULL;
 
@@ -670,20 +671,25 @@ void load_images_handle_parameter(char *param, load_images_state_t state) {/*{{{
 	}
 	else {
 		// Check if we already loaded this
-		if(!option_lowmem) {
-			char intAbsPathPtr[PATH_MAX];
-			if(
-				#ifdef _WIN32
-					GetFullPathNameA(param, PATH_MAX, intAbsPathPtr, NULL) != 0
-				#else
-					realpath(param, intAbsPathPtr) != NULL
-				#endif
-			) {
-				if(bostree_lookup(file_sorted_tree, intAbsPathPtr) != NULL) {
-					return;
-				}
-				// We insert below, but shrink the pointer to its real size
-				absPathPtr = g_strdup(intAbsPathPtr);
+		char intAbsPathPtr[PATH_MAX];
+		if(
+			#ifdef _WIN32
+				GetFullPathNameA(param, PATH_MAX, intAbsPathPtr, NULL) != 0
+			#else
+				realpath(param, intAbsPathPtr) != NULL
+			#endif
+		) {
+			if(bostree_lookup(file_sorted_tree, intAbsPathPtr) != NULL) {
+				return;
+			}
+			// We insert below, but shrink the pointer to its real size
+			absPathPtr = g_strdup(intAbsPathPtr);
+		}
+		else {
+			// This can fail if there are too many levels of nested symlinks,
+			// for example. In such cases we just insert param as-is into the tree
+			if(bostree_lookup(file_sorted_tree, param) != NULL) {
+				return;
 			}
 		}
 
@@ -697,8 +703,13 @@ void load_images_handle_parameter(char *param, load_images_state_t state) {/*{{{
 
 		// Recurse into directories
 		if(g_file_test(param, G_FILE_TEST_IS_DIR) == TRUE) {
-			if(absPathPtr != NULL) {
-				g_free(absPathPtr);
+			// Check for recursion
+			if(absPathPtr) {
+				if(bostree_lookup(directory_tree, absPathPtr) != NULL) {
+					g_free(absPathPtr);
+					return;
+				}
+				bostree_insert(directory_tree, absPathPtr, NULL);
 			}
 
 			// Display progress
@@ -791,6 +802,9 @@ void load_images_handle_parameter(char *param, load_images_state_t state) {/*{{{
 		if(!option_lowmem) {
 			bostree_insert(file_sorted_tree, absPathPtr ? absPathPtr : file->file_name, file);
 		}
+		else if(absPathPtr) {
+			g_free(absPathPtr);
+		}
 		bostree_insert(file_tree, (void *)index, file);
 	}
 	else {
@@ -827,6 +841,9 @@ void load_images(int *argc, char *argv[]) {/*{{{*/
 	else if(!option_lowmem) {
 		file_sorted_tree = bostree_new((BOSTree_cmp_function)g_strcmp0);
 	}
+
+	// The directory tree is used to prevent nested-symlink loops
+	directory_tree = bostree_new((BOSTree_cmp_function)g_strcmp0);
 
 	// Allocate memory for the timer
 	load_images_timer = g_timer_new();
@@ -868,6 +885,11 @@ void load_images(int *argc, char *argv[]) {/*{{{*/
 			}
 			bostree_destroy(file_sorted_tree);
 		}
+		// Drop the directory tree
+		for(BOSNode *node = bostree_select(directory_tree, 0); node; node = bostree_next_node(node)) {
+			free(node->key);
+		}
+		bostree_destroy(directory_tree);
 	}
 
 	g_timer_destroy(load_images_timer);
