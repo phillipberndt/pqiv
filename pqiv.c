@@ -695,9 +695,9 @@ void load_images_handle_parameter(char *param, load_images_state_t state) {/*{{{
 				bostree_insert(directory_tree, g_strdup(abs_path), NULL);
 			}
 			else {
-				// TODO If there is a good way to react on too many levels
-				// of symlink nesting (checkable via errno in *ix), somehow
-				// react
+				// Consider this an error
+				g_printerr("Probably too many level of symlinks. Will not traverse into: %s\n", param);
+				return;
 			}
 
 			// Display progress
