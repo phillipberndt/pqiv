@@ -200,8 +200,6 @@ GtkFileFilter *load_images_file_filter;
 GtkFileFilterInfo *load_images_file_filter_info;
 GTimer *load_images_timer;
 
-// TODO When accessing a node from a callback I've got to make sure its still valid
-
 // Easy access to the file_t within a node
 #define FILE(x) ((file_t *)(x)->data)
 #define CURRENT_FILE FILE(current_file_node)
@@ -646,7 +644,6 @@ void load_images_directory_watch_callback(GFileMonitor *monitor, GFile *file, GF
 }/*}}}*/
 void load_images_handle_parameter(char *param, load_images_state_t state) {/*{{{*/
 	file_t *file;
-	char *absPathPtr = NULL;
 
 	// Check for memory image
 	if(state == PARAMETER && g_strcmp0(param, "-") == 0) {
@@ -689,7 +686,6 @@ void load_images_handle_parameter(char *param, load_images_state_t state) {/*{{{
 				#endif
 			) {
 				if(bostree_lookup(directory_tree, abs_path) != NULL) {
-					g_free(absPathPtr);
 					return;
 				}
 				bostree_insert(directory_tree, g_strdup(abs_path), NULL);
