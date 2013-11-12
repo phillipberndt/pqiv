@@ -92,7 +92,7 @@ pqiv 2.1-dev
  * Display the last image while the current image has not been loaded
  * Gave users the option to abort the loading of huge images
  * Respect --shuffle and --sort with --watch-directories, i.e. insert keeping order, not always at the end
- * New option --lazy-load to display the main window while still traversing paths search for images
+ * New option --lazy-load to display the main window while still traversing paths, searching for images
  * New option --low-memory to disable memory hungry features
  * Detect nested symlinks without preventing users from loading the same image multiple times
 
