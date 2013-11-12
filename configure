@@ -98,6 +98,9 @@ while [ $# -gt 0 ]; do
 			;;
 		--cross)
 			CROSS=$VALUE
+			if [ "${CROSS: -1}" != "-" ]; then
+				CROSS="$CROSS-"
+			fi
 			;;
 		# Undocumented options for autoconf (esp. dh_auto_configure) compatibility
 		--build)

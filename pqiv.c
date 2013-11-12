@@ -38,7 +38,11 @@
 		#define _WIN32_WINNT 0x500
 	#else
 		#if _WIN32_WINNT < 0x800
-			#error Microsoft Windows supported is limited to Windows 2000 and higher.
+			#ifdef __MINGW32__
+				#pragma message "Microsoft Windows supported is limited to Windows 2000 and higher, but your mingw version indicates that it does not  support those versions. Building might fail."
+			#else
+				#error Microsoft Windows supported is limited to Windows 2000 and higher.
+			#endif
 		#endif
 	#endif
 	#include <windows.h>

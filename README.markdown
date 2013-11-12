@@ -95,6 +95,7 @@ pqiv 2.1-dev
  * New option --lazy-load to display the main window while still traversing paths, searching for images
  * New option --low-memory to disable memory hungry features
  * Detect nested symlinks without preventing users from loading the same image multiple times
+ * Improved cross-compilation support with mingw64
 
 pqiv 2.0
  * Complete rewrite from scratch
