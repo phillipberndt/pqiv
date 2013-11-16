@@ -617,13 +617,13 @@ void parse_command_line(int *argc, char *argv[]) {/*{{{*/
 void load_images_directory_watch_callback(GFileMonitor *monitor, GFile *file, GFile *other_file, GFileMonitorEvent event_type, gpointer user_data) {/*{{{*/
 	// The current image holds its own file watch, so we do not have to react
 	// to changes.
-
 	if(event_type == G_FILE_MONITOR_EVENT_CREATED) {
 		gchar *name = g_file_get_path(file);
 		if(name != NULL) {
-			// Only process the files themselves, no need to do directory
-			// recursion here
-			if(g_file_test(name, G_FILE_TEST_IS_REGULAR | G_FILE_TEST_IS_SYMLINK)) {
+			// In theory, handling regular files here should suffice. But files in subdirectories
+			// seem not always to be recognized correctly by file monitors, so we have to install
+			// one for each directory.
+			if(g_file_test(name, G_FILE_TEST_IS_REGULAR | G_FILE_TEST_IS_SYMLINK | G_FILE_TEST_IS_DIR)) {
 				// Use the standard loading mechanism. If directory watches are enabled,
 				// the temporary variables used therein are not freed.
 				load_images_handle_parameter(name, INOTIFY);
@@ -734,6 +734,9 @@ void load_images_handle_parameter(char *param, load_images_state_t state) {/*{{{
 
 			// Add a watch for new files in this directory
 			if(option_watch_directories) {
+				// Note: It does not suffice to do this once for each parameter, but this must also be
+				// called for subdirectories. At least if it is not, new files in subdirectories are
+				// not always recognized.
 				GFile *file_ptr = g_file_new_for_path(param);
 				GFileMonitor *directory_monitor = g_file_monitor_directory(file_ptr, G_FILE_MONITOR_NONE, NULL, NULL);
 				if(directory_monitor != NULL) {
