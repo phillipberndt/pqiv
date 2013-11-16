@@ -44,8 +44,8 @@ Features
 Installation
 ------------
 
-Usual stuff. `./configure && make && make install`. Actually, the configure script
-is optional for now.
+Usual stuff. `./configure && make && make install`. Actually, the configure
+script is optional for now.
 
 You'll need
  * gtk+ 3.0 *or* gtk+ 2.8
@@ -58,7 +58,8 @@ You'll need
 Thanks
 ------
 
-This program uses Martin Pool's natsort algorithm <http://sourcefrog.net/projects/natsort/>
+This program uses Martin Pool's natsort algorithm
+<http://sourcefrog.net/projects/natsort/>
 
 
 Contributors
@@ -88,15 +89,19 @@ pqiv 2.1-dev
    reported by github user @clod89)
  * Also included CPPFLAGS, for completeness
  * Renamed '.qiv-select' directory to '.pqiv-select'
- * Added a certain level of autoconf compatibility to the configure script, for automated building
+ * Added a certain level of autoconf compatibility to the configure script, for
+   automated building
  * gtk 3.10 stock icon deprecation issue fixed
  * Reimplemented fading between images
  * Display the last image while the current image has not been loaded
  * Gave users the option to abort the loading of huge images
- * Respect --shuffle and --sort with --watch-directories, i.e. insert keeping order, not always at the end
- * New option --lazy-load to display the main window while still traversing paths, searching for images
+ * Respect --shuffle and --sort with --watch-directories, i.e. insert keeping
+   order, not always at the end
+ * New option --lazy-load to display the main window while still traversing
+   paths, searching for images
  * New option --low-memory to disable memory hungry features
- * Detect nested symlinks without preventing users from loading the same image multiple times
+ * Detect nested symlinks without preventing users from loading the same image
+   multiple times
  * Improved cross-compilation support with mingw64
 
 pqiv 2.0
