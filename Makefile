@@ -2,8 +2,9 @@ CFLAGS=-O2 -g
 CROSS=
 DESTDIR=
 GTK_VERSION=0
-PQIV_WARNING_FLAGS=-Wall -Wextra -Wfloat-equal -Wpointer-arith -Wcast-align -Wstrict-overflow=5 -Wwrite-strings -Waggregate-return -Wunreachable-code -Werror -Wno-unused-parameter
+PQIV_WARNING_FLAGS=-Wall -Wextra -Wfloat-equal -Wpointer-arith -Wcast-align -Wstrict-overflow=5 -Wwrite-strings -Waggregate-return -Wunreachable-code -Wno-unused-parameter
 PREFIX=/usr
+MANDIR=$(PREFIX)/share/man
 EXECUTABLE_EXTENSION=
 PKG_CONFIG=$(CROSS)pkg-config
 
@@ -28,6 +29,8 @@ ifeq ($(GTK_VERSION), 3)
 	LIBS=$(LIBS_GTK3)
 endif
 
+all: pqiv$(EXECUTABLE_EXTENSION)
+
 pqiv$(EXECUTABLE_EXTENSION): pqiv.c lib/strnatcmp.o lib/bostree.o
 	$(CROSS)$(CC) $(CPPFLAGS) $(PQIV_WARNING_FLAGS) -std=gnu99 -o $@ `$(PKG_CONFIG) --cflags "$(LIBS)"` $+ `$(PKG_CONFIG) --libs "$(LIBS)"` $(CFLAGS) $(LDFLAGS)
 
@@ -38,13 +41,15 @@ lib/bostree.o: lib/bostree.c
 	$(CROSS)$(CC) $(CPPFLAGS) -DNDEBUG -c -o $@ $+ $(CFLAGS)
 
 install: pqiv$(EXECUTABLE_EXTENSION)
-	install -D pqiv$(EXECUTABLE_EXTENSION) $(DESTDIR)$(PREFIX)/bin/pqiv$(EXECUTABLE_EXTENSION)
+	mkdir -p $(DESTDIR)$(PREFIX)/bin
+	install pqiv$(EXECUTABLE_EXTENSION) $(DESTDIR)$(PREFIX)/bin/pqiv$(EXECUTABLE_EXTENSION)
 	$(CROSS)strip $(DESTDIR)$(PREFIX)/bin/pqiv$(EXECUTABLE_EXTENSION) || true
-	install -D pqiv.1 $(DESTDIR)$(PREFIX)/share/man/man1/pqiv.1
+	mkdir -p $(DESTDIR)$(MANDIR)/man1
+	install pqiv.1 $(DESTDIR)$(MANDIR)/man1/pqiv.1
 
 uninstall:
 	rm -f $(DESTDIR)$(PREFIX)/bin/pqiv$(EXECUTABLE_EXTENSION)
-	rm -f $(DESTDIR)$(PREFIX)/share/man/man1/pqiv.1
+	rm -f $(DESTDIR)$(MANDIR)/man1/pqiv.1
 
 clean:
 	rm -f pqiv$(EXECUTABLE_EXTENSION) lib/strnatcmp.o lib/bostree.o
