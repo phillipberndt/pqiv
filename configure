@@ -14,14 +14,13 @@ tempdir() {
 	echo ${NAME}
 }
 
-OLD_OPTIONS="no-sorting no-compositing no-fading no-commands no-config-file no-inotify no-animations binary-name"
-
 PREFIX=/usr
 DESTDIR=
 GTK_VERSION=0
 CROSS=
 BINARY_EXTENSION=
 CFLAGS=
+MANDIR=
 PKG_CONFIG=pkg-config
 
 # Help and options
@@ -36,42 +35,6 @@ options:
   --cross=..            Set a cross-compiler prefix (e.g. \`i686-pc-mingw32-')
 
 EOF
-}
-
-maintainer_update_info() {
-	if [ -n "$_MAINTAINER_UPDATE_INFO_SEEN" ]; then
-		return
-	fi
-	export _MAINTAINER_UPDATE_INFO_SEEN=1
-
-	if [ -n "$BASH" ]; then
-		echo -e "\033[31;1m"
-	else
-		echo "\033[31;1m"
-	fi
-
-	cat >&2 <<EOF
-pqiv configuration notice
-
-pqiv 1.0 is a rewrite from scratch using GTK+-3.0 and Cairo. The more
-throughout use of glib instead of Unix APIs should enhance compatibility
-considerably.
-
-Therefore, the feature options are gone. The parameter 
-  \`$1'
-you entered won't have any effect except for you seeing this message.
-
-The new release has been tested in a lot of Linuxes and mingw. I expect
-some bugs to appear nonetheless. Please report them to
-  https://github.com/phillipberndt/pqiv
-
-Thanks!
-EOF
-	if [ -n "$BASH" ]; then
-		echo -e "\033[0m"
-	else
-		echo "\033[0m"
-	fi
 }
 
 while [ $# -gt 0 ]; do
@@ -106,21 +69,17 @@ while [ $# -gt 0 ]; do
 		--build)
 			CROSS=${VALUE}-
 			;;
-		--includedir | --mandir | --infodir | --sysconfdir | --localstatedir | --libdir | --libexecdir | --disable-maintainer-mode | --disable-dependency-tracking)
+		--mandir)
+			MANDIR=${VALUE}
+			MANDIR="${MANDIR//{/(}"
+			MANDIR="${MANDIR//\}/)}"
+			MANDIR="${MANDIR//prefix/PREFIX}"
+			echo "Use of autoconf option --mandir is discouraged, because support is incomplete. Rewrote \`$VALUE' to \`$MANDIR' and used that as the MANDIR Make variable."
+			;;
+		--includedir | --infodir | --sysconfdir | --localstatedir | --libdir | --libexecdir | --disable-maintainer-mode | --disable-dependency-tracking)
 			echo "autoconf option ${PARAMETER} ignored"
 			;;
 		*)
-			for OLD_OPTION in $OLD_OPTIONS; do
-				if [ "$PARAMETER" = "--${OLD_OPTION}" ]; then
-					maintainer_update_info $PARAMETER
-					OPTION_DONE=$PARAMETER
-					continue
-				fi
-			done
-			if [ "-$OPTION_DONE" = "-$PARAMETER" ]; then
-				shift
-				continue
-			fi
 			echo "Unknown option: $1" >&2
 			help
 			exit 1
@@ -232,6 +191,9 @@ PKG_CONFIG=$PKG_CONFIG
 EOF
 if [ -n "$CFLAGS" ]; then
 	echo "CFLAGS+=$CFLAGS"
+fi
+if [ -n "$MANDIR" ]; then
+	echo "MANDIR=$MANDIR"
 fi
 ) > config.make
 [ -n "${CC}" ] && echo "CC=${CC}" >> config.make
