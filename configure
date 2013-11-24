@@ -74,10 +74,13 @@ while [ $# -gt 0 ]; do
 			MANDIR="${MANDIR//{/(}"
 			MANDIR="${MANDIR//\}/)}"
 			MANDIR="${MANDIR//prefix/PREFIX}"
-			echo "Use of autoconf option --mandir is discouraged, because support is incomplete. Rewrote \`$VALUE' to \`$MANDIR' and used that as the MANDIR Make variable."
+			echo "Use of autoconf option --mandir is discouraged, because support is incomplete. Rewrote \`$VALUE' to \`$MANDIR' and used that as the MANDIR Make variable." >&2
 			;;
 		--includedir | --infodir | --sysconfdir | --localstatedir | --libdir | --libexecdir | --disable-maintainer-mode | --disable-dependency-tracking)
-			echo "autoconf option ${PARAMETER} ignored"
+			echo "autoconf option ${PARAMETER} ignored" >&2
+			;;
+		--no-sorting | --no-compositing | --no-fading | --no-commands | --no-config-file | --no-inotify | --no-animations | --binary-name)
+			echo "obsolete 1.0 option ${PARAMETER} ignored" >&2
 			;;
 		*)
 			echo "Unknown option: $1" >&2
