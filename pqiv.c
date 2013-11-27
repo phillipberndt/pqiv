@@ -3030,6 +3030,10 @@ int main(int argc, char *argv[]) {
 
 	parse_configuration_file(&argc, &argv);
 	parse_command_line(&argc, argv);
+	if(option_sort && option_shuffle) {
+		g_printerr("--shuffle conflicts with --sort.\n");
+		exit(1);
+	}
 	if(fabs(option_initial_scale - 1.0) < 2 * FLT_MIN) {
 		option_initial_scale_used = TRUE;
 	}
