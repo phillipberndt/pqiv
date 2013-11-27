@@ -804,7 +804,7 @@ void load_images_handle_parameter(char *param, load_images_state_t state) {/*{{{
 	}
 }/*}}}*/
 int image_tree_integer_compare(const unsigned int *a, const unsigned int *b) {/*{{{*/
-	return *a <= *b;
+	return *a > *b;
 }/*}}}*/
 void load_images(int *argc, char *argv[]) {/*{{{*/
 	// Allocate memory for the file list (Used for unsorted and random order file lists)
