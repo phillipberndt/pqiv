@@ -81,15 +81,16 @@ Contributors
 Known bugs
 ----------
 
-* **The window is centered in between two monitors in multi-head setups**:
+* **The window is centered in between two monitors in old multi-head setups**:
   This happens if you have the RandR extension enabled, but configured
   incorrectly. GTK is programmed to first try RandR and use Xinerama only as
   a fallback if that fails. (See `gdkscreen-x11.c`.) So if your video drivers
   for some reason detect your multiple monitors as one big screen you can not
   simply use fakexinerama to fix things. This might also apply to nvidia drivers
   older than version 304. I believe that I can not fix this without breaking
-  functionality for other users or maintaining a blacklist, so you should either
-  deactivate RandR completely or write yourself a fakerandr library.
+  functionality for other users or maintaining a blacklist, so you should
+  deactivate RandR completely until your driver is able to provide correct
+  information, or write a fakerandr library yourself.
 
 Changelog
 ---------
