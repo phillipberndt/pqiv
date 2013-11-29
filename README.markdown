@@ -90,7 +90,8 @@ Known bugs
   older than version 304. I believe that I can not fix this without breaking
   functionality for other users or maintaining a blacklist, so you should
   deactivate RandR completely until your driver is able to provide correct
-  information, or write a fakerandr library yourself.
+  information, or use a fake xrand (like
+  [mine](https://github.com/phillipberndt/fakexrandr), for example)
 
 Changelog
 ---------
