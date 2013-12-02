@@ -2222,7 +2222,7 @@ void set_scale_level_to_fit() {/*{{{*/
 		int image_width = cairo_image_surface_get_width(CURRENT_FILE->image_surface);
 		int image_height = cairo_image_surface_get_height(CURRENT_FILE->image_surface);
 
-		current_scale_level = 1.0;
+		gdouble new_scale_level = 1.0;
 
 		// Only scale if scaling is not disabled. The alternative is to also
 		// scale for no-scaling mode if (!main_window_in_fullscreen). This
@@ -2231,22 +2231,27 @@ void set_scale_level_to_fit() {/*{{{*/
 		if(option_scale > 0 || scale_override) {
 			if(option_scale > 1 || scale_override) {
 				// Scale up
-				if(image_width * current_scale_level < main_window_width) {
-					current_scale_level = main_window_width * 1.0 / image_width;
+				if(image_width * new_scale_level < main_window_width) {
+					new_scale_level = main_window_width * 1.0 / image_width;
 				}
 
-				if(image_height * current_scale_level < main_window_height) {
-					current_scale_level = main_window_height * 1.0 / image_height;
+				if(image_height * new_scale_level < main_window_height) {
+					new_scale_level = main_window_height * 1.0 / image_height;
 				}
 			}
 
 			// Scale down
-			if(main_window_height < current_scale_level * image_height) {
-				current_scale_level = main_window_height * 1.0 / image_height;
+			if(main_window_height < new_scale_level * image_height) {
+				new_scale_level = main_window_height * 1.0 / image_height;
 			}
-			if(main_window_width < current_scale_level * image_width) {
-				current_scale_level = main_window_width * 1.0 / image_width;
+			if(main_window_width < new_scale_level * image_width) {
+				new_scale_level = main_window_width * 1.0 / image_width;
 			}
+		}
+
+		if(fabs(new_scale_level - current_scale_level) > DBL_EPSILON) {
+			current_scale_level = new_scale_level;
+			invalidate_current_scaled_image_surface();
 		}
 	}
 }
@@ -2300,7 +2305,7 @@ gboolean window_configure_callback(GtkWidget *widget, GdkEventConfigure *event, 
 		// Rescale the image, unless overridden by the user
 		if(option_initial_scale_used) {
 			set_scale_level_to_fit();
-			update_info_text(NULL);
+			queue_draw();
 		}
 
 		// We need to redraw in old GTK versions to avoid artifacts
