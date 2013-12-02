@@ -2179,27 +2179,41 @@ gboolean window_draw_callback(GtkWidget *widget, cairo_t *cr_arg, gpointer user_
 	if(current_info_text != NULL) {
 		double x1, x2, y1, y2;
 		cairo_save(cr_arg);
-		cairo_set_font_size(cr_arg, 12);
+		// Attempt this multiple times: If it does not fit the window,
+		// retry with a smaller font size
+		for(int font_size=12; font_size > 6; font_size--) {
+			cairo_set_font_size(cr_arg, font_size);
 
-		if(main_window_in_fullscreen == FALSE) {
-			// Tiling WMs, at least i3, react weird on our window size changing.
-			// Drawing the info box on the image helps to avoid users noticing that.
-			cairo_translate(cr_arg, x < 0 ? 0 : x, y < 0 ? 0 : y);
+			if(main_window_in_fullscreen == FALSE) {
+				// Tiling WMs, at least i3, react weird on our window size changing.
+				// Drawing the info box on the image helps to avoid users noticing that.
+				cairo_translate(cr_arg, x < 0 ? 0 : x, y < 0 ? 0 : y);
+			}
+
+			cairo_set_source_rgb(cr_arg, 1., 1., 0.);
+			cairo_translate(cr_arg, 10, 20);
+			cairo_text_path(cr_arg, current_info_text);
+			cairo_path_t *text_path = cairo_copy_path(cr_arg);
+			cairo_path_extents(cr_arg, &x1, &y1, &x2, &y2);
+
+			if(x2 > main_window_width && !main_window_in_fullscreen) {
+				cairo_new_path(cr_arg);
+				cairo_restore(cr_arg);
+				cairo_save(cr_arg);
+				continue;
+			}
+
+			cairo_new_path(cr_arg);
+			cairo_rectangle(cr_arg, -5, -(y2 - y1) - 2, x2 - x1 + 10, y2 - y1 + 8);
+			cairo_close_path(cr_arg);
+			cairo_fill(cr_arg);
+			cairo_set_source_rgb(cr_arg, 0., 0., 0.);
+			cairo_append_path(cr_arg, text_path);
+			cairo_fill(cr_arg);
+			cairo_path_destroy(text_path);
+
+			break;
 		}
-
-		cairo_set_source_rgb(cr_arg, 1., 1., 0.);
-		cairo_translate(cr_arg, 10, 20);
-		cairo_text_path(cr_arg, current_info_text);
-		cairo_path_t *text_path = cairo_copy_path(cr_arg);
-		cairo_path_extents(cr_arg, &x1, &y1, &x2, &y2);
-		cairo_new_path(cr_arg);
-		cairo_rectangle(cr_arg, -5, -15, x2 - x1 + 10, y2 - y1 + 10);
-		cairo_close_path(cr_arg);
-		cairo_fill(cr_arg);
-		cairo_set_source_rgb(cr_arg, 0., 0., 0.);
-		cairo_append_path(cr_arg, text_path);
-		cairo_fill(cr_arg);
-		cairo_path_destroy(text_path);
 
 		cairo_restore(cr_arg);
 	}
