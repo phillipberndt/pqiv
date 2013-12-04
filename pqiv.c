@@ -1068,6 +1068,25 @@ gboolean image_loader_load_single_destroy_old_image_callback(gpointer old_surfac
 	cairo_surface_destroy((cairo_surface_t *)old_surface);
 	return FALSE;
 }/*}}}*/
+gboolean image_loader_load_single_destroy_invalid_image_callback(gpointer node_p) {/*{{{*/
+	BOSNode *node = (BOSNode *)node_p;
+	unload_image(node);
+	if(node == current_file_node) {
+		current_file_node = next_file();
+		queue_image_load(current_file_node);
+	}
+	bostree_remove(file_tree, node);
+	g_free(node->key);
+	g_free(node->data);
+	if(bostree_node_count(file_tree) == 0) {
+		g_printerr("No images left to display.\n");
+		if(gtk_main_level() == 0) {
+			exit(1);
+		}
+		gtk_main_quit();
+	}
+	return FALSE;
+}
 gboolean image_loader_load_single(BOSNode *node) {/*{{{*/
 	// Already loaded?
 	file_t *file = (file_t *)node->data;
@@ -1222,21 +1241,9 @@ gboolean image_loader_load_single(BOSNode *node) {/*{{{*/
 		return TRUE;
 	}
 	else {
-		unload_image(node);
-		if(node == current_file_node) {
-			current_file_node = next_file();
-			queue_image_load(current_file_node);
-		}
-		bostree_remove(file_tree, node);
-		g_free(node->key);
-		g_free(node->data);
-		if(bostree_node_count(file_tree) == 0) {
-			g_printerr("No images left to display.\n");
-			if(gtk_main_level() == 0) {
-				exit(1);
-			}
-			gtk_main_quit();
-		}
+		// The node is invalid. Unload it in the main thread to avoid race
+		// conditions with image movement.
+		g_idle_add(image_loader_load_single_destroy_invalid_image_callback, node);
 	}
 
 	return FALSE;
