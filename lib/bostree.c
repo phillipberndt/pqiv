@@ -291,17 +291,18 @@ void bostree_remove(BOSTree *tree, BOSNode *node) {
 	/* If not, we find the largest element of the left sub-tree and use that */
 	else {
 		BOSNode *replacer = bostree_previous_node(node);
+		assert(replacer->right_child_node == NULL);
+
 		BOSNode *iterator = replacer;
 		if(iterator->parent_node->left_child_node == iterator) {
-			iterator->parent_node->left_child_node = NULL;
-			iterator->parent_node->left_child_count = 0;
-			iterator->parent_node->depth = iterator->parent_node->right_child_node != NULL ? iterator->parent_node->right_child_node->depth + 1 : 0;
+			iterator->parent_node->left_child_node = replacer->left_child_node;
+			iterator->parent_node->left_child_count = replacer->left_child_count;
 		}
 		else {
-			iterator->parent_node->right_child_node = NULL;
-			iterator->parent_node->right_child_count = 0;
-			iterator->parent_node->depth = iterator->parent_node->left_child_node != NULL ? iterator->parent_node->left_child_node->depth + 1 : 0;
+			iterator->parent_node->right_child_node = replacer->left_child_node;
+			iterator->parent_node->right_child_count = replacer->left_child_count;
 		}
+		_bostree_depth_recalculate(iterator->parent_node);
 		iterator = iterator->parent_node;
 		while(iterator != *reparent_location && iterator->parent_node != NULL) {
 			if(iterator->parent_node->left_child_node == iterator) {
