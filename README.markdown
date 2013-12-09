@@ -96,7 +96,7 @@ Known bugs
 Changelog
 ---------
 
-pqiv 2.1-dev
+pqiv 2.1
  * Support for watching directories for new files
  * Downstream Makefile fix: Included LDFLAGS (from Gentoo package, by Tim
    Harder), updated for clean builds on OpenBSD (by jca[at]wxcvbn[dot]org,

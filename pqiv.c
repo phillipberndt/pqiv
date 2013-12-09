@@ -18,7 +18,7 @@
 
 #define _XOPEN_SOURCE 600
 
-#define PQIV_VERSION "2.0"
+#define PQIV_VERSION "2.1"
 
 #include "lib/strnatcmp.h"
 #include "lib/bostree.h"
