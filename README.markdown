@@ -96,6 +96,9 @@ Known bugs
 Changelog
 ---------
 
+pqiv 2.1.1
+ * Bugfix: Fixed handling of non-image command line arguments
+
 pqiv 2.1
  * Support for watching directories for new files
  * Downstream Makefile fix: Included LDFLAGS (from Gentoo package, by Tim

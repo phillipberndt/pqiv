@@ -18,7 +18,7 @@
 
 #define _XOPEN_SOURCE 600
 
-#define PQIV_VERSION "2.1"
+#define PQIV_VERSION "2.1.1"
 
 #include "lib/strnatcmp.h"
 #include "lib/bostree.h"
@@ -1087,7 +1087,7 @@ gboolean image_loader_load_single_destroy_invalid_image_callback(gpointer node_p
 	}
 	return FALSE;
 }
-gboolean image_loader_load_single(BOSNode *node) {/*{{{*/
+gboolean image_loader_load_single(BOSNode *node, gboolean called_from_main) {/*{{{*/
 	// Already loaded?
 	file_t *file = (file_t *)node->data;
 	if(file->image_surface != NULL && !file->surface_is_out_of_date) {
@@ -1241,9 +1241,14 @@ gboolean image_loader_load_single(BOSNode *node) {/*{{{*/
 		return TRUE;
 	}
 	else {
-		// The node is invalid. Unload it in the main thread to avoid race
+		// The node is invalid.  Unload it in the main thread to avoid race
 		// conditions with image movement.
-		g_idle_add(image_loader_load_single_destroy_invalid_image_callback, node);
+		if(called_from_main) {
+			image_loader_load_single_destroy_invalid_image_callback(node);
+		}
+		else {
+			g_idle_add(image_loader_load_single_destroy_invalid_image_callback, node);
+		}
 	}
 
 	return FALSE;
@@ -1257,7 +1262,7 @@ gpointer image_loader_thread(gpointer user_data) {/*{{{*/
 		if(FILE(node)->image_surface == NULL || FILE(node)->surface_is_out_of_date) {
 			// Load image
 			image_loader_thread_currently_loading = node;
-			image_loader_load_single(node);
+			image_loader_load_single(node, FALSE);
 			image_loader_thread_currently_loading = NULL;
 		}
 
@@ -1271,7 +1276,7 @@ gboolean initialize_image_loader() {/*{{{*/
 	image_loader_queue = g_async_queue_new();
 	image_loader_cancellable = g_cancellable_new();
 	current_file_node = bostree_select(file_tree, 0);
-	while(!image_loader_load_single(current_file_node) && bostree_node_count(file_tree) > 0);
+	while(!image_loader_load_single(current_file_node, TRUE) && bostree_node_count(file_tree) > 0);
 	if(bostree_node_count(file_tree) == 0) {
 		return FALSE;
 	}
