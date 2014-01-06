@@ -670,14 +670,6 @@ void load_images_handle_parameter(char *param, load_images_state_t state) {/*{{{
 		// We will add the file to the file tree below
 	}
 	else {
-		// Check if the file exists
-		if(g_file_test(param, G_FILE_TEST_EXISTS) == FALSE) {
-			if(state == PARAMETER) {
-				g_printerr("File not found: %s\n", param);
-			}
-			return;
-		}
-
 		// Recurse into directories
 		if(g_file_test(param, G_FILE_TEST_IS_DIR) == TRUE) {
 			// Check for recursion
@@ -1115,7 +1107,7 @@ gboolean image_loader_load_single(BOSNode *node, gboolean called_from_main) {/*{
 	}
 	else {
 		g_cancellable_reset(image_loader_cancellable);
-		GFile *input_file = g_file_new_for_path(file->file_name);
+		GFile *input_file = g_file_new_for_commandline_arg(file->file_name);
 		GFileInputStream *input_file_stream = g_file_read(input_file, image_loader_cancellable, &error_pointer);
 		if(input_file_stream != NULL) {
 			#if (GDK_PIXBUF_MAJOR > 2 || (GDK_PIXBUF_MAJOR == 2 && GDK_PIXBUF_MINOR >= 28))

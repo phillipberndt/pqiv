@@ -96,6 +96,9 @@ Known bugs
 Changelog
 ---------
 
+pqiv 2.2 (work in progress)
+ * Accept URLs as command line arguments
+
 pqiv 2.1.1
  * Bugfix: Fixed handling of non-image command line arguments
 
