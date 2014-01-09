@@ -1107,7 +1107,18 @@ gboolean image_loader_load_single(BOSNode *node, gboolean called_from_main) {/*{
 	}
 	else {
 		g_cancellable_reset(image_loader_cancellable);
-		GFile *input_file = g_file_new_for_commandline_arg(file->file_name);
+		GFile *input_file;
+		// Support for URIs is an extra feature. To prevent breaking compatibility,
+		// always prefer existing files over URI interpretation.
+		// For example, all files containing a colon cannot be read using the
+		// g_file_new_for_commandline_arg command, because they are interpreted
+		// as an URI with an unsupported scheme.
+		if(g_file_test(file->file_name, G_FILE_TEST_EXISTS)) {
+			input_file = g_file_new_for_path(file->file_name);
+		}
+		else {
+			input_file = g_file_new_for_commandline_arg(file->file_name);
+		}
 		GFileInputStream *input_file_stream = g_file_read(input_file, image_loader_cancellable, &error_pointer);
 		if(input_file_stream != NULL) {
 			#if (GDK_PIXBUF_MAJOR > 2 || (GDK_PIXBUF_MAJOR == 2 && GDK_PIXBUF_MINOR >= 28))
