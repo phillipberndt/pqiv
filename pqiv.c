@@ -295,6 +295,7 @@ gboolean option_watch_directories = FALSE;
 gboolean option_fading = FALSE;
 gboolean option_lazy_load = FALSE;
 gboolean option_lowmem = FALSE;
+gboolean option_addl_from_stdin = FALSE;
 double option_fading_duration = .5;
 
 double fading_current_alpha_stage = 0;
@@ -324,6 +325,7 @@ GOptionEntry options[] = {
 	{ "sort", 'n', 0, G_OPTION_ARG_NONE, &option_sort, "Sort files in natural order", NULL },
 	{ "window-position", 'P', 0, G_OPTION_ARG_CALLBACK, (gpointer)&option_window_position_callback, "Set initial window position (`x,y' or `off' to not position the window at all)", "POSITION" },
 	{ "reverse-cursor-keys", 'R', 0, G_OPTION_ARG_NONE, &option_reverse_cursor_keys, "Reverse the meaning of the cursor keys", NULL },
+	{ "additional-from-stdin", 'r', 0, G_OPTION_ARG_NONE, &option_addl_from_stdin, "Read additional filenames/folders from stdin", NULL },
 	{ "slideshow", 's', 0, G_OPTION_ARG_NONE, &option_start_with_slideshow_mode, "Activate slideshow mode", NULL },
 	{ "scale-images-up", 't', G_OPTION_FLAG_NO_ARG, G_OPTION_ARG_CALLBACK, (gpointer)&option_scale_level_callback, "Scale images up to fill the whole screen", NULL },
 	{ "window-title", 'T', 0, G_OPTION_ARG_STRING, &option_window_title, "Set the title of the window. See manpage for available variables.", "TITLE" },
@@ -832,6 +834,33 @@ void load_images(int *argc, char *argv[]) {/*{{{*/
 	// Load the images from the remaining parameters
 	for(int i=1; i<*argc; i++) {
 		load_images_handle_parameter(argv[i], PARAMETER);
+	}
+
+	if(option_addl_from_stdin) {
+		GIOChannel *stdin_reader =
+		#ifdef _WIN32
+			g_io_channel_win32_new_fd(_fileno(stdin));
+		#else
+			g_io_channel_unix_new(STDIN_FILENO);
+		#endif
+
+		gsize line_terminator_pos;
+		gchar *buffer = NULL;
+		const gchar *charset = NULL;
+		if(g_get_charset(&charset)) {
+			g_io_channel_set_encoding(stdin_reader, charset, NULL);
+		}
+
+		while(g_io_channel_read_line(stdin_reader, &buffer, NULL, &line_terminator_pos, NULL) == G_IO_STATUS_NORMAL) {
+			if (buffer == NULL) {
+				continue;
+			}
+
+			buffer[line_terminator_pos] = 0;
+			load_images_handle_parameter(buffer, PARAMETER);
+			g_free(buffer);
+		}
+		g_io_channel_unref(stdin_reader);
 	}
 
 	// If we do not want to watch directories for changes, we can now drop the variables
