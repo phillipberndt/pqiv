@@ -1106,11 +1106,17 @@ void image_loader_load_single_destroy_invalid_image(gpointer node_p) {/*{{{*/
 		current_file_node = next_file();
 		queue_image_load(current_file_node);
 	}
+	g_mutex_lock(&bostree_mutex);
 	bostree_remove(file_tree, node);
 	g_free(node->key);
 	g_free(node->data);
+	g_mutex_unlock(&bostree_mutex);
 }/*}}}*/
 gboolean image_loader_load_single_destroy_invalid_image_callback(gpointer node_p) {/*{{{*/
+	node_p = bostree_node_weak_unref(node_p);
+	if(!node_p) {
+		return FALSE;
+	}
 	image_loader_load_single_destroy_invalid_image(node_p);
 	if(bostree_node_count(file_tree) == 0) {
 		g_printerr("No images left to display.\n");
@@ -1292,7 +1298,7 @@ gboolean image_loader_load_single(BOSNode *node, gboolean called_from_main) {/*{
 			image_loader_load_single_destroy_invalid_image(node);
 		}
 		else {
-			g_idle_add(image_loader_load_single_destroy_invalid_image_callback, node);
+			g_idle_add(image_loader_load_single_destroy_invalid_image_callback, bostree_node_weak_ref(node));
 		}
 	}
 
