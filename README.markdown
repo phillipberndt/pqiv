@@ -65,10 +65,14 @@ This program uses Martin Pool's natsort algorithm
 Contributors
 ------------
 
- Contributers to pqiv ≤ 1.0 were:
+ Contributors to pqiv 2.x are:
+
+ * J. Paul Reed
+
+ Contributors to pqiv ≤ 1.0 were:
 
  * Alexander Sulfrian
- * Alexandros Diamantidis (Reverse-movement-direction code, fixed code typos)
+ * Alexandros Diamantidis
  * Brandon
  * David Lindquist
  * Hanspeter Gysin
@@ -76,7 +80,7 @@ Contributors
  * Nir Tzachar
  * Rene Saarsoo
  * Tinoucas
- * Yaakov (Cygwin Ports)
+ * Yaakov
 
 Known bugs
 ----------
@@ -98,6 +102,7 @@ Changelog
 
 pqiv 2.2 (work in progress)
  * Accept URLs as command line arguments
+ * Revived -r for reading additional files from stdin (by J.P. Reed)
 
 pqiv 2.1.1
  * Bugfix: Fixed handling of non-image command line arguments
