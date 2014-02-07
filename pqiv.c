@@ -196,8 +196,8 @@ BOSNode *current_file_node = NULL;
 BOSNode *image_loader_thread_currently_loading = NULL;
 
 // We asynchroniously load images in a separate thread
-GAsyncQueue *image_loader_queue;
-GCancellable *image_loader_cancellable;
+GAsyncQueue *image_loader_queue = NULL;
+GCancellable *image_loader_cancellable = NULL;
 
 // Filter for path traversing upon building the file list
 GtkFileFilter *load_images_file_filter;
@@ -215,6 +215,11 @@ BOSNode *previous_file() {
 	BOSNode *ret = bostree_previous_node(current_file_node);
 	return ret ? ret : bostree_select(file_tree, bostree_node_count(file_tree) - 1);
 }
+
+// When loading additional images via the -r option, we need to know whether the
+// image loader initialization succeeded, because we can't just cancel if it does
+// not (it checks if any image is loadable and fails if not)
+gboolean image_loader_initialization_succeeded = FALSE;
 
 // We sometimes need to decide whether we have to draw the image or if it already
 // is. We use this variable for that.
@@ -375,10 +380,12 @@ void update_info_text(const char *);
 void queue_draw();
 gboolean main_window_center();
 void window_screen_changed_callback(GtkWidget *widget, GdkScreen *previous_screen, gpointer user_data);
+gboolean image_loader_load_single(BOSNode *node, gboolean called_from_main);
 gboolean fading_timeout_callback(gpointer user_data);
 void queue_image_load(BOSNode *);
 void unload_image(BOSNode *);
 gboolean initialize_gui_callback(gpointer);
+gboolean initialize_image_loader();
 // }}}
 /* Command line handling, creation of the image list {{{ */
 gboolean options_keyboard_alias_set_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error) {/*{{{*/
@@ -793,8 +800,11 @@ void load_images_handle_parameter(char *param, load_images_state_t state) {/*{{{
 	}
 	if(option_lazy_load && !gui_initialized) {
 		// When the first image has been processed, we can show the window
-		g_idle_add(initialize_gui_callback, NULL);
-		gui_initialized = TRUE;
+		// Check if it successfully loads though:
+		if(initialize_image_loader()) {
+			g_idle_add(initialize_gui_callback, NULL);
+			gui_initialized = TRUE;
+		}
 	}
 }/*}}}*/
 int image_tree_integer_compare(const unsigned int *a, const unsigned int *b) {/*{{{*/
@@ -1089,7 +1099,7 @@ gboolean image_loader_load_single_destroy_old_image_callback(gpointer old_surfac
 	cairo_surface_destroy((cairo_surface_t *)old_surface);
 	return FALSE;
 }/*}}}*/
-gboolean image_loader_load_single_destroy_invalid_image_callback(gpointer node_p) {/*{{{*/
+void image_loader_load_single_destroy_invalid_image(gpointer node_p) {/*{{{*/
 	BOSNode *node = (BOSNode *)node_p;
 	unload_image(node);
 	if(node == current_file_node) {
@@ -1099,6 +1109,9 @@ gboolean image_loader_load_single_destroy_invalid_image_callback(gpointer node_p
 	bostree_remove(file_tree, node);
 	g_free(node->key);
 	g_free(node->data);
+}/*}}}*/
+gboolean image_loader_load_single_destroy_invalid_image_callback(gpointer node_p) {/*{{{*/
+	image_loader_load_single_destroy_invalid_image(node_p);
 	if(bostree_node_count(file_tree) == 0) {
 		g_printerr("No images left to display.\n");
 		if(gtk_main_level() == 0) {
@@ -1276,7 +1289,7 @@ gboolean image_loader_load_single(BOSNode *node, gboolean called_from_main) {/*{
 		// The node is invalid.  Unload it in the main thread to avoid race
 		// conditions with image movement.
 		if(called_from_main) {
-			image_loader_load_single_destroy_invalid_image_callback(node);
+			image_loader_load_single_destroy_invalid_image(node);
 		}
 		else {
 			g_idle_add(image_loader_load_single_destroy_invalid_image_callback, node);
@@ -1305,9 +1318,17 @@ gpointer image_loader_thread(gpointer user_data) {/*{{{*/
 	}
 }/*}}}*/
 gboolean initialize_image_loader() {/*{{{*/
-	image_loader_queue = g_async_queue_new();
-	image_loader_cancellable = g_cancellable_new();
+	if(image_loader_initialization_succeeded) {
+		return TRUE;
+	}
+	if(image_loader_queue == NULL) {
+		image_loader_queue = g_async_queue_new();
+		image_loader_cancellable = g_cancellable_new();
+	}
 	current_file_node = bostree_select(file_tree, 0);
+	if(!current_file_node) {
+		return FALSE;
+	}
 	while(!image_loader_load_single(current_file_node, TRUE) && bostree_node_count(file_tree) > 0);
 	if(bostree_node_count(file_tree) == 0) {
 		return FALSE;
@@ -1329,6 +1350,7 @@ gboolean initialize_image_loader() {/*{{{*/
 		}
 	}
 
+	image_loader_initialization_succeeded = TRUE;
 	return TRUE;
 }/*}}}*/
 void abort_pending_image_loads(BOSNode *new_pos) {/*{{{*/
@@ -3060,16 +3082,21 @@ void create_window() { /*{{{*/
 		window_screen_activate_rgba();
 	}
 }/*}}}*/
-gboolean initialize_gui_callback(gpointer user_data) {/*{{{*/
+gboolean initialize_gui() {/*{{{*/
 	setup_checkerboard_pattern();
 	create_window();
-	initialize_image_loader();
-	image_loaded_handler(NULL);
+	if(initialize_image_loader()) {
+		image_loaded_handler(NULL);
 
-	if(option_start_with_slideshow_mode) {
-		slideshow_timeout_id = g_timeout_add(option_slideshow_interval * 1000, slideshow_timeout_callback, NULL);
+		if(option_start_with_slideshow_mode) {
+			slideshow_timeout_id = g_timeout_add(option_slideshow_interval * 1000, slideshow_timeout_callback, NULL);
+		}
+		return TRUE;
 	}
-
+	return FALSE;
+}/*}}}*/
+gboolean initialize_gui_callback(gpointer user_data) {/*{{{*/
+	initialize_gui();
 	return FALSE;
 }/*}}}*/
 // }}}
@@ -3078,6 +3105,7 @@ gpointer load_images_thread(gpointer user_data) {/*{{{*/
 	load_images(&global_argc, global_argv);
 
 	if(bostree_node_count(file_tree) == 0) {
+		g_printerr("No images left to display.\n");
 		exit(0);
 	}
 
@@ -3115,7 +3143,10 @@ int main(int argc, char *argv[]) {
 	}
 	else {
 		load_images_thread(NULL);
-		initialize_gui_callback(NULL);
+		if(!initialize_gui(NULL)) {
+			g_printerr("No images left to display.\n");
+			exit(1);
+		}
 	}
 
 	gtk_main();
