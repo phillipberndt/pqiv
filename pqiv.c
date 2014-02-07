@@ -295,6 +295,7 @@ gboolean option_watch_directories = FALSE;
 gboolean option_fading = FALSE;
 gboolean option_lazy_load = FALSE;
 gboolean option_lowmem = FALSE;
+gboolean option_addl_from_stdin = FALSE;
 double option_fading_duration = .5;
 
 double fading_current_alpha_stage = 0;
@@ -609,6 +610,13 @@ void parse_command_line(int *argc, char *argv[]) {/*{{{*/
 	GError *error_pointer = NULL;
 	if(g_option_context_parse(parser, argc, &argv, &error_pointer) == FALSE) {
 		g_printerr("%s\n", error_pointer->message);
+		exit(1);
+	}
+
+	// User didn't specify any files to load; perhaps some help on how to use
+	// pqiv would be useful...
+	if (*argc == 1 && !option_addl_from_stdin) {
+		g_printerr("%s", g_option_context_get_help(parser, TRUE, NULL));
 		exit(1);
 	}
 
