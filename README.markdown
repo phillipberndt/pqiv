@@ -65,11 +65,11 @@ This program uses Martin Pool's natsort algorithm
 Contributors
 ------------
 
- Contributors to pqiv 2.x are:
+Contributors to pqiv 2.x are:
 
  * J. Paul Reed
 
- Contributors to pqiv ≤ 1.0 were:
+Contributors to pqiv ≤ 1.0 were:
 
  * Alexander Sulfrian
  * Alexandros Diamantidis
