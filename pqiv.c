@@ -642,6 +642,13 @@ void parse_command_line(int *argc, char *argv[]) {/*{{{*/
 		exit(1);
 	}
 
+	// User didn't specify any files to load; perhaps some help on how to use
+	// pqiv would be useful...
+	if (*argc == 1 && !option_addl_from_stdin) {
+		g_printerr("%s", g_option_context_get_help(parser, TRUE, NULL));
+		exit(1);
+	}
+
 	g_option_context_free(parser);
 }/*}}}*/
 void load_images_directory_watch_callback(GFileMonitor *monitor, GFile *file, GFile *other_file, GFileMonitorEvent event_type, gpointer user_data) {/*{{{*/
