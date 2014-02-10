@@ -190,7 +190,6 @@ typedef struct {
 } file_t;
 
 // Storage of the file list
-static GMutex bostree_mutex;
 BOSTree *file_tree;
 BOSTree *directory_tree;
 BOSNode *current_file_node = NULL;
@@ -209,22 +208,12 @@ GTimer *load_images_timer;
 #define FILE(x) ((file_t *)(x)->data)
 #define CURRENT_FILE FILE(current_file_node)
 BOSNode *next_file() {
-	g_mutex_lock(&bostree_mutex);
 	BOSNode *ret = bostree_next_node(current_file_node);
-	if(!ret) {
-		ret = bostree_select(file_tree, 0);
-	}
-	g_mutex_unlock(&bostree_mutex);
-	return ret;
+	return ret ? ret : bostree_select(file_tree, 0);
 }
 BOSNode *previous_file() {
-	g_mutex_lock(&bostree_mutex);
 	BOSNode *ret = bostree_previous_node(current_file_node);
-	if(!ret) {
-		ret = bostree_select(file_tree, bostree_node_count(file_tree) - 1);
-	}
-	g_mutex_unlock(&bostree_mutex);
-	return ret;
+	return ret ? ret : bostree_select(file_tree, bostree_node_count(file_tree) - 1);
 }
 
 // When loading additional images via the -r option, we need to know whether the
@@ -656,16 +645,12 @@ void load_images_directory_watch_callback(GFileMonitor *monitor, GFile *file, GF
 		// the effort to search the node to delete would be too high. The node will be
 		// deleted once the user tries to access it.
 		gchar *name = g_file_get_path(file);
-		g_mutex_lock(&bostree_mutex);
 		BOSNode *node = bostree_lookup(file_tree, name);
-		g_mutex_unlock(&bostree_mutex);
 		if(node != NULL && node != current_file_node) {
 			unload_image(node);
-			g_mutex_lock(&bostree_mutex);
 			g_free(node->key);
 			g_free(node->data);
 			bostree_remove(file_tree, node);
-			g_mutex_unlock(&bostree_mutex);
 		}
 		g_free(name);
 	}
@@ -705,13 +690,10 @@ void load_images_handle_parameter(char *param, load_images_state_t state) {/*{{{
 					realpath(param, abs_path) != NULL
 				#endif
 			) {
-				g_mutex_lock(&bostree_mutex);
 				if(bostree_lookup(directory_tree, abs_path) != NULL) {
-					g_mutex_unlock(&bostree_mutex);
 					return;
 				}
 				bostree_insert(directory_tree, g_strdup(abs_path), NULL);
-				g_mutex_unlock(&bostree_mutex);
 			}
 			else {
 				// Consider this an error
@@ -802,14 +784,10 @@ void load_images_handle_parameter(char *param, load_images_state_t state) {/*{{{
 	if(!option_sort) {
 		unsigned int *index = (unsigned int *)g_malloc(sizeof(unsigned int));
 		*index = option_shuffle ? g_random_int() : bostree_node_count(file_tree);
-		g_mutex_lock(&bostree_mutex);
 		bostree_insert(file_tree, (void *)index, file);
-		g_mutex_unlock(&bostree_mutex);
 	}
 	else {
-		g_mutex_lock(&bostree_mutex);
 		bostree_insert(file_tree, file->file_name, file);
-		g_mutex_unlock(&bostree_mutex);
 	}
 	if((option_lazy_load || state == INOTIFY) && current_file_node != NULL) {
 		// If the previous/next images have shifted, unload the old ones to save memory
@@ -840,8 +818,6 @@ void load_images(int *argc, char *argv[]) {/*{{{*/
 
 	// The directory tree is used to prevent nested-symlink loops
 	directory_tree = bostree_new((BOSTree_cmp_function)g_strcmp0);
-
-	g_mutex_init(&bostree_mutex);
 
 	// Allocate memory for the timer
 	load_images_timer = g_timer_new();
@@ -1130,17 +1106,11 @@ void image_loader_load_single_destroy_invalid_image(gpointer node_p) {/*{{{*/
 		current_file_node = next_file();
 		queue_image_load(current_file_node);
 	}
-	g_mutex_lock(&bostree_mutex);
 	bostree_remove(file_tree, node);
 	g_free(node->key);
 	g_free(node->data);
-	g_mutex_unlock(&bostree_mutex);
 }/*}}}*/
 gboolean image_loader_load_single_destroy_invalid_image_callback(gpointer node_p) {/*{{{*/
-	node_p = bostree_node_weak_unref(node_p);
-	if(!node_p) {
-		return FALSE;
-	}
 	image_loader_load_single_destroy_invalid_image(node_p);
 	if(bostree_node_count(file_tree) == 0) {
 		g_printerr("No images left to display.\n");
@@ -1322,7 +1292,7 @@ gboolean image_loader_load_single(BOSNode *node, gboolean called_from_main) {/*{
 			image_loader_load_single_destroy_invalid_image(node);
 		}
 		else {
-			g_idle_add(image_loader_load_single_destroy_invalid_image_callback, bostree_node_weak_ref(node));
+			g_idle_add(image_loader_load_single_destroy_invalid_image_callback, node);
 		}
 	}
 
@@ -1492,10 +1462,7 @@ void relative_image_movement(ptrdiff_t movement) {/*{{{*/
 	}
 	pos %= count;
 
-	g_mutex_lock(&bostree_mutex);
-	BOSNode *target = bostree_node_weak_ref(bostree_select(file_tree, pos));
-	g_mutex_unlock(&bostree_mutex);
-	absolute_image_movement(target);
+	absolute_image_movement(bostree_node_weak_ref(bostree_select(file_tree, pos)));
 }/*}}}*/
 void transform_current_image(cairo_matrix_t *transformation) {/*{{{*/
 	if(CURRENT_FILE->image_surface == NULL) {
@@ -1920,7 +1887,6 @@ void do_jump_dialog() { /* {{{ */
 	// Build list for searching
 	GtkListStore *search_list = gtk_list_store_new(3, G_TYPE_LONG, G_TYPE_STRING, G_TYPE_POINTER);
 	size_t id = 1;
-	g_mutex_lock(&bostree_mutex);
 	for(BOSNode *node = bostree_select(file_tree, 0); node; node = bostree_next_node(node)) {
 		gtk_list_store_append(search_list, &search_list_iter);
 
@@ -1938,7 +1904,6 @@ void do_jump_dialog() { /* {{{ */
 			-1);
 		g_free(display_name);
 	}
-	g_mutex_unlock(&bostree_mutex);
 
 	GtkTreeModel *search_list_filter = gtk_tree_model_filter_new(GTK_TREE_MODEL(search_list), NULL);
 	gtk_tree_model_filter_set_visible_func(GTK_TREE_MODEL_FILTER(search_list_filter),
@@ -1975,9 +1940,7 @@ void do_jump_dialog() { /* {{{ */
 		0);
 
 	// Jump to active image
-	g_mutex_lock(&bostree_mutex);
 	GtkTreePath *goto_active_path = gtk_tree_path_new_from_indices(bostree_rank(current_file_node), -1);
-	g_mutex_unlock(&bostree_mutex);
 	gtk_tree_selection_select_path(
 		gtk_tree_view_get_selection(GTK_TREE_VIEW(search_list_box)),
 		goto_active_path);
@@ -2009,9 +1972,7 @@ void do_jump_dialog() { /* {{{ */
 		GValue col_data;
 		memset(&col_data, 0, sizeof(GValue));
 		gtk_tree_model_get_value(GTK_TREE_MODEL(search_list_filter), &iter, 2, &col_data);
-		g_mutex_lock(&bostree_mutex);
 		bostree_node_weak_unref((BOSNode *)g_value_get_pointer(&col_data));
-		g_mutex_unlock(&bostree_mutex);
 		g_value_unset(&col_data);
 	}
 
@@ -2053,14 +2014,12 @@ void update_info_text(const gchar *action) {/*{{{*/
 
 	// Update info text
 	if(!option_hide_info_box) {
-		g_mutex_lock(&bostree_mutex);
 		current_info_text = g_strdup_printf("%s (%dx%d) %03.2f%% [%d/%d]", display_name,
 			cairo_image_surface_get_width(CURRENT_FILE->image_surface),
 			cairo_image_surface_get_height(CURRENT_FILE->image_surface),
 			current_scale_level * 100.,
 			(unsigned int)(bostree_rank(current_file_node) + 1),
 			(unsigned int)(bostree_node_count(file_tree)));
-		g_mutex_unlock(&bostree_mutex);
 
 		if(action != NULL) {
 			gchar *old_info_text = current_info_text;
@@ -2105,9 +2064,7 @@ void update_info_text(const gchar *action) {/*{{{*/
 			window_title_iter += 4;
 		}
 		else if(g_strstr_len(window_title_iter, 12, "IMAGE_NUMBER") != NULL) {
-			g_mutex_lock(&bostree_mutex);
 			g_string_append_printf(new_window_title, "%d", (unsigned int)(bostree_rank(current_file_node) + 1));
-			g_mutex_unlock(&bostree_mutex);
 			window_title_iter += 12;
 		}
 		else if(g_strstr_len(window_title_iter, 11, "IMAGE_COUNT") != NULL) {
