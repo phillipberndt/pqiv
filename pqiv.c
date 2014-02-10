@@ -646,7 +646,7 @@ void parse_command_line(int *argc, char *argv[]) {/*{{{*/
 	// pqiv would be useful...
 	if (*argc == 1 && !option_addl_from_stdin) {
 		g_printerr("%s", g_option_context_get_help(parser, TRUE, NULL));
-		exit(1);
+		exit(0);
 	}
 
 	g_option_context_free(parser);
