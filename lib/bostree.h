@@ -53,8 +53,9 @@ typedef struct _BOSNode BOSNode;
 */
 
 typedef int (*BOSTree_cmp_function)(const void *, const void *);
+typedef void (*BOSTree_free_function)(BOSNode *node);
 
-BOSTree *bostree_new(BOSTree_cmp_function cmp_function);
+BOSTree *bostree_new(BOSTree_cmp_function cmp_function, BOSTree_free_function free_function);
 void bostree_destroy(BOSTree *tree);
 
 unsigned int bostree_node_count(BOSTree *tree);
@@ -63,7 +64,7 @@ BOSNode *bostree_insert(BOSTree *tree, void *key, void *data);
 void bostree_remove(BOSTree *tree, BOSNode *node);
 
 BOSNode *bostree_node_weak_ref(BOSNode *node);
-BOSNode *bostree_node_weak_unref(BOSNode *node);
+BOSNode *bostree_node_weak_unref(BOSTree *tree, BOSNode *node);
 
 BOSNode *bostree_lookup(BOSTree *tree, void *key);
 BOSNode *bostree_select(BOSTree *tree, unsigned int index);
