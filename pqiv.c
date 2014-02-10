@@ -190,6 +190,26 @@ typedef struct {
 } file_t;
 
 // Storage of the file list
+// These lists are accessed from multiple threads:
+//  * The main thread (count, next, prev, ..)
+//  * The option parser thread, if --lazy-load is used
+//  * The image loader thread
+// Our thread safety strategy is as follows:
+//  * Access directory_tree only from the option parser
+//  * Wrap all file_tree operations with mutexes
+//  * Use weak references for any operation during which the image might
+//    invalidate.
+//  * If a weak reference is invalid, abort the pending operation
+//  * If an operation can't be aborted, lock the mutex from the start
+//    until it completes
+//  * If an operation takes too long for this to work, redesign the
+//    operation
+G_LOCK_DEFINE_STATIC(file_tree);
+// In case of trouble:
+// #define D_LOCK(x) g_print("Waiting for lock " #x " at line %d\n", __LINE__); G_LOCK(x); g_print("  Locked " #x " at line %d\n", __LINE__)
+// #define D_UNLOCK(x) g_print("Unlocked " #x " at line %d\n", __LINE__); G_UNLOCK(x);
+#define D_LOCK(x) G_LOCK(x)
+#define D_UNLOCK(x) G_UNLOCK(x)
 BOSTree *file_tree;
 BOSTree *directory_tree;
 BOSNode *current_file_node = NULL;
@@ -205,6 +225,7 @@ GtkFileFilterInfo *load_images_file_filter_info;
 GTimer *load_images_timer;
 
 // Easy access to the file_t within a node
+// Remember to always lock file_tree!
 #define FILE(x) ((file_t *)(x)->data)
 #define CURRENT_FILE FILE(current_file_node)
 BOSNode *next_file() {
@@ -644,15 +665,14 @@ void load_images_directory_watch_callback(GFileMonitor *monitor, GFile *file, GF
 		// We can react on delete events only if the file tree is sorted. If it is not,
 		// the effort to search the node to delete would be too high. The node will be
 		// deleted once the user tries to access it.
+		D_LOCK(file_tree);
 		gchar *name = g_file_get_path(file);
 		BOSNode *node = bostree_lookup(file_tree, name);
 		if(node != NULL && node != current_file_node) {
-			unload_image(node);
-			g_free(node->key);
-			g_free(node->data);
 			bostree_remove(file_tree, node);
 		}
 		g_free(name);
+		D_UNLOCK(file_tree);
 	}
 }/*}}}*/
 void load_images_handle_parameter(char *param, load_images_state_t state) {/*{{{*/
@@ -775,6 +795,7 @@ void load_images_handle_parameter(char *param, load_images_state_t state) {/*{{{
 	// Add image to images list/tree
 	// We need to check if the previous/next images have changed, because they
 	// might have been preloaded and need unloading if so.
+	D_LOCK(file_tree);
 	BOSNode *old_prev = NULL;
 	BOSNode *old_next = NULL;
 	if((option_lazy_load || state == INOTIFY) && current_file_node != NULL) {
@@ -798,6 +819,7 @@ void load_images_handle_parameter(char *param, load_images_state_t state) {/*{{{
 			unload_image(old_next);
 		}
 	}
+	D_UNLOCK(file_tree);
 	if(option_lazy_load && !gui_initialized) {
 		// When the first image has been processed, we can show the window
 		// Check if it successfully loads though:
@@ -810,14 +832,25 @@ void load_images_handle_parameter(char *param, load_images_state_t state) {/*{{{
 int image_tree_integer_compare(const unsigned int *a, const unsigned int *b) {/*{{{*/
 	return *a > *b;
 }/*}}}*/
+void file_tree_free_helper(BOSNode *node) {
+	// key is file->file_name or an integer
+	unload_image(node);
+	g_free(FILE(node)->file_name);
+	g_free(FILE(node));
+}
+void directory_tree_free_helper(BOSNode *node) {
+	free(node->key);
+	// value is NULL
+}
 void load_images(int *argc, char *argv[]) {/*{{{*/
 	// Allocate memory for the file list (Used for unsorted and random order file lists)
 	file_tree = bostree_new(
-		option_sort ? (BOSTree_cmp_function)strnatcasecmp : (BOSTree_cmp_function)image_tree_integer_compare
+		option_sort ? (BOSTree_cmp_function)strnatcasecmp : (BOSTree_cmp_function)image_tree_integer_compare,
+		file_tree_free_helper
 	);
 
 	// The directory tree is used to prevent nested-symlink loops
-	directory_tree = bostree_new((BOSTree_cmp_function)g_strcmp0);
+	directory_tree = bostree_new((BOSTree_cmp_function)g_strcmp0, directory_tree_free_helper);
 
 	// Allocate memory for the timer
 	load_images_timer = g_timer_new();
@@ -878,10 +911,6 @@ void load_images(int *argc, char *argv[]) {/*{{{*/
 	if(!option_watch_directories) {
 		g_object_ref_sink(load_images_file_filter);
 		g_free(load_images_file_filter_info);
-		// Drop the directory tree
-		for(BOSNode *node = bostree_select(directory_tree, 0); node; node = bostree_next_node(node)) {
-			free(node->key);
-		}
 		bostree_destroy(directory_tree);
 	}
 
@@ -896,14 +925,17 @@ void invalidate_current_scaled_image_surface() {/*{{{*/
 	}
 }/*}}}*/
 gboolean image_animation_timeout_callback(gpointer user_data) {/*{{{*/
+	D_LOCK(file_tree);
 	if((BOSNode *)user_data != current_file_node) {
 		return FALSE;
 	}
+	cairo_surface_t *surface = cairo_surface_reference(CURRENT_FILE->image_surface);
+	D_UNLOCK(file_tree);
 
 	gdk_pixbuf_animation_iter_advance(current_image_animation_iter, NULL);
 	GdkPixbuf *pixbuf = gdk_pixbuf_animation_iter_get_pixbuf(current_image_animation_iter);
 
-	cairo_t *sf_cr = cairo_create(CURRENT_FILE->image_surface);
+	cairo_t *sf_cr = cairo_create(surface);
 	cairo_save(sf_cr);
 	cairo_set_source_rgba(sf_cr, 0., 0., 0., 0.);
 	cairo_set_operator(sf_cr, CAIRO_OPERATOR_SOURCE);
@@ -912,6 +944,7 @@ gboolean image_animation_timeout_callback(gpointer user_data) {/*{{{*/
 	gdk_cairo_set_source_pixbuf(sf_cr, pixbuf, 0, 0);
 	cairo_paint(sf_cr);
 	cairo_destroy(sf_cr);
+	cairo_surface_destroy(surface);
 
 	current_image_animation_timeout_id = g_timeout_add(
 		gdk_pixbuf_animation_iter_get_delay_time(current_image_animation_iter),
@@ -941,10 +974,16 @@ gboolean set_option_initial_scale_used_callback(gpointer user_data) {/*{{{*/
 	return FALSE;
 }/*}}}*/
 gboolean main_window_resize_callback(gpointer user_data) {/*{{{*/
+	D_LOCK(file_tree);
 	// If there is no image loaded, abort
 	if(CURRENT_FILE->image_surface == NULL) {
+		D_UNLOCK(file_tree);
 		return FALSE;
 	}
+	// Get the image's size
+	int image_width = cairo_image_surface_get_width(CURRENT_FILE->image_surface);
+	int image_height = cairo_image_surface_get_height(CURRENT_FILE->image_surface);
+	D_UNLOCK(file_tree);
 
 	// In in fullscreen, also abort
 	if(main_window_in_fullscreen) {
@@ -952,8 +991,6 @@ gboolean main_window_resize_callback(gpointer user_data) {/*{{{*/
 	}
 
 	// Recalculate the required window size
-	int image_width = cairo_image_surface_get_width(CURRENT_FILE->image_surface);
-	int image_height = cairo_image_surface_get_height(CURRENT_FILE->image_surface);
 	int new_window_width = current_scale_level * image_width;
 	int new_window_height = current_scale_level * image_height;
 
@@ -972,16 +1009,31 @@ gboolean image_loaded_handler(gconstpointer info_text) {/*{{{*/
 		g_source_remove(current_image_animation_timeout_id);
 	}
 
+	D_LOCK(file_tree);
+
 	// Sometimes when a user is hitting the next image button really fast this
 	// function's execution can be delayed until CURRENT_FILE is again not loaded.
 	// Return without doing anything in that case.
 	if(CURRENT_FILE->image_surface == NULL) {
+		D_UNLOCK(file_tree);
 		return FALSE;
+	}
+
+	// Initialize animation timer if the image is animated
+	if((CURRENT_FILE->file_type & FILE_TYPE_ANIMATION) != 0) {
+		current_image_animation_iter = gdk_pixbuf_animation_get_iter(CURRENT_FILE->pixbuf_animation, NULL);
+		current_image_animation_timeout_id = g_timeout_add(
+			gdk_pixbuf_animation_iter_get_delay_time(current_image_animation_iter),
+			image_animation_timeout_callback,
+			(gpointer)current_file_node);
 	}
 
 	// Update geometry hints, calculate initial window size and place window
 	int image_width = cairo_image_surface_get_width(CURRENT_FILE->image_surface);
 	int image_height = cairo_image_surface_get_height(CURRENT_FILE->image_surface);
+
+	D_UNLOCK(file_tree);
+
 	int screen_width = screen_geometry.width;
 	int screen_height = screen_geometry.height;
 
@@ -1084,43 +1136,12 @@ gboolean image_loaded_handler(gconstpointer info_text) {/*{{{*/
 	// Reset the info text
 	update_info_text(info_text);
 
-	// Initialize animation timer if the image is animated
-	if((CURRENT_FILE->file_type & FILE_TYPE_ANIMATION) != 0) {
-		current_image_animation_iter = gdk_pixbuf_animation_get_iter(CURRENT_FILE->pixbuf_animation, NULL);
-		current_image_animation_timeout_id = g_timeout_add(
-			gdk_pixbuf_animation_iter_get_delay_time(current_image_animation_iter),
-			image_animation_timeout_callback,
-			(gpointer)current_file_node);
-	}
-
 	return FALSE;
 }/*}}}*/
 gboolean image_loader_load_single_destroy_old_image_callback(gpointer old_surface) {/*{{{*/
 	cairo_surface_destroy((cairo_surface_t *)old_surface);
 	return FALSE;
 }/*}}}*/
-void image_loader_load_single_destroy_invalid_image(gpointer node_p) {/*{{{*/
-	BOSNode *node = (BOSNode *)node_p;
-	unload_image(node);
-	if(node == current_file_node) {
-		current_file_node = next_file();
-		queue_image_load(current_file_node);
-	}
-	bostree_remove(file_tree, node);
-	g_free(node->key);
-	g_free(node->data);
-}/*}}}*/
-gboolean image_loader_load_single_destroy_invalid_image_callback(gpointer node_p) {/*{{{*/
-	image_loader_load_single_destroy_invalid_image(node_p);
-	if(bostree_node_count(file_tree) == 0) {
-		g_printerr("No images left to display.\n");
-		if(gtk_main_level() == 0) {
-			exit(1);
-		}
-		gtk_main_quit();
-	}
-	return FALSE;
-}
 gboolean image_loader_load_single(BOSNode *node, gboolean called_from_main) {/*{{{*/
 	// Already loaded?
 	file_t *file = (file_t *)node->data;
@@ -1251,20 +1272,14 @@ gboolean image_loader_load_single(BOSNode *node, gboolean called_from_main) {/*{
 			cairo_paint(sf_cr);
 			cairo_destroy(sf_cr);
 
-			// This is the only place outside the main thread where image_surface is changed.
-			// We do the exchange atomically and use an idle function (which runs in the
-			// main thread) to destroy the old one.
-			//
-			// The alternative would be to explicitly reference the current
-			// surface in all functions and unref it afterwards. But we'd still
-			// have to check if the image_surface is NULL when the callbacks
-			// are invoked because the image could have been unloaded.
+			D_LOCK(file_tree);
 			cairo_surface_t *old_surface = file->image_surface;
 			file->image_surface = surface;
 			if(old_surface != NULL) {
 				g_idle_add(image_loader_load_single_destroy_old_image_callback, old_surface);
 			}
 			g_object_unref(pixbuf);
+			D_UNLOCK(file_tree);
 		}
 		g_object_unref(pixbuf_animation);
 	}
@@ -1286,22 +1301,37 @@ gboolean image_loader_load_single(BOSNode *node, gboolean called_from_main) {/*{
 		return TRUE;
 	}
 	else {
-		// The node is invalid.  Unload it in the main thread to avoid race
-		// conditions with image movement.
-		if(called_from_main) {
-			image_loader_load_single_destroy_invalid_image(node);
+		// The node is invalid.  Unload it.
+		D_LOCK(file_tree);
+		if(node == current_file_node) {
+			current_file_node = next_file();
+			if(current_file_node != node) {
+				queue_image_load(current_file_node);
+				current_file_node = bostree_node_weak_ref(current_file_node);
+			}
+			bostree_remove(file_tree, node);
+			bostree_node_weak_unref(file_tree, node);
 		}
 		else {
-			g_idle_add(image_loader_load_single_destroy_invalid_image_callback, node);
+			bostree_remove(file_tree, node);
 		}
+		if(!called_from_main && bostree_node_count(file_tree) == 0) {
+			g_printerr("No images left to display.\n");
+			if(gtk_main_level() == 0) {
+				exit(1);
+			}
+			gtk_main_quit();
+		}
+		D_UNLOCK(file_tree);
 	}
 
 	return FALSE;
 }/*}}}*/
 gpointer image_loader_thread(gpointer user_data) {/*{{{*/
 	while(TRUE) {
-		BOSNode *node = bostree_node_weak_unref(g_async_queue_pop(image_loader_queue));
-		if(node == NULL) {
+		BOSNode *node = g_async_queue_pop(image_loader_queue);
+		if(bostree_node_weak_unref(file_tree, bostree_node_weak_ref(node)) == NULL) {
+			bostree_node_weak_unref(file_tree, node);
 			continue;
 		}
 		if(FILE(node)->image_surface == NULL || FILE(node)->surface_is_out_of_date) {
@@ -1310,11 +1340,11 @@ gpointer image_loader_thread(gpointer user_data) {/*{{{*/
 			image_loader_load_single(node, FALSE);
 			image_loader_thread_currently_loading = NULL;
 		}
-
 		if(node == current_file_node && FILE(node)->image_surface != NULL) {
 			current_image_drawn = FALSE;
 			g_idle_add((GSourceFunc)image_loaded_handler, NULL);
 		}
+		bostree_node_weak_unref(file_tree, node);
 	}
 }/*}}}*/
 gboolean initialize_image_loader() {/*{{{*/
@@ -1325,10 +1355,14 @@ gboolean initialize_image_loader() {/*{{{*/
 		image_loader_queue = g_async_queue_new();
 		image_loader_cancellable = g_cancellable_new();
 	}
+	D_LOCK(file_tree);
 	current_file_node = bostree_select(file_tree, 0);
 	if(!current_file_node) {
+		D_UNLOCK(file_tree);
 		return FALSE;
 	}
+	current_file_node = bostree_node_weak_ref(current_file_node);
+	D_UNLOCK(file_tree);
 	while(!image_loader_load_single(current_file_node, TRUE) && bostree_node_count(file_tree) > 0);
 	if(bostree_node_count(file_tree) == 0) {
 		return FALSE;
@@ -1340,6 +1374,7 @@ gboolean initialize_image_loader() {/*{{{*/
 	#endif
 
 	if(!option_lowmem) {
+		D_LOCK(file_tree);
 		BOSNode *next = next_file();
 		if(FILE(next)->image_surface == NULL) {
 			queue_image_load(next);
@@ -1348,6 +1383,7 @@ gboolean initialize_image_loader() {/*{{{*/
 		if(FILE(previous)->image_surface == NULL) {
 			queue_image_load(previous);
 		}
+		D_UNLOCK(file_tree);
 	}
 
 	image_loader_initialization_succeeded = TRUE;
@@ -1355,7 +1391,7 @@ gboolean initialize_image_loader() {/*{{{*/
 }/*}}}*/
 void abort_pending_image_loads(BOSNode *new_pos) {/*{{{*/
 	BOSNode *ref;
-	while((ref = g_async_queue_try_pop(image_loader_queue)) != NULL) bostree_node_weak_unref(ref);
+	while((ref = g_async_queue_try_pop(image_loader_queue)) != NULL) bostree_node_weak_unref(file_tree, ref);
 	if(image_loader_thread_currently_loading != NULL && image_loader_thread_currently_loading != new_pos) {
 		g_cancellable_cancel(image_loader_cancellable);
 	}
@@ -1382,8 +1418,10 @@ void unload_image(BOSNode *node) {/*{{{*/
 	}
 }/*}}}*/
 gboolean absolute_image_movement(BOSNode *ref) {/*{{{*/
-	BOSNode *node = bostree_node_weak_unref(ref);
+	D_LOCK(file_tree);
+	BOSNode *node = bostree_node_weak_unref(file_tree, ref);
 	if(!node) {
+		D_UNLOCK(file_tree);
 		return FALSE;
 	}
 
@@ -1414,7 +1452,11 @@ gboolean absolute_image_movement(BOSNode *ref) {/*{{{*/
 	}
 
 	// Check which images have to be loaded
-	current_file_node = node;
+	if(current_file_node != NULL) {
+		bostree_node_weak_unref(file_tree, current_file_node);
+	}
+	current_file_node = bostree_node_weak_ref(node);
+	D_UNLOCK(file_tree);
 
 	// If the new image has not been loaded yet, display an information message
 	if(CURRENT_FILE->image_surface == NULL) {
@@ -1455,51 +1497,66 @@ gboolean absolute_image_movement(BOSNode *ref) {/*{{{*/
 }/*}}}*/
 void relative_image_movement(ptrdiff_t movement) {/*{{{*/
 	// Calculate new position
+	D_LOCK(file_tree);
 	size_t count = bostree_node_count(file_tree);
 	ptrdiff_t pos = bostree_rank(current_file_node) + movement;
 	while(pos < 0) {
 		pos += count;
 	}
 	pos %= count;
+	BOSNode *target = bostree_node_weak_ref(bostree_select(file_tree, pos));
+	D_UNLOCK(file_tree);
 
-	absolute_image_movement(bostree_node_weak_ref(bostree_select(file_tree, pos)));
+	absolute_image_movement(target);
 }/*}}}*/
 void transform_current_image(cairo_matrix_t *transformation) {/*{{{*/
+	D_LOCK(file_tree);
 	if(CURRENT_FILE->image_surface == NULL) {
 		// Image not loaded yet. Abort.
+		D_UNLOCK(file_tree);
 		return;
 	}
+	cairo_surface_t *old_surface = cairo_surface_reference(CURRENT_FILE->image_surface);
+	D_UNLOCK(file_tree);
 
-	double sx = cairo_image_surface_get_width(CURRENT_FILE->image_surface);
-	double sy = cairo_image_surface_get_height(CURRENT_FILE->image_surface);
+	double sx = cairo_image_surface_get_width(old_surface);
+	double sy = cairo_image_surface_get_height(old_surface);
 
 	cairo_matrix_transform_distance(transformation, &sx, &sy);
 
-	cairo_surface_t *surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, fabs(sx), fabs(sy));
-	cairo_t *cr = cairo_create(surface);
+	cairo_surface_t *new_surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, fabs(sx), fabs(sy));
+	cairo_t *cr = cairo_create(new_surface);
 
 	cairo_transform(cr, transformation);
-	cairo_set_source_surface(cr, CURRENT_FILE->image_surface, 0, 0);
+	cairo_set_source_surface(cr, old_surface, 0, 0);
 	cairo_paint(cr);
 
 	cairo_destroy(cr);
-	cairo_surface_t *old_surface = CURRENT_FILE->image_surface;
-	CURRENT_FILE->image_surface = surface;
 	cairo_surface_destroy(old_surface);
 
+	D_LOCK(file_tree);
+	if(CURRENT_FILE->image_surface == old_surface) {
+		cairo_surface_destroy(old_surface);
+	}
+	CURRENT_FILE->image_surface = new_surface;
 	current_image_drawn = FALSE;
 	invalidate_current_scaled_image_surface();
 	CURRENT_FILE->surface_is_out_of_date = TRUE;
+	D_UNLOCK(file_tree);
+
 	set_scale_level_to_fit();
 	image_loaded_handler(NULL);
 }/*}}}*/
 
 gchar *apply_external_image_filter_prepare_command(gchar *command) { /*{{{*/
+		D_LOCK(file_tree);
 		if((CURRENT_FILE->file_type & FILE_TYPE_MEMORY_IMAGE) != 0) {
+			D_UNLOCK(file_tree);
 			return g_strdup(command);
 		}
-
 		gchar *quoted = g_shell_quote(CURRENT_FILE->file_name);
+		D_UNLOCK(file_tree);
+
 		gchar *ins_pos;
 		gchar *retval;
 		if((ins_pos = g_strrstr(command, "$1")) != NULL) {
@@ -1537,7 +1594,7 @@ gboolean apply_external_image_filter_show_output_window(gpointer text) {/*{{{*/
 	gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(output_scroller),
 			GTK_POLICY_AUTOMATIC, GTK_POLICY_AUTOMATIC);
 	GtkWidget *output_window_text = gtk_text_view_new();
-	gtk_container_add(GTK_CONTAINER(output_scroller), output_window_text); 
+	gtk_container_add(GTK_CONTAINER(output_scroller), output_window_text);
 	gtk_text_view_set_editable(GTK_TEXT_VIEW(output_window_text), FALSE);
 
 	gsize output_text_length;
@@ -1546,7 +1603,7 @@ gboolean apply_external_image_filter_show_output_window(gpointer text) {/*{{{*/
 			output_text, output_text_length);
 	g_free(output_text);
 	gtk_widget_show_all(output_window);
-	
+
 	g_free(text);
 
 	return FALSE;
@@ -1560,18 +1617,22 @@ cairo_status_t apply_external_image_filter_thread_callback(void *closure, const 
 	}
 }/*}}}*/
 gpointer apply_external_image_filter_image_writer_thread(gpointer data) {/*{{{*/
-	cairo_surface_t *surface = cairo_surface_reference(CURRENT_FILE->image_surface);
+	D_LOCK(file_tree);
+	cairo_surface_t *surface = CURRENT_FILE->image_surface;
+	if(!surface) {
+		close(*(gint *)data);
+		return NULL;
+	}
+	surface = cairo_surface_reference(surface);
+	D_UNLOCK(file_tree);
+
 	cairo_surface_write_to_png_stream(surface, apply_external_image_filter_thread_callback, data);
 	close(*(gint *)data);
 	cairo_surface_destroy(surface);
 	return NULL;
 }/*}}}*/
 gboolean apply_external_image_filter_success_callback(gpointer user_data) {/*{{{*/
-	cairo_surface_t *old_surface = CURRENT_FILE->image_surface;
-	CURRENT_FILE->image_surface = (cairo_surface_t *)user_data;
-	CURRENT_FILE->surface_is_out_of_date = TRUE;
-	cairo_surface_destroy(old_surface);
-
+	invalidate_current_scaled_image_surface();
 	set_scale_level_to_fit();
 	image_loaded_handler("External command succeeded.");
 	gtk_widget_queue_draw(GTK_WIDGET(main_window));
@@ -1609,7 +1670,7 @@ void apply_external_image_filter(gchar *external_filter) {/*{{{*/
 		GPid child_pid;
 		gint child_stdin;
 		gint child_stdout;
-		BOSNode *current_file_node_at_start = current_file_node;
+		BOSNode *current_file_node_at_start = bostree_node_weak_ref(current_file_node);
 		if(!g_spawn_async_with_pipes(NULL, argv, NULL,
 			// In win32, the G_SPAWN_DO_NOT_REAP_CHILD is required to get the process handle
 			#ifdef _WIN32
@@ -1665,15 +1726,24 @@ void apply_external_image_filter(gchar *external_filter) {/*{{{*/
 						g_clear_error(&error_pointer);
 					}
 					else {
-						if(current_file_node_at_start == current_file_node) {
+						D_LOCK(file_tree);
+						if(bostree_node_weak_unref(file_tree, current_file_node_at_start) == current_file_node) {
 							cairo_surface_t *surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, gdk_pixbuf_get_width(pixbuf), gdk_pixbuf_get_height(pixbuf));
 							cairo_t *sf_cr = cairo_create(surface);
 							gdk_cairo_set_source_pixbuf(sf_cr, pixbuf, 0, 0);
 							cairo_paint(sf_cr);
 							cairo_destroy(sf_cr);
 
-							g_idle_add(apply_external_image_filter_success_callback, surface);
+							cairo_surface_t *old_surface = CURRENT_FILE->image_surface;
+							CURRENT_FILE->image_surface = surface;
+							CURRENT_FILE->surface_is_out_of_date = TRUE;
+							if(old_surface) {
+								cairo_surface_destroy(old_surface);
+							}
+
+							g_idle_add(apply_external_image_filter_success_callback, NULL);
 						}
+						D_UNLOCK(file_tree);
 					}
 
 					g_object_unref(loader);
@@ -1700,7 +1770,9 @@ gpointer apply_external_image_filter_thread(gpointer external_filter_ptr) {/*{{{
 }/*}}}*/
 
 void hardlink_current_image() {/*{{{*/
-	if((CURRENT_FILE->file_type & FILE_TYPE_MEMORY_IMAGE) != 0) {
+	BOSNode *the_file = bostree_node_weak_ref(current_file_node);
+
+	if((FILE(the_file)->file_type & FILE_TYPE_MEMORY_IMAGE) != 0) {
 		g_mkdir("./.pqiv-select", 0755);
 		gchar *store_target = NULL;
 		do {
@@ -1715,7 +1787,7 @@ void hardlink_current_image() {/*{{{*/
 		}
 		while(g_file_test(store_target, G_FILE_TEST_EXISTS));
 
-		if(cairo_surface_write_to_png(CURRENT_FILE->image_surface, store_target) == CAIRO_STATUS_SUCCESS) {
+		if(cairo_surface_write_to_png(FILE(the_file)->image_surface, store_target) == CAIRO_STATUS_SUCCESS) {
 			gchar *info_text = g_strdup_printf("Stored what you see into %s", store_target);
 			update_info_text(info_text);
 			g_free(info_text);
@@ -1725,10 +1797,11 @@ void hardlink_current_image() {/*{{{*/
 		}
 
 		g_free(store_target);
+		bostree_node_weak_unref(file_tree, the_file);
 		return;
 	}
 
-	gchar *current_file_basename = g_path_get_basename(CURRENT_FILE->file_name);
+	gchar *current_file_basename = g_path_get_basename(FILE(the_file)->file_name);
 	gchar *link_target = g_strdup_printf("./.pqiv-select/%s", current_file_basename);
 
 	if(g_file_test(link_target, G_FILE_TEST_EXISTS)) {
@@ -1736,15 +1809,16 @@ void hardlink_current_image() {/*{{{*/
 		g_free(current_file_basename);
 		update_info_text("File already exists in .pqiv-select");
 		gtk_widget_queue_draw(GTK_WIDGET(main_window));
+		bostree_node_weak_unref(file_tree, the_file);
 		return;
 	}
 
 	g_mkdir("./.pqiv-select", 0755);
 	if(
 		#ifdef _WIN32
-			CreateHardLink(link_target, CURRENT_FILE->file_name, NULL) == 0
+			CreateHardLink(link_target, FILE(the_file)->file_name, NULL) == 0
 		#else
-			link(CURRENT_FILE->file_name, link_target) != 0
+			link(FILE(the_file)->file_name, link_target) != 0
 		#endif
 	) {
 		gchar *dot = g_strrstr(link_target, ".");
@@ -1752,7 +1826,7 @@ void hardlink_current_image() {/*{{{*/
 			*dot = 0;
 		}
 		gchar *store_target = g_strdup_printf("%s.png", link_target);
-		if(cairo_surface_write_to_png(CURRENT_FILE->image_surface, store_target) == CAIRO_STATUS_SUCCESS) {
+		if(cairo_surface_write_to_png(FILE(the_file)->image_surface, store_target) == CAIRO_STATUS_SUCCESS) {
 			gchar *info_text = g_strdup_printf("Failed to link file, but stored what you see into %s", store_target);
 			update_info_text(info_text);
 			g_free(info_text);
@@ -1767,6 +1841,7 @@ void hardlink_current_image() {/*{{{*/
 	}
 	g_free(link_target);
 	g_free(current_file_basename);
+	bostree_node_weak_unref(file_tree, the_file);
 	gtk_widget_queue_draw(GTK_WIDGET(main_window));
 }/*}}}*/
 gboolean slideshow_timeout_callback(gpointer user_data) {/*{{{*/
@@ -1887,6 +1962,7 @@ void do_jump_dialog() { /* {{{ */
 	// Build list for searching
 	GtkListStore *search_list = gtk_list_store_new(3, G_TYPE_LONG, G_TYPE_STRING, G_TYPE_POINTER);
 	size_t id = 1;
+	D_LOCK(file_tree);
 	for(BOSNode *node = bostree_select(file_tree, 0); node; node = bostree_next_node(node)) {
 		gtk_list_store_append(search_list, &search_list_iter);
 
@@ -1904,6 +1980,7 @@ void do_jump_dialog() { /* {{{ */
 			-1);
 		g_free(display_name);
 	}
+	D_UNLOCK(file_tree);
 
 	GtkTreeModel *search_list_filter = gtk_tree_model_filter_new(GTK_TREE_MODEL(search_list), NULL);
 	gtk_tree_model_filter_set_visible_func(GTK_TREE_MODEL_FILTER(search_list_filter),
@@ -1972,7 +2049,7 @@ void do_jump_dialog() { /* {{{ */
 		GValue col_data;
 		memset(&col_data, 0, sizeof(GValue));
 		gtk_tree_model_get_value(GTK_TREE_MODEL(search_list_filter), &iter, 2, &col_data);
-		bostree_node_weak_unref((BOSNode *)g_value_get_pointer(&col_data));
+		bostree_node_weak_unref(file_tree, (BOSNode *)g_value_get_pointer(&col_data));
 		g_value_unset(&col_data);
 	}
 
@@ -1988,6 +2065,8 @@ inline void queue_draw() {/*{{{*/
 	}
 }/*}}}*/
 void update_info_text(const gchar *action) {/*{{{*/
+	D_LOCK(file_tree);
+
 	gchar *file_name;
 	if((CURRENT_FILE->file_type & FILE_TYPE_MEMORY_IMAGE) != 0) {
 		file_name = g_strdup_printf("-");
@@ -2009,6 +2088,7 @@ void update_info_text(const gchar *action) {/*{{{*/
 
 		g_free(file_name);
 		g_free(display_name);
+		D_UNLOCK(file_tree);
 		return;
 	}
 
@@ -2075,6 +2155,7 @@ void update_info_text(const gchar *action) {/*{{{*/
 			g_string_append_c(new_window_title, '$');
 		}
 	}
+	D_UNLOCK(file_tree);
 	g_free(file_name);
 	g_free(display_name);
 	gtk_window_set_title(GTK_WINDOW(main_window), new_window_title->str);
@@ -2107,7 +2188,13 @@ gboolean window_draw_callback(GtkWidget *widget, cairo_t *cr_arg, gpointer user_
 	// Draw image
 	int x = 0;
 	int y = 0;
-	if(CURRENT_FILE->image_surface != NULL) {
+	D_LOCK(file_tree);
+	cairo_surface_t *current_image_surface = CURRENT_FILE->image_surface;
+	if(current_image_surface) {
+		cairo_surface_reference(current_image_surface);
+	}
+	D_UNLOCK(file_tree);
+	if(current_image_surface != NULL) {
 		// Create an image surface to draw to first
 		// We use this for fading and to display the last image if the current image is
 		// still unavailable
@@ -2126,8 +2213,8 @@ gboolean window_draw_callback(GtkWidget *widget, cairo_t *cr_arg, gpointer user_
 		cairo_restore(cr);
 
 		// Draw the image & background pattern
-		int image_width = cairo_image_surface_get_width(CURRENT_FILE->image_surface);
-		int image_height = cairo_image_surface_get_height(CURRENT_FILE->image_surface);
+		int image_width = cairo_image_surface_get_width(current_image_surface);
+		int image_height = cairo_image_surface_get_height(current_image_surface);
 
 		if(option_scale > 0 || main_window_in_fullscreen) {
 			x = (main_window_width - current_scale_level * image_width) / 2;
@@ -2170,7 +2257,7 @@ gboolean window_draw_callback(GtkWidget *widget, cairo_t *cr_arg, gpointer user_
 				cairo_restore(cr_scale);
 			}
 
-			cairo_set_source_surface(cr_scale, CURRENT_FILE->image_surface, 0, 0);
+			cairo_set_source_surface(cr_scale, current_image_surface, 0, 0);
 			cairo_paint(cr_scale);
 
 			if(!option_lowmem) {
@@ -2230,6 +2317,8 @@ gboolean window_draw_callback(GtkWidget *widget, cairo_t *cr_arg, gpointer user_
 		}
 
 		current_image_drawn = TRUE;
+
+		cairo_surface_destroy(current_image_surface); // See top of function
 	}
 	else {
 		// The image has not yet been loaded. If available, draw from the
@@ -2295,6 +2384,7 @@ gboolean window_draw_callback(GtkWidget *widget, cairo_t *cr_arg, gpointer user_
 	}/*}}}*/
 #endif
 void set_scale_level_to_fit() {/*{{{*/
+	D_LOCK(file_tree);
 	if(CURRENT_FILE->image_surface != NULL) {
 		if(!current_image_drawn) {
 			scale_override = FALSE;
@@ -2334,6 +2424,7 @@ void set_scale_level_to_fit() {/*{{{*/
 			invalidate_current_scaled_image_surface();
 		}
 	}
+	D_UNLOCK(file_tree);
 }
 gboolean set_scale_level_to_fit_callback(gpointer user_data) {
 	set_scale_level_to_fit();
@@ -2904,12 +2995,14 @@ gboolean window_state_callback(GtkWidget *widget, GdkEventWindowState *event, gp
 			// Move the window back to the center of the screen.  We must do
 			// this manually, at least Mutter ignores the position hint at this
 			// point.
+			D_LOCK(file_tree);
 			if(CURRENT_FILE->image_surface != NULL) {
 				gtk_window_move(main_window,
 					screen_geometry.x + (screen_geometry.width - cairo_image_surface_get_width(CURRENT_FILE->image_surface) * current_scale_level) / 2,
 					screen_geometry.y + (screen_geometry.height - cairo_image_surface_get_height(CURRENT_FILE->image_surface) * current_scale_level) / 2
 				);
 			}
+			D_UNLOCK(file_tree);
 			gtk_window_set_position(main_window, GTK_WIN_POS_CENTER_ALWAYS);
 
 			GdkWindow *window = gtk_widget_get_window(GTK_WIDGET(main_window));
@@ -3045,7 +3138,7 @@ void create_window() { /*{{{*/
 	gtk_widget_set_events(GTK_WIDGET(main_window),
 		GDK_EXPOSURE_MASK | GDK_SCROLL_MASK | GDK_BUTTON_MOTION_MASK |
 		GDK_BUTTON_PRESS_MASK | GDK_BUTTON_RELEASE_MASK | GDK_KEY_PRESS_MASK |
-		GDK_PROPERTY_CHANGE_MASK | GDK_KEY_RELEASE_MASK | GDK_STRUCTURE_MASK); 
+		GDK_PROPERTY_CHANGE_MASK | GDK_KEY_RELEASE_MASK | GDK_STRUCTURE_MASK);
 
 	// Initialize the screen geometry variable to the primary screen
 	// Useful if no WM is present
@@ -3106,7 +3199,7 @@ gpointer load_images_thread(gpointer user_data) {/*{{{*/
 
 	if(bostree_node_count(file_tree) == 0) {
 		g_printerr("No images left to display.\n");
-		exit(0);
+		exit(1);
 	}
 
 	return NULL;
