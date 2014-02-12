@@ -307,7 +307,7 @@ gchar keyboard_aliases[127] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 gint option_scale = 1;
 gboolean scale_override = FALSE;
 const gchar *option_window_title = "pqiv: $FILENAME ($WIDTHx$HEIGHT) $ZOOM% [$IMAGE_NUMBER/$IMAGE_COUNT]";
-guint option_slideshow_interval = 5;
+gdouble option_slideshow_interval = 5.;
 gboolean option_hide_info_box = FALSE;
 gboolean option_start_fullscreen = FALSE;
 gdouble option_initial_scale = 1.0;
@@ -343,7 +343,7 @@ struct {
 GOptionEntry options[] = {
 	{ "keyboard-alias", 'a', 0, G_OPTION_ARG_CALLBACK, (gpointer)&options_keyboard_alias_set_callback, "Define n as a keyboard alias for f", "nfnf.." },
 	{ "transparent-background", 'c', 0, G_OPTION_ARG_NONE, &option_transparent_background, "Borderless transparent window", NULL },
-	{ "slideshow-interval", 'd', 0, G_OPTION_ARG_INT, &option_slideshow_interval, "Set slideshow interval", "n" },
+	{ "slideshow-interval", 'd', 0, G_OPTION_ARG_DOUBLE, &option_slideshow_interval, "Set slideshow interval", "n" },
 	{ "fullscreen", 'f', 0, G_OPTION_ARG_NONE, &option_start_fullscreen, "Start in fullscreen mode", NULL },
 	{ "fade", 'F', 0, G_OPTION_ARG_NONE, (gpointer)&option_fading, "Fade between images", NULL },
 	{ "hide-info-box", 'i', 0, G_OPTION_ARG_NONE, &option_hide_info_box, "Initially hide the info box", NULL },
@@ -2572,12 +2572,12 @@ gboolean window_key_press_callback(GtkWidget *widget, GdkEventKey *event, gpoint
 		case GDK_KEY_plus:
 		case GDK_KEY_KP_Add:
 			if(event->state & GDK_CONTROL_MASK) {
-				option_slideshow_interval += 1;
+				option_slideshow_interval = (double)((int)option_slideshow_interval + 1);
 				if(slideshow_timeout_id > 0) {
 					g_source_remove(slideshow_timeout_id);
 					slideshow_timeout_id = g_timeout_add(option_slideshow_interval * 1000, slideshow_timeout_callback, NULL);
 				}
-				gchar *info_text = g_strdup_printf("Slideshow interval set to %d seconds", option_slideshow_interval);
+				gchar *info_text = g_strdup_printf("Slideshow interval set to %d seconds", (int)option_slideshow_interval);
 				update_info_text(info_text);
 				gtk_widget_queue_draw(GTK_WIDGET(main_window));
 				g_free(info_text);
@@ -2604,14 +2604,14 @@ gboolean window_key_press_callback(GtkWidget *widget, GdkEventKey *event, gpoint
 		case GDK_KEY_minus:
 		case GDK_KEY_KP_Subtract:
 			if(event->state & GDK_CONTROL_MASK) {
-				if(option_slideshow_interval >= 2) {
-					option_slideshow_interval -= 1;
+				if(option_slideshow_interval >= 2.) {
+					option_slideshow_interval = (double)((int)option_slideshow_interval - 1);
 				}
 				if(slideshow_timeout_id > 0) {
 					g_source_remove(slideshow_timeout_id);
 					slideshow_timeout_id = g_timeout_add(option_slideshow_interval * 1000, slideshow_timeout_callback, NULL);
 				}
-				gchar *info_text = g_strdup_printf("Slideshow interval set to %d seconds", option_slideshow_interval);
+				gchar *info_text = g_strdup_printf("Slideshow interval set to %d seconds", (int)option_slideshow_interval);
 				update_info_text(info_text);
 				gtk_widget_queue_draw(GTK_WIDGET(main_window));
 				g_free(info_text);

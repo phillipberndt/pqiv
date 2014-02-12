@@ -104,6 +104,7 @@ pqiv 2.2 (work in progress)
  * Accept URLs as command line arguments
  * Revived -r for reading additional files from stdin (by J.P. Reed)
  * Display the help message if invoked without parameters (by J.P. Reed)
+ * Accept floating point slideshow intervals on the command line
 
 pqiv 2.1.1
  * Bugfix: Fixed handling of non-image command line arguments
