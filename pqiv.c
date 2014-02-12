@@ -1312,7 +1312,11 @@ gboolean image_loader_load_single(BOSNode *node, gboolean called_from_main) {/*{
 		D_LOCK(file_tree);
 		if(node == current_file_node) {
 			current_file_node = next_file();
-			if(current_file_node != node) {
+			if(current_file_node == node) {
+				bostree_node_weak_unref(file_tree, current_file_node);
+				current_file_node = NULL;
+			}
+			else {
 				queue_image_load(current_file_node);
 				current_file_node = bostree_node_weak_ref(current_file_node);
 			}
