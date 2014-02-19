@@ -106,6 +106,7 @@ pqiv 2.2 (work in progress)
  * Display the help message if invoked without parameters (by J.P. Reed)
  * Accept floating point slideshow intervals on the command line
  * Update the info box with the current numbers if (new) images are (un)loaded
+ * Added --max-depth=n to limit how deep directories are searched
 
 pqiv 2.1.1
  * Bugfix: Fixed handling of non-image command line arguments

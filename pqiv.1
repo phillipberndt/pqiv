@@ -45,6 +45,11 @@ might end up not being the first one in the final file list. As with the
 .I --watch-directories
 option, the info box does not automatically update when new images are added.
 .TP
+.B --max-depth=n
+Descend at most n levels of directories below the command line arguments. Like
+in find, passing 0 disables recursion. Negative numbers mean infinite recursion
+and are the default.
+.TP
 .B -n, --sort
 Sort files in natural order
 .TP

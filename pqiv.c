@@ -324,6 +324,7 @@ gboolean option_lazy_load = FALSE;
 gboolean option_lowmem = FALSE;
 gboolean option_addl_from_stdin = FALSE;
 double option_fading_duration = .5;
+gint option_max_depth = -1;
 
 double fading_current_alpha_stage = 0;
 gint64 fading_initial_time;
@@ -332,7 +333,7 @@ gboolean options_keyboard_alias_set_callback(const gchar *option_name, const gch
 gboolean option_window_position_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error);
 gboolean option_scale_level_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error);
 typedef enum { PARAMETER, RECURSION, INOTIFY } load_images_state_t;
-void load_images_handle_parameter(char *param, load_images_state_t state);
+void load_images_handle_parameter(char *param, load_images_state_t state, gint depth);
 
 struct {
 	gint x;
@@ -371,6 +372,7 @@ GOptionEntry options[] = {
 	{ "disable-scaling", 0, G_OPTION_FLAG_NO_ARG, G_OPTION_ARG_CALLBACK, (gpointer)&option_scale_level_callback, "Disable scaling of images", NULL },
 	{ "fade-duration", 0, 0, G_OPTION_ARG_DOUBLE, &option_fading_duration, "Adjust fades' duration", "SECONDS" },
 	{ "low-memory", 0, 0, G_OPTION_ARG_NONE, &option_lowmem, "Try to keep memory usage to a minimum", NULL },
+	{ "max-depth", 0, 0, G_OPTION_ARG_INT, &option_max_depth, "Descend at most LEVELS levels of directories below the command line arguments", "LEVELS" },
 	{ "shuffle", 0, 0, G_OPTION_ARG_NONE, &option_shuffle, "Shuffle files", NULL },
 	{ "watch-directories", 0, 0, G_OPTION_ARG_NONE, &option_watch_directories, "Watch directories for new files", NULL },
 
@@ -396,6 +398,9 @@ const char *long_description_text = ("Keyboard & Mouse bindings:\n"
 "  a                                  Hardlink current image to ./.pqiv-select\n"
 );
 
+typedef struct {
+	gint depth;
+} directory_watch_options_t;
 
 void set_scale_level_to_fit();
 void info_text_queue_redraw();
@@ -656,7 +661,7 @@ void parse_command_line(int *argc, char *argv[]) {/*{{{*/
 
 	g_option_context_free(parser);
 }/*}}}*/
-void load_images_directory_watch_callback(GFileMonitor *monitor, GFile *file, GFile *other_file, GFileMonitorEvent event_type, gpointer user_data) {/*{{{*/
+void load_images_directory_watch_callback(GFileMonitor *monitor, GFile *file, GFile *other_file, GFileMonitorEvent event_type, directory_watch_options_t *options) {/*{{{*/
 	// The current image holds its own file watch, so we do not have to react
 	// to changes.
 	if(event_type == G_FILE_MONITOR_EVENT_CREATED) {
@@ -668,7 +673,7 @@ void load_images_directory_watch_callback(GFileMonitor *monitor, GFile *file, GF
 			if(g_file_test(name, G_FILE_TEST_IS_REGULAR | G_FILE_TEST_IS_SYMLINK | G_FILE_TEST_IS_DIR)) {
 				// Use the standard loading mechanism. If directory watches are enabled,
 				// the temporary variables used therein are not freed.
-				load_images_handle_parameter(name, INOTIFY);
+				load_images_handle_parameter(name, INOTIFY, options->depth);
 			}
 			g_free(name);
 		}
@@ -691,7 +696,7 @@ void load_images_directory_watch_callback(GFileMonitor *monitor, GFile *file, GF
 		info_text_queue_redraw();
 	}
 }/*}}}*/
-void load_images_handle_parameter(char *param, load_images_state_t state) {/*{{{*/
+void load_images_handle_parameter(char *param, load_images_state_t state, gint depth) {/*{{{*/
 	file_t *file;
 
 	// Check for memory image
@@ -717,6 +722,11 @@ void load_images_handle_parameter(char *param, load_images_state_t state) {/*{{{
 	else {
 		// Recurse into directories
 		if(g_file_test(param, G_FILE_TEST_IS_DIR) == TRUE) {
+			if(option_max_depth >= 0 && option_max_depth <= depth) {
+				// Maximum depth exceeded, abort.
+				return;
+			}
+
 			// Check for recursion
 			char abs_path[PATH_MAX];
 			if(
@@ -759,7 +769,7 @@ void load_images_handle_parameter(char *param, load_images_state_t state) {/*{{{
 					break;
 				}
 				gchar *dir_entry_full = g_strdup_printf("%s%s%s", param, g_str_has_suffix(param, G_DIR_SEPARATOR_S) ? "" : G_DIR_SEPARATOR_S, dir_entry);
-				load_images_handle_parameter(dir_entry_full, RECURSION);
+				load_images_handle_parameter(dir_entry_full, RECURSION, depth + 1);
 				g_free(dir_entry_full);
 			}
 			g_dir_close(dir_ptr);
@@ -772,7 +782,9 @@ void load_images_handle_parameter(char *param, load_images_state_t state) {/*{{{
 				GFile *file_ptr = g_file_new_for_path(param);
 				GFileMonitor *directory_monitor = g_file_monitor_directory(file_ptr, G_FILE_MONITOR_NONE, NULL, NULL);
 				if(directory_monitor != NULL) {
-					g_signal_connect(directory_monitor, "changed", G_CALLBACK(load_images_directory_watch_callback), NULL);
+					directory_watch_options_t *options = g_new0(directory_watch_options_t, 1);
+					options->depth = depth;
+					g_signal_connect(directory_monitor, "changed", G_CALLBACK(load_images_directory_watch_callback), options);
 					// We do not store the directory_monitor anywhere, because it is not used explicitly
 					// again. If this should ever be needed, this is the place where this should be done.
 				}
@@ -892,7 +904,7 @@ void load_images(int *argc, char *argv[]) {/*{{{*/
 
 	// Load the images from the remaining parameters
 	for(int i=1; i<*argc; i++) {
-		load_images_handle_parameter(argv[i], PARAMETER);
+		load_images_handle_parameter(argv[i], PARAMETER, 0);
 	}
 
 	if(option_addl_from_stdin) {
@@ -916,7 +928,7 @@ void load_images(int *argc, char *argv[]) {/*{{{*/
 			}
 
 			buffer[line_terminator_pos] = 0;
-			load_images_handle_parameter(buffer, PARAMETER);
+			load_images_handle_parameter(buffer, PARAMETER, 0);
 			g_free(buffer);
 		}
 		g_io_channel_unref(stdin_reader);
