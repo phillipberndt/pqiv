@@ -750,11 +750,6 @@ void load_images_handle_parameter(char *param, load_images_state_t state) {/*{{{
 					break;
 				}
 				gchar *dir_entry_full = g_strdup_printf("%s%s%s", param, g_str_has_suffix(param, G_DIR_SEPARATOR_S) ? "" : G_DIR_SEPARATOR_S, dir_entry);
-				if(dir_entry_full == NULL) {
-					g_printerr("Failed to allocate memory for file name loading\n");
-					g_dir_close(dir_ptr);
-					return;
-				}
 				load_images_handle_parameter(dir_entry_full, RECURSION);
 				g_free(dir_entry_full);
 			}
@@ -792,11 +787,6 @@ void load_images_handle_parameter(char *param, load_images_state_t state) {/*{{{
 		// Prepare file structure
 		file = g_new0(file_t, 1);
 		file->file_name = g_strdup(param);
-		if(file->file_name == NULL) {
-			g_free(file);
-			g_printerr("Failed to allocate memory for file name loading\n");
-			return;
-		}
 	}
 
 	// Add image to images list/tree
@@ -1198,13 +1188,6 @@ gboolean image_loader_load_single(BOSNode *node, gboolean called_from_main) {/*{
 
 				GdkPixbufLoader *loader = gdk_pixbuf_loader_new();
 				guchar *buffer = g_malloc(IMAGE_LOADER_BUFFER_SIZE);
-				if(buffer == NULL) {
-					g_printerr("Failed to allocate memory to load image\n");
-					g_object_unref(loader);
-					g_object_unref(input_file_stream);
-					g_object_unref(input_file);
-					return FALSE;
-				}
 				while(TRUE) {
 					gssize bytes_read = g_input_stream_read(G_INPUT_STREAM(input_file_stream), buffer, IMAGE_LOADER_BUFFER_SIZE, image_loader_cancellable, &error_pointer);
 					if(bytes_read == 0) {
