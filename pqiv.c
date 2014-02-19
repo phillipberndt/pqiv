@@ -237,6 +237,9 @@ BOSNode *previous_file() {
 	return ret ? ret : bostree_select(file_tree, bostree_node_count(file_tree) - 1);
 }
 
+// The node to be displayed first, used in conjunction with --browse
+BOSNode *browse_startup_node = NULL;
+
 // When loading additional images via the -r option, we need to know whether the
 // image loader initialization succeeded, because we can't just cancel if it does
 // not (it checks if any image is loadable and fails if not)
@@ -325,6 +328,7 @@ gboolean option_lowmem = FALSE;
 gboolean option_addl_from_stdin = FALSE;
 double option_fading_duration = .5;
 gint option_max_depth = -1;
+gboolean option_browse = FALSE;
 
 double fading_current_alpha_stage = 0;
 gint64 fading_initial_time;
@@ -332,7 +336,7 @@ gint64 fading_initial_time;
 gboolean options_keyboard_alias_set_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error);
 gboolean option_window_position_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error);
 gboolean option_scale_level_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error);
-typedef enum { PARAMETER, RECURSION, INOTIFY } load_images_state_t;
+typedef enum { PARAMETER, RECURSION, INOTIFY, BROWSE_ORIGINAL_PARAMETER } load_images_state_t;
 void load_images_handle_parameter(char *param, load_images_state_t state, gint depth);
 
 struct {
@@ -369,6 +373,7 @@ GOptionEntry options[] = {
 	{ "command-8", '8', G_OPTION_FLAG_HIDDEN, G_OPTION_ARG_STRING, &external_image_filter_commands[7], NULL, NULL },
 	{ "command-9", '9', G_OPTION_FLAG_HIDDEN, G_OPTION_ARG_STRING, &external_image_filter_commands[8], NULL, NULL },
 
+	{ "browse", 0, 0, G_OPTION_ARG_NONE, &option_browse, "For each command line argument, additionally load all images from the image's directory", NULL },
 	{ "disable-scaling", 0, G_OPTION_FLAG_NO_ARG, G_OPTION_ARG_CALLBACK, (gpointer)&option_scale_level_callback, "Disable scaling of images", NULL },
 	{ "fade-duration", 0, 0, G_OPTION_ARG_DOUBLE, &option_fading_duration, "Adjust fades' duration", "SECONDS" },
 	{ "low-memory", 0, 0, G_OPTION_ARG_NONE, &option_lowmem, "Try to keep memory usage to a minimum", NULL },
@@ -720,6 +725,22 @@ void load_images_handle_parameter(char *param, load_images_state_t state, gint d
 		// We will add the file to the file tree below
 	}
 	else {
+		// If the browse option is enabled, add the containing directory's images instead of the parameter itself
+		gchar *original_parameter = NULL;
+		if(state == PARAMETER && option_browse && g_file_test(param, G_FILE_TEST_IS_SYMLINK | G_FILE_TEST_IS_REGULAR) == TRUE && option_max_depth != 0) {
+			// Handle the actual parameter first, such that it is displayed
+			// first (unless sorting is enabled)
+			load_images_handle_parameter(param, BROWSE_ORIGINAL_PARAMETER, 0);
+
+			// Decrease depth such that the following recursive invocations
+			// will again have depth 0 (this is the base directory, after all)
+			depth -= 1;
+
+			// Replace param with the containing directory's name
+			original_parameter = param;
+			param = g_path_get_dirname(param);
+		}
+
 		// Recurse into directories
 		if(g_file_test(param, G_FILE_TEST_IS_DIR) == TRUE) {
 			if(option_max_depth >= 0 && option_max_depth <= depth) {
@@ -737,12 +758,18 @@ void load_images_handle_parameter(char *param, load_images_state_t state, gint d
 				#endif
 			) {
 				if(bostree_lookup(directory_tree, abs_path) != NULL) {
+					if(original_parameter != NULL) {
+						g_free(param);
+					}
 					return;
 				}
 				bostree_insert(directory_tree, g_strdup(abs_path), NULL);
 			}
 			else {
 				// Consider this an error
+				if(original_parameter != NULL) {
+					g_free(param);
+				}
 				g_printerr("Probably too many level of symlinks. Will not traverse into: %s\n", param);
 				return;
 			}
@@ -761,6 +788,9 @@ void load_images_handle_parameter(char *param, load_images_state_t state, gint d
 				if(state == PARAMETER) {
 					g_printerr("Failed to open directory: %s\n", param);
 				}
+				if(original_parameter != NULL) {
+					g_free(param);
+				}
 				return;
 			}
 			while(TRUE) {
@@ -769,7 +799,10 @@ void load_images_handle_parameter(char *param, load_images_state_t state, gint d
 					break;
 				}
 				gchar *dir_entry_full = g_strdup_printf("%s%s%s", param, g_str_has_suffix(param, G_DIR_SEPARATOR_S) ? "" : G_DIR_SEPARATOR_S, dir_entry);
-				load_images_handle_parameter(dir_entry_full, RECURSION, depth + 1);
+				if(!(original_parameter != NULL && g_strcmp0(dir_entry_full, original_parameter) == 0)) {
+					// Skip if we are in --browse mode and this is the file which we have already added above.
+					load_images_handle_parameter(dir_entry_full, RECURSION, depth + 1);
+				}
 				g_free(dir_entry_full);
 			}
 			g_dir_close(dir_ptr);
@@ -791,11 +824,14 @@ void load_images_handle_parameter(char *param, load_images_state_t state, gint d
 				g_object_unref(file_ptr);
 			}
 
+			if(original_parameter != NULL) {
+				g_free(param);
+			}
 			return;
 		}
 
 		// Filter based on formats supported by GdkPixbuf
-		if(state != PARAMETER) {
+		if(state != PARAMETER && state != BROWSE_ORIGINAL_PARAMETER) {
 			gchar *param_lowerc = g_utf8_strdown(param, -1);
 			load_images_file_filter_info->filename = load_images_file_filter_info->display_name = param_lowerc;
 			if(gtk_file_filter_filter(load_images_file_filter, load_images_file_filter_info) == FALSE) {
@@ -816,6 +852,7 @@ void load_images_handle_parameter(char *param, load_images_state_t state, gint d
 	D_LOCK(file_tree);
 	BOSNode *old_prev = NULL;
 	BOSNode *old_next = NULL;
+	BOSNode *new_node = NULL;
 	if((option_lazy_load || state == INOTIFY) && current_file_node != NULL) {
 		old_prev = previous_file();
 		old_next = next_file();
@@ -823,10 +860,13 @@ void load_images_handle_parameter(char *param, load_images_state_t state, gint d
 	if(!option_sort) {
 		unsigned int *index = (unsigned int *)g_malloc(sizeof(unsigned int));
 		*index = option_shuffle ? g_random_int() : bostree_node_count(file_tree);
-		bostree_insert(file_tree, (void *)index, file);
+		new_node = bostree_insert(file_tree, (void *)index, file);
 	}
 	else {
-		bostree_insert(file_tree, file->file_name, file);
+		new_node = bostree_insert(file_tree, file->file_name, file);
+	}
+	if(state == BROWSE_ORIGINAL_PARAMETER && browse_startup_node == NULL) {
+		browse_startup_node = bostree_node_weak_ref(new_node);
 	}
 	if((option_lazy_load || state == INOTIFY) && current_file_node != NULL) {
 		// If the previous/next images have shifted, unload the old ones to save memory
@@ -1381,7 +1421,16 @@ gboolean initialize_image_loader() {/*{{{*/
 		image_loader_cancellable = g_cancellable_new();
 	}
 	D_LOCK(file_tree);
-	current_file_node = bostree_select(file_tree, 0);
+	if(browse_startup_node != NULL) {
+		current_file_node = bostree_node_weak_unref(file_tree, browse_startup_node);
+		browse_startup_node = NULL;
+		if(!current_file_node) {
+			current_file_node = bostree_select(file_tree, 0);
+		}
+	}
+	else {
+		current_file_node = bostree_select(file_tree, 0);
+	}
 	if(!current_file_node) {
 		D_UNLOCK(file_tree);
 		return FALSE;

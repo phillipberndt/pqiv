@@ -107,6 +107,8 @@ pqiv 2.2 (work in progress)
  * Accept floating point slideshow intervals on the command line
  * Update the info box with the current numbers if (new) images are (un)loaded
  * Added --max-depth=n to limit how deep directories are searched
+ * Added --browse to load, in addition to images from the command line, also
+   all other images from the containing directories
 
 pqiv 2.1.1
  * Bugfix: Fixed handling of non-image command line arguments
