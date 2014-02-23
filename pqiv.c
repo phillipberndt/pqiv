@@ -269,6 +269,7 @@ cairo_surface_t *last_visible_image_surface = NULL;
 cairo_surface_t *current_scaled_image_surface = NULL;
 
 gchar *current_info_text = NULL;
+cairo_rectangle_int_t current_info_text_bounding_box = { 0, 0, 0, 0 };
 
 
 // Current state of the displayed image and user interaction
@@ -397,6 +398,7 @@ const char *long_description_text = ("Keyboard & Mouse bindings:\n"
 
 
 void set_scale_level_to_fit();
+void info_text_queue_redraw();
 void update_info_text(const char *);
 void queue_draw();
 gboolean main_window_center();
@@ -680,6 +682,10 @@ void load_images_directory_watch_callback(GFileMonitor *monitor, GFile *file, GF
 		}
 		g_free(name);
 		D_UNLOCK(file_tree);
+
+		// Update the info text
+		update_info_text(NULL);
+		info_text_queue_redraw();
 	}
 }/*}}}*/
 void load_images_handle_parameter(char *param, load_images_state_t state) {/*{{{*/
@@ -824,6 +830,16 @@ void load_images_handle_parameter(char *param, load_images_state_t state) {/*{{{
 			g_idle_add(initialize_gui_callback, NULL);
 			gui_initialized = TRUE;
 		}
+	}
+	if(state == INOTIFY) {
+		// If this image was loaded via the INOTIFY handler, we need to update
+		// the info text. We do not update it here for images loaded via the
+		// --lazy-load function (i.e. check for main_window_visible /
+		// gui_initialized), because the high frequency of Xlib calls crashes
+		// the app (with an Xlib resource unavailable error) at least on my
+		// development machine.
+		update_info_text(NULL);
+		info_text_queue_redraw();
 	}
 }/*}}}*/
 int image_tree_integer_compare(const unsigned int *a, const unsigned int *b) {/*{{{*/
@@ -2058,6 +2074,16 @@ inline void queue_draw() {/*{{{*/
 		gtk_widget_queue_draw(GTK_WIDGET(main_window));
 	}
 }/*}}}*/
+inline void info_text_queue_redraw() {/*{{{*/
+	if(!option_hide_info_box) {
+		gtk_widget_queue_draw_area(GTK_WIDGET(main_window),
+			current_info_text_bounding_box.x,
+			current_info_text_bounding_box.y,
+			current_info_text_bounding_box.width,
+			current_info_text_bounding_box.height
+		);
+	}
+}/*}}}*/
 void update_info_text(const gchar *action) {/*{{{*/
 	D_LOCK(file_tree);
 
@@ -2365,6 +2391,13 @@ gboolean window_draw_callback(GtkWidget *widget, cairo_t *cr_arg, gpointer user_
 		}
 
 		cairo_restore(cr_arg);
+
+		// Store where the box was drawn to allow for partial updates of the screen
+		current_info_text_bounding_box.x = (main_window_in_fullscreen == TRUE ? 0 : (x < 0 ? 0 : x)) + 10 - 5;
+		current_info_text_bounding_box.y = (main_window_in_fullscreen == TRUE ? 0 : (y < 0 ? 0 : y)) + 20 -(y2 - y1) - 2;
+		 // Redraw some extra pixels to make sure a wider new box would be covered:
+		current_info_text_bounding_box.width = x2 - x1 + 10 + 30;
+		current_info_text_bounding_box.height = y2 - y1 + 8;
 	}
 
 	return TRUE;
@@ -3187,8 +3220,32 @@ gboolean initialize_gui_callback(gpointer user_data) {/*{{{*/
 	return FALSE;
 }/*}}}*/
 // }}}
+gboolean load_images_thread_update_info_text(gpointer user_data) {/*{{{*/
+	// If the window is already visible and new files have been found, update
+	// the info text every second
+	static gsize last_image_count = 0;
+	if(main_window_visible == TRUE) {
+		G_LOCK(file_tree);
+		gsize image_count = bostree_node_count(file_tree);
+		G_UNLOCK(file_tree);
 
+		if(image_count != last_image_count) {
+			last_image_count = image_count;
+
+			update_info_text(NULL);
+			info_text_queue_redraw();
+		}
+	}
+	return TRUE;
+}/*}}}*/
 gpointer load_images_thread(gpointer user_data) {/*{{{*/
+	guint event_source;
+	if(user_data != NULL) {
+		// Use the info text updater only if this function was called in a separate
+		// thread (--lazy-load option)
+		event_source = g_timeout_add(1000, load_images_thread_update_info_text, NULL);
+	}
+
 	load_images(&global_argc, global_argv);
 
 	if(bostree_node_count(file_tree) == 0) {
@@ -3196,6 +3253,9 @@ gpointer load_images_thread(gpointer user_data) {/*{{{*/
 		exit(1);
 	}
 
+	if(user_data != NULL) {
+		g_source_remove(event_source);
+	}
 	return NULL;
 }/*}}}*/
 
@@ -3223,9 +3283,9 @@ int main(int argc, char *argv[]) {
 	global_argv = argv;
 	if(option_lazy_load) {
 		#if GLIB_CHECK_VERSION(2, 32, 0)
-			g_thread_new("image-loader", load_images_thread, NULL);
+			g_thread_new("image-loader", load_images_thread, GINT_TO_POINTER(1));
 		#else
-			g_thread_create(load_images_thread, NULL, FALSE, NULL);
+			g_thread_create(load_images_thread, NULL, FALSE, GINT_TO_POINTER(1));
 		#endif
 	}
 	else {
