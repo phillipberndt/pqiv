@@ -409,6 +409,9 @@ void queue_image_load(BOSNode *);
 void unload_image(BOSNode *);
 gboolean initialize_gui_callback(gpointer);
 gboolean initialize_image_loader();
+void fullscreen_hide_cursor();
+void fullscreen_show_cursor();
+void window_center_mouse();
 // }}}
 /* Command line handling, creation of the image list {{{ */
 gboolean options_keyboard_alias_set_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error) {/*{{{*/
@@ -1954,6 +1957,12 @@ void do_jump_dialog() { /* {{{ */
 	 */
 	GtkTreeIter search_list_iter;
 
+	// If in fullscreen, show the cursor again
+	if(main_window_in_fullscreen) {
+		window_center_mouse();
+		fullscreen_show_cursor();
+	}
+
 	// Create dialog box
 	GtkWidget *dlg_window = gtk_dialog_new_with_buttons("pqiv: Jump to image",
 		main_window,
@@ -2061,6 +2070,10 @@ void do_jump_dialog() { /* {{{ */
 		gtk_tree_model_get_value(GTK_TREE_MODEL(search_list_filter), &iter, 2, &col_data);
 		bostree_node_weak_unref(file_tree, (BOSNode *)g_value_get_pointer(&col_data));
 		g_value_unset(&col_data);
+	}
+
+	if(main_window_in_fullscreen) {
+		fullscreen_hide_cursor();
 	}
 
 	gtk_widget_destroy(dlg_window);
@@ -2979,13 +2992,20 @@ gboolean window_scroll_callback(GtkWidget *widget, GdkEventScroll *event, gpoint
 
 	return FALSE;
 }/*}}}*/
-void window_state_into_fullscreen_actions() {/*{{{*/
+void fullscreen_hide_cursor() {/*{{{*/
 	GdkCursor *cursor = gdk_cursor_new(GDK_BLANK_CURSOR);
 	GdkWindow *window = gtk_widget_get_window(GTK_WIDGET(main_window));
 	gdk_window_set_cursor(window, cursor);
 	#if GTK_MAJOR_VERSION >= 3
 		g_object_unref(cursor);
 	#endif
+}/*}}}*/
+void fullscreen_show_cursor() {/*{{{*/
+	GdkWindow *window = gtk_widget_get_window(GTK_WIDGET(main_window));
+	gdk_window_set_cursor(window, NULL);
+}/*}}}*/
+void window_state_into_fullscreen_actions() {/*{{{*/
+	fullscreen_hide_cursor();
 
 	main_window_width = screen_geometry.width;
 	main_window_height = screen_geometry.height;
@@ -3032,8 +3052,7 @@ gboolean window_state_callback(GtkWidget *widget, GdkEventWindowState *event, gp
 			D_UNLOCK(file_tree);
 			gtk_window_set_position(main_window, GTK_WIN_POS_CENTER_ALWAYS);
 
-			GdkWindow *window = gtk_widget_get_window(GTK_WIDGET(main_window));
-			gdk_window_set_cursor(window, NULL);
+			fullscreen_show_cursor();
 
 			current_image_drawn = FALSE;
 			invalidate_current_scaled_image_surface();
