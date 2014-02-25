@@ -3309,7 +3309,7 @@ int main(int argc, char *argv[]) {
 	}
 	else {
 		load_images_thread(NULL);
-		if(!initialize_gui(NULL)) {
+		if(!initialize_gui()) {
 			g_printerr("No images left to display.\n");
 			exit(1);
 		}
