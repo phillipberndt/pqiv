@@ -100,7 +100,7 @@ Known bugs
 Changelog
 ---------
 
-pqiv 2.2 (work in progress)
+pqiv 2.2
  * Accept URLs as command line arguments
  * Revived -r for reading additional files from stdin (by J.P. Reed)
  * Display the help message if invoked without parameters (by J.P. Reed)

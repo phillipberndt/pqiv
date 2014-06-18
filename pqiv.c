@@ -1,7 +1,7 @@
 /**
  * pqiv
  *
- * Copyright (c) 2013, Phillip Berndt
+ * Copyright (c) 2013-2014, Phillip Berndt
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -18,7 +18,7 @@
 
 #define _XOPEN_SOURCE 600
 
-#define PQIV_VERSION "2.1.1"
+#define PQIV_VERSION "2.2"
 
 #include "lib/strnatcmp.h"
 #include "lib/bostree.h"
