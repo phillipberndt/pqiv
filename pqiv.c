@@ -3271,7 +3271,9 @@ void create_window() { /*{{{*/
 		gtk_window_set_position(main_window, GTK_WIN_POS_CENTER);
 	}
 
+#if GTK_MAJOR_VERSION < 3
 	gtk_widget_set_double_buffered(GTK_WIDGET(main_window), TRUE);
+#endif
 	gtk_widget_set_app_paintable(GTK_WIDGET(main_window), TRUE);
 
 	if(option_transparent_background) {
