@@ -2098,6 +2098,12 @@ void do_jump_dialog() { /* {{{ */
 } /* }}} */
 // }}}
 /* Main window functions {{{ */
+void window_fullscreen() {
+	// Bugfix for Awesome WM: If hints are active, windows are fullscreen'ed honoring the aspect ratio
+	gtk_window_set_geometry_hints(main_window, NULL, NULL, 0);
+
+	gtk_window_fullscreen(main_window);
+}
 inline void queue_draw() {/*{{{*/
 	if(!current_image_drawn) {
 		gtk_widget_queue_draw(GTK_WIDGET(main_window));
@@ -2745,7 +2751,7 @@ gboolean window_key_press_callback(GtkWidget *widget, GdkEventKey *event, gpoint
 		case GDK_KEY_F:
 		case GDK_KEY_f:
 			if(main_window_in_fullscreen == FALSE) {
-				gtk_window_fullscreen(main_window);
+				window_fullscreen();
 			}
 			else {
 				gtk_window_unfullscreen(main_window);
@@ -3177,7 +3183,7 @@ void window_realize_callback(GtkWidget *widget, gpointer user_data) {/*{{{*/
 			}
 		#endif
 
-		gtk_window_fullscreen(main_window);
+		window_fullscreen();
 	}
 
 	// This would be the correct time to reset the option_initial_scale_used,
@@ -3258,7 +3264,7 @@ void create_window() { /*{{{*/
 				gtk_window_move(main_window, screen_geometry.x, screen_geometry.y);
 			}
 		#endif
-		gtk_window_fullscreen(main_window);
+		window_fullscreen();
 	}
 	else if(option_window_position.x >= 0) {
 		window_move_helper_callback(NULL);
