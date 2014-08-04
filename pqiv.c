@@ -1262,7 +1262,17 @@ gboolean image_loader_load_single(BOSNode *node, gboolean called_from_main) {/*{
 		GFileInputStream *input_file_stream = g_file_read(input_file, image_loader_cancellable, &error_pointer);
 		if(input_file_stream != NULL) {
 			if((file->file_type & FILE_TYPE_PDF) != 0) {
+				#if POPPLER_CHECK_VERSION(0, 22, 0)
 				PopplerDocument *poppler_document = poppler_document_new_from_stream(G_INPUT_STREAM(input_file_stream), -1, NULL, image_loader_cancellable, &error_pointer);
+				#else
+				// TODO This is plain bad code. NEVER release this. PoC only!
+				char *input_buffer = (char *)malloc(1024*1024*30);
+				gsize input_buffer_bytes_read;
+				PopplerDocument *poppler_document = NULL;
+				if(g_input_stream_read_all(G_INPUT_STREAM(input_file_stream), input_buffer, 1024*1024*30, &input_buffer_bytes_read, image_loader_cancellable, &error_pointer) == TRUE) {
+					poppler_document = poppler_document_new_from_data(input_buffer, input_buffer_bytes_read, NULL, &error_pointer);
+				}
+				#endif
 				if(poppler_document != NULL) {
 					PopplerPage *poppler_page = poppler_document_get_page(poppler_document, 0);
 					if(poppler_page != NULL) {
