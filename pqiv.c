@@ -159,6 +159,9 @@ typedef struct {
 	// Type identifier. See the FILE_TYPE_* definitions above
 	guint file_type;
 
+	// The file name to display and to sort by
+	gchar *display_name;
+
 	// Either the path to the file or the actual file data
 	// if FILE_TYPE_MEMORY_IMAGE is set
 	// TODO This is a GNU extension / C11 extension. Action required?
@@ -184,11 +187,19 @@ typedef struct {
 	gboolean surface_is_out_of_date;
 
 	// For file_type & FILE_TYPE_ANIMATION, this stores the
-	// whole animation. As with the surface, this is only non-NULL
+	// whole animation.
+	// For file_type & FILE_TYPE_PDF, this stores the poppler
+	// document
+	//
+	// As with the surface, this is only non-NULL
 	// for the current, previous and next image.
 	union {
 		GdkPixbufAnimation *pixbuf_animation;
+		PopplerDocument *poppler_document;
 	};
+
+	// If the image is a PDF, store the page number
+	guint16 poppler_page_number;
 } file_t;
 
 // Storage of the file list
@@ -703,6 +714,58 @@ void load_images_directory_watch_callback(GFileMonitor *monitor, GFile *file, GF
 		info_text_queue_redraw();
 	}
 }/*}}}*/
+void load_images_handle_parameter_add_file(load_images_state_t state, file_t *file) {/*{{{*/
+	// Add image to images list/tree
+	// We need to check if the previous/next images have changed, because they
+	// might have been preloaded and need unloading if so.
+	D_LOCK(file_tree);
+	BOSNode *old_prev = NULL;
+	BOSNode *old_next = NULL;
+	BOSNode *new_node = NULL;
+	if((option_lazy_load || state == INOTIFY) && current_file_node != NULL) {
+		old_prev = previous_file();
+		old_next = next_file();
+	}
+	if(!option_sort) {
+		unsigned int *index = (unsigned int *)g_malloc(sizeof(unsigned int));
+		*index = option_shuffle ? g_random_int() : bostree_node_count(file_tree);
+		new_node = bostree_insert(file_tree, (void *)index, file);
+	}
+	else {
+		new_node = bostree_insert(file_tree, file->display_name, file);
+	}
+	if(state == BROWSE_ORIGINAL_PARAMETER && browse_startup_node == NULL) {
+		browse_startup_node = bostree_node_weak_ref(new_node);
+	}
+	if((option_lazy_load || state == INOTIFY) && current_file_node != NULL) {
+		// If the previous/next images have shifted, unload the old ones to save memory
+		if(previous_file() != old_prev && current_file_node != old_prev && old_prev != NULL) {
+			unload_image(old_prev);
+		}
+		if(next_file() != old_next && current_file_node != old_next && old_next != NULL) {
+			unload_image(old_next);
+		}
+	}
+	D_UNLOCK(file_tree);
+	if(option_lazy_load && !gui_initialized) {
+		// When the first image has been processed, we can show the window
+		// Check if it successfully loads though:
+		if(initialize_image_loader()) {
+			g_idle_add(initialize_gui_callback, NULL);
+			gui_initialized = TRUE;
+		}
+	}
+	if(state == INOTIFY) {
+		// If this image was loaded via the INOTIFY handler, we need to update
+		// the info text. We do not update it here for images loaded via the
+		// --lazy-load function (i.e. check for main_window_visible /
+		// gui_initialized), because the high frequency of Xlib calls crashes
+		// the app (with an Xlib resource unavailable error) at least on my
+		// development machine.
+		update_info_text(NULL);
+		info_text_queue_redraw();
+	}
+}/*}}}*/
 void load_images_handle_parameter(char *param, load_images_state_t state, gint depth) {/*{{{*/
 	file_t *file;
 
@@ -710,7 +773,7 @@ void load_images_handle_parameter(char *param, load_images_state_t state, gint d
 	if(state == PARAMETER && g_strcmp0(param, "-") == 0) {
 		file = g_new0(file_t, 1);
 		file->file_type = FILE_TYPE_MEMORY_IMAGE;
-		file->file_name = g_strdup("-");
+		file->display_name = g_strdup("-");
 
 		GError *error_ptr = NULL;
 		GIOChannel *stdin_channel = g_io_channel_unix_new(0);
@@ -846,64 +909,54 @@ void load_images_handle_parameter(char *param, load_images_state_t state, gint d
 		// Prepare file structure
 		file = g_new0(file_t, 1);
 		file->file_name = g_strdup(param);
+		file->display_name = g_filename_display_name(file->file_name);
 	}
 
 	// Handle special file types
 	int file_name_length = strlen(file->file_name);
-	if(g_ascii_strcasecmp(&file->file_name[file_name_length - 4], ".pdf") == 0) {
+	if(file_name_length > 4 && g_ascii_strcasecmp(&file->file_name[file_name_length - 4], ".pdf") == 0) {
+		// PDF, handled by poppler
 		file->file_type |= FILE_TYPE_PDF;
-	}
 
-	// Add image to images list/tree
-	// We need to check if the previous/next images have changed, because they
-	// might have been preloaded and need unloading if so.
-	D_LOCK(file_tree);
-	BOSNode *old_prev = NULL;
-	BOSNode *old_next = NULL;
-	BOSNode *new_node = NULL;
-	if((option_lazy_load || state == INOTIFY) && current_file_node != NULL) {
-		old_prev = previous_file();
-		old_next = next_file();
-	}
-	if(!option_sort) {
-		unsigned int *index = (unsigned int *)g_malloc(sizeof(unsigned int));
-		*index = option_shuffle ? g_random_int() : bostree_node_count(file_tree);
-		new_node = bostree_insert(file_tree, (void *)index, file);
+		// We have to load the file now to get the number of pages
+		GFile *file_ptr;
+		if(g_file_test(param, G_FILE_TEST_EXISTS)) {
+			file_ptr = g_file_new_for_path(param);
+		}
+		else {
+			file_ptr = g_file_new_for_commandline_arg(param);
+		}
+		PopplerDocument *poppler_document = poppler_document_new_from_gfile(file_ptr, NULL, NULL, NULL);
+		if(!poppler_document) {
+			g_printerr("Failed to open PDF %s\n", param);
+			g_free(file);
+			g_object_unref(file_ptr);
+			return;
+		}
+		int n_pages = poppler_document_get_n_pages(poppler_document);
+		g_object_unref(poppler_document);
+		g_object_unref(file_ptr);
+
+		// Now create a new file for each page
+		char *display_name = file->display_name;
+		file_t *paged_file = file;
+		for(int n=0; n<n_pages; n++) {
+			if(n > 0) {
+				paged_file = g_new(file_t, 1);
+				memcpy(paged_file, file, sizeof(file_t));
+			}
+
+			paged_file->poppler_page_number = n;
+			paged_file->display_name = g_strdup_printf("%s[%d]", display_name, n + 1);
+			load_images_handle_parameter_add_file(state, paged_file);
+		}
+		g_free(display_name);
 	}
 	else {
-		new_node = bostree_insert(file_tree, file->file_name, file);
+		// Simply add the file
+		load_images_handle_parameter_add_file(state, file);
 	}
-	if(state == BROWSE_ORIGINAL_PARAMETER && browse_startup_node == NULL) {
-		browse_startup_node = bostree_node_weak_ref(new_node);
-	}
-	if((option_lazy_load || state == INOTIFY) && current_file_node != NULL) {
-		// If the previous/next images have shifted, unload the old ones to save memory
-		if(previous_file() != old_prev && current_file_node != old_prev && old_prev != NULL) {
-			unload_image(old_prev);
-		}
-		if(next_file() != old_next && current_file_node != old_next && old_next != NULL) {
-			unload_image(old_next);
-		}
-	}
-	D_UNLOCK(file_tree);
-	if(option_lazy_load && !gui_initialized) {
-		// When the first image has been processed, we can show the window
-		// Check if it successfully loads though:
-		if(initialize_image_loader()) {
-			g_idle_add(initialize_gui_callback, NULL);
-			gui_initialized = TRUE;
-		}
-	}
-	if(state == INOTIFY) {
-		// If this image was loaded via the INOTIFY handler, we need to update
-		// the info text. We do not update it here for images loaded via the
-		// --lazy-load function (i.e. check for main_window_visible /
-		// gui_initialized), because the high frequency of Xlib calls crashes
-		// the app (with an Xlib resource unavailable error) at least on my
-		// development machine.
-		update_info_text(NULL);
-		info_text_queue_redraw();
-	}
+
 }/*}}}*/
 int image_tree_integer_compare(const unsigned int *a, const unsigned int *b) {/*{{{*/
 	return *a > *b;
@@ -911,8 +964,11 @@ int image_tree_integer_compare(const unsigned int *a, const unsigned int *b) {/*
 void file_tree_free_helper(BOSNode *node) {
 	// key is file->file_name or an integer
 	unload_image(node);
-	g_free(FILE(node)->file_name);
 	g_free(FILE(node));
+	g_free(FILE(node)->display_name);
+	if((FILE(node)->file_type & FILE_TYPE_MEMORY_IMAGE) == 0) {
+		g_free(FILE(node)->file_name);
+	}
 }
 void directory_tree_free_helper(BOSNode *node) {
 	free(node->key);
@@ -945,6 +1001,7 @@ void load_images(int *argc, char *argv[]) {/*{{{*/
 					++file_format_extensions_iterator;
 			}
 	} while((file_formats_iterator = g_slist_next(file_formats_iterator)) != NULL);
+	// Manually add other supported file formats
 	gtk_file_filter_add_pattern(load_images_file_filter, "*.pdf");
 	g_slist_free(file_formats_iterator);
 
@@ -1274,7 +1331,7 @@ gboolean image_loader_load_single(BOSNode *node, gboolean called_from_main) {/*{
 				}
 				#endif
 				if(poppler_document != NULL) {
-					PopplerPage *poppler_page = poppler_document_get_page(poppler_document, 0);
+					PopplerPage *poppler_page = poppler_document_get_page(poppler_document, file->poppler_page_number);
 					if(poppler_page != NULL) {
 						// Render to a pixbuf
 						// TODO Replace by storing the poppler page directly. The current implementation is for a proof of concept only
@@ -2103,19 +2160,11 @@ void do_jump_dialog() { /* {{{ */
 	for(BOSNode *node = bostree_select(file_tree, 0); node; node = bostree_next_node(node)) {
 		gtk_list_store_append(search_list, &search_list_iter);
 
-		gchar *display_name;
-		if((FILE(node)->file_type & FILE_TYPE_MEMORY_IMAGE) != 0) {
-			display_name = g_strdup_printf("-");
-		}
-		else {
-			display_name = g_filename_display_name(FILE(node)->file_name);
-		}
 		gtk_list_store_set(search_list, &search_list_iter,
 			0, id++,
-			1, display_name,
+			1, FILE(node)->display_name,
 			2, bostree_node_weak_ref(node),
 			-1);
-		g_free(display_name);
 	}
 	D_UNLOCK(file_tree);
 
@@ -2225,7 +2274,7 @@ void update_info_text(const gchar *action) {/*{{{*/
 	else {
 		file_name = g_strdup(CURRENT_FILE->file_name);
 	}
-	gchar *display_name = g_filename_display_name(file_name);
+	const gchar *display_name = CURRENT_FILE->display_name;
 
 	// Free old info text
 	if(current_info_text != NULL) {
@@ -2238,7 +2287,6 @@ void update_info_text(const gchar *action) {/*{{{*/
 		current_info_text = g_strdup_printf("%s (Image is still loading...)", display_name);
 
 		g_free(file_name);
-		g_free(display_name);
 		D_UNLOCK(file_tree);
 		return;
 	}
@@ -2308,7 +2356,6 @@ void update_info_text(const gchar *action) {/*{{{*/
 	}
 	D_UNLOCK(file_tree);
 	g_free(file_name);
-	g_free(display_name);
 	gtk_window_set_title(GTK_WINDOW(main_window), new_window_title->str);
 	g_string_free(new_window_title, TRUE);
 }/*}}}*/
