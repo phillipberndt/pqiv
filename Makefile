@@ -12,8 +12,8 @@ ifeq ($(wildcard config.make),config.make)
 	include config.make
 endif
 
-LIBS_GTK3=gtk+-3.0 gdk-3.0 glib-2.0 >= 2.8 cairo >= 1.6 gio-2.0 gdk-pixbuf-2.0 >= 2.2
-LIBS_GTK2=gtk+-2.0 >= 2.6 gdk-2.0 >= 2.8 glib-2.0 >= 2.8 cairo >= 1.6 gio-2.0 gdk-pixbuf-2.0 >= 2.2
+LIBS_GTK3=gtk+-3.0 gdk-3.0 glib-2.0 >= 2.8 cairo >= 1.6 gio-2.0 gdk-pixbuf-2.0 >= 2.2 poppler-glib
+LIBS_GTK2=gtk+-2.0 >= 2.6 gdk-2.0 >= 2.8 glib-2.0 >= 2.8 cairo >= 1.6 gio-2.0 gdk-pixbuf-2.0 >= 2.2 poppler-glib
 
 ifeq ($(GTK_VERSION), 0)
 	ifeq ($(shell $(PKG_CONFIG) --errors-to-stdout --print-errors "$(LIBS_GTK3)"), )

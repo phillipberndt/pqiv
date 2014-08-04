@@ -32,6 +32,7 @@
 #include <string.h>
 #include <sys/types.h>
 #include <unistd.h>
+#include <poppler.h>
 
 #ifdef _WIN32
 	#ifndef _WIN32_WINNT
@@ -151,6 +152,7 @@
 #define FILE_TYPE_DEFAULT (guint)(0)
 #define FILE_TYPE_ANIMATION (guint)(1)
 #define FILE_TYPE_MEMORY_IMAGE (guint)(1<<1)
+#define FILE_TYPE_PDF (guint)(1<<2)
 
 // The structure for images
 typedef struct {
@@ -846,6 +848,12 @@ void load_images_handle_parameter(char *param, load_images_state_t state, gint d
 		file->file_name = g_strdup(param);
 	}
 
+	// Handle special file types
+	int file_name_length = strlen(file->file_name);
+	if(g_ascii_strcasecmp(&file->file_name[file_name_length - 4], ".pdf") == 0) {
+		file->file_type |= FILE_TYPE_PDF;
+	}
+
 	// Add image to images list/tree
 	// We need to check if the previous/next images have changed, because they
 	// might have been preloaded and need unloading if so.
@@ -937,6 +945,7 @@ void load_images(int *argc, char *argv[]) {/*{{{*/
 					++file_format_extensions_iterator;
 			}
 	} while((file_formats_iterator = g_slist_next(file_formats_iterator)) != NULL);
+	gtk_file_filter_add_pattern(load_images_file_filter, "*.pdf");
 	g_slist_free(file_formats_iterator);
 
 	load_images_file_filter_info = g_new0(GtkFileFilterInfo, 1);
@@ -1252,38 +1261,76 @@ gboolean image_loader_load_single(BOSNode *node, gboolean called_from_main) {/*{
 		}
 		GFileInputStream *input_file_stream = g_file_read(input_file, image_loader_cancellable, &error_pointer);
 		if(input_file_stream != NULL) {
-			#if (GDK_PIXBUF_MAJOR > 2 || (GDK_PIXBUF_MAJOR == 2 && GDK_PIXBUF_MINOR >= 28))
-				pixbuf_animation = gdk_pixbuf_animation_new_from_stream(G_INPUT_STREAM(input_file_stream), image_loader_cancellable, &error_pointer);
-			#else
-				#define IMAGE_LOADER_BUFFER_SIZE (1024 * 512)
+			if((file->file_type & FILE_TYPE_PDF) != 0) {
+				PopplerDocument *poppler_document = poppler_document_new_from_stream(G_INPUT_STREAM(input_file_stream), -1, NULL, image_loader_cancellable, &error_pointer);
+				if(poppler_document != NULL) {
+					PopplerPage *poppler_page = poppler_document_get_page(poppler_document, 0);
+					if(poppler_page != NULL) {
+						// Render to a pixbuf
+						// TODO Replace by storing the poppler page directly. The current implementation is for a proof of concept only
+						double width, height;
+						poppler_page_get_size(poppler_page, &width, &height);
+						const double poppler_scale = 2.;
+						width *= poppler_scale;
+						height *= poppler_scale;
+						cairo_surface_t *temporary_surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, width, height);
 
-				GdkPixbufLoader *loader = gdk_pixbuf_loader_new();
-				guchar *buffer = g_malloc(IMAGE_LOADER_BUFFER_SIZE);
-				while(TRUE) {
-					gssize bytes_read = g_input_stream_read(G_INPUT_STREAM(input_file_stream), buffer, IMAGE_LOADER_BUFFER_SIZE, image_loader_cancellable, &error_pointer);
-					if(bytes_read == 0) {
-						// All OK, finish the image loader
-						gdk_pixbuf_loader_close(loader, &error_pointer);
-						pixbuf_animation = gdk_pixbuf_loader_get_animation(loader);
-						if(pixbuf_animation != NULL) {
-							g_object_ref(pixbuf_animation); // see above
-						}
-						break;
+						cairo_t *cr = cairo_create(temporary_surface);
+						cairo_set_source_rgb(cr, 1., 1., 1.);
+						cairo_paint(cr);
+						cairo_scale(cr, poppler_scale, poppler_scale);
+						poppler_page_render(poppler_page, cr);
+						cairo_destroy(cr);
+
+						GdkPixbuf *temporary_pixbuf = gdk_pixbuf_get_from_surface(temporary_surface, 0, 0, width, height);
+
+						cairo_surface_destroy(temporary_surface);
+						g_object_unref(poppler_page);
+
+						GdkPixbufSimpleAnim *temporary_animation = gdk_pixbuf_simple_anim_new(width, height, 0);
+						gdk_pixbuf_simple_anim_add_frame(temporary_animation, temporary_pixbuf);
+
+						g_object_unref(temporary_pixbuf);
+
+						pixbuf_animation = GDK_PIXBUF_ANIMATION(temporary_animation);
 					}
-					if(bytes_read == -1) {
-						// Error. Handle this below.
-						gdk_pixbuf_loader_close(loader, NULL);
-						break;
-					}
-					// In all other cases, write to image loader
-					if(!gdk_pixbuf_loader_write(loader, buffer, bytes_read, &error_pointer)) {
-						// In case of an error, abort.
-						break;
-					}
+					g_object_unref(poppler_document);
 				}
-				g_free(buffer);
-				g_object_unref(loader);
-			#endif
+			}
+			else {
+				#if (GDK_PIXBUF_MAJOR > 2 || (GDK_PIXBUF_MAJOR == 2 && GDK_PIXBUF_MINOR >= 28))
+					pixbuf_animation = gdk_pixbuf_animation_new_from_stream(G_INPUT_STREAM(input_file_stream), image_loader_cancellable, &error_pointer);
+				#else
+					#define IMAGE_LOADER_BUFFER_SIZE (1024 * 512)
+
+					GdkPixbufLoader *loader = gdk_pixbuf_loader_new();
+					guchar *buffer = g_malloc(IMAGE_LOADER_BUFFER_SIZE);
+					while(TRUE) {
+						gssize bytes_read = g_input_stream_read(G_INPUT_STREAM(input_file_stream), buffer, IMAGE_LOADER_BUFFER_SIZE, image_loader_cancellable, &error_pointer);
+						if(bytes_read == 0) {
+							// All OK, finish the image loader
+							gdk_pixbuf_loader_close(loader, &error_pointer);
+							pixbuf_animation = gdk_pixbuf_loader_get_animation(loader);
+							if(pixbuf_animation != NULL) {
+								g_object_ref(pixbuf_animation); // see above
+							}
+							break;
+						}
+						if(bytes_read == -1) {
+							// Error. Handle this below.
+							gdk_pixbuf_loader_close(loader, NULL);
+							break;
+						}
+						// In all other cases, write to image loader
+						if(!gdk_pixbuf_loader_write(loader, buffer, bytes_read, &error_pointer)) {
+							// In case of an error, abort.
+							break;
+						}
+					}
+					g_free(buffer);
+					g_object_unref(loader);
+				#endif
+			}
 			g_object_unref(input_file_stream);
 		}
 		g_object_unref(input_file);
