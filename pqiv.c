@@ -919,6 +919,7 @@ void load_images_handle_parameter(char *param, load_images_state_t state, gint d
 		file->file_type |= FILE_TYPE_PDF;
 
 		// We have to load the file now to get the number of pages
+		GError *error_pointer = NULL;
 		GFile *file_ptr;
 		if(g_file_test(param, G_FILE_TEST_EXISTS)) {
 			file_ptr = g_file_new_for_path(param);
@@ -926,11 +927,18 @@ void load_images_handle_parameter(char *param, load_images_state_t state, gint d
 		else {
 			file_ptr = g_file_new_for_commandline_arg(param);
 		}
-		PopplerDocument *poppler_document = poppler_document_new_from_gfile(file_ptr, NULL, NULL, NULL);
+		#if POPPLER_CHECK_VERSION(0, 22, 0)
+		PopplerDocument *poppler_document = poppler_document_new_from_gfile(file_ptr, NULL, NULL, &error_pointer);
+		#else
+		gchar *uri = g_file_get_uri(file_ptr);
+		PopplerDocument *poppler_document = poppler_document_new_from_file(uri, NULL, &error_pointer);
+		g_free(uri);
+		#endif
 		if(!poppler_document) {
-			g_printerr("Failed to open PDF %s\n", param);
+			g_printerr("Failed to open PDF %s: %s\n", param, error_pointer->message);
 			g_free(file);
 			g_object_unref(file_ptr);
+			g_clear_error(&error_pointer);
 			return;
 		}
 		int n_pages = poppler_document_get_n_pages(poppler_document);
@@ -1316,55 +1324,52 @@ gboolean image_loader_load_single(BOSNode *node, gboolean called_from_main) {/*{
 		else {
 			input_file = g_file_new_for_commandline_arg(file->file_name);
 		}
-		GFileInputStream *input_file_stream = g_file_read(input_file, image_loader_cancellable, &error_pointer);
-		if(input_file_stream != NULL) {
-			if((file->file_type & FILE_TYPE_PDF) != 0) {
-				#if POPPLER_CHECK_VERSION(0, 22, 0)
-				PopplerDocument *poppler_document = poppler_document_new_from_stream(G_INPUT_STREAM(input_file_stream), -1, NULL, image_loader_cancellable, &error_pointer);
-				#else
-				// TODO This is plain bad code. NEVER release this. PoC only!
-				char *input_buffer = (char *)malloc(1024*1024*30);
-				gsize input_buffer_bytes_read;
-				PopplerDocument *poppler_document = NULL;
-				if(g_input_stream_read_all(G_INPUT_STREAM(input_file_stream), input_buffer, 1024*1024*30, &input_buffer_bytes_read, image_loader_cancellable, &error_pointer) == TRUE) {
-					poppler_document = poppler_document_new_from_data(input_buffer, input_buffer_bytes_read, NULL, &error_pointer);
+		if((file->file_type & FILE_TYPE_PDF) != 0) {
+			// Special file type handling: PDF
+            #if POPPLER_CHECK_VERSION(0, 22, 0)
+			PopplerDocument *poppler_document = poppler_document_new_from_gfile(input_file, NULL, image_loader_cancellable, &error_pointer);
+			#else
+			gchar *uri = g_file_get_uri(input_file);
+			PopplerDocument *poppler_document = poppler_document_new_from_file(uri, NULL, &error_pointer);
+			g_free(uri);
+			#endif
+			if(poppler_document != NULL) {
+				PopplerPage *poppler_page = poppler_document_get_page(poppler_document, file->poppler_page_number);
+				if(poppler_page != NULL) {
+					// Render to a pixbuf
+					// TODO Replace by storing the poppler page directly. The current implementation is for a proof of concept only
+					double width, height;
+					poppler_page_get_size(poppler_page, &width, &height);
+					const double poppler_scale = 2.;
+					width *= poppler_scale;
+					height *= poppler_scale;
+					cairo_surface_t *temporary_surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, width, height);
+
+					cairo_t *cr = cairo_create(temporary_surface);
+					cairo_set_source_rgb(cr, 1., 1., 1.);
+					cairo_paint(cr);
+					cairo_scale(cr, poppler_scale, poppler_scale);
+					poppler_page_render(poppler_page, cr);
+					cairo_destroy(cr);
+
+					GdkPixbuf *temporary_pixbuf = gdk_pixbuf_get_from_surface(temporary_surface, 0, 0, width, height);
+
+					cairo_surface_destroy(temporary_surface);
+					g_object_unref(poppler_page);
+
+					GdkPixbufSimpleAnim *temporary_animation = gdk_pixbuf_simple_anim_new(width, height, 0);
+					gdk_pixbuf_simple_anim_add_frame(temporary_animation, temporary_pixbuf);
+
+					g_object_unref(temporary_pixbuf);
+
+					pixbuf_animation = GDK_PIXBUF_ANIMATION(temporary_animation);
 				}
-				#endif
-				if(poppler_document != NULL) {
-					PopplerPage *poppler_page = poppler_document_get_page(poppler_document, file->poppler_page_number);
-					if(poppler_page != NULL) {
-						// Render to a pixbuf
-						// TODO Replace by storing the poppler page directly. The current implementation is for a proof of concept only
-						double width, height;
-						poppler_page_get_size(poppler_page, &width, &height);
-						const double poppler_scale = 2.;
-						width *= poppler_scale;
-						height *= poppler_scale;
-						cairo_surface_t *temporary_surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, width, height);
-
-						cairo_t *cr = cairo_create(temporary_surface);
-						cairo_set_source_rgb(cr, 1., 1., 1.);
-						cairo_paint(cr);
-						cairo_scale(cr, poppler_scale, poppler_scale);
-						poppler_page_render(poppler_page, cr);
-						cairo_destroy(cr);
-
-						GdkPixbuf *temporary_pixbuf = gdk_pixbuf_get_from_surface(temporary_surface, 0, 0, width, height);
-
-						cairo_surface_destroy(temporary_surface);
-						g_object_unref(poppler_page);
-
-						GdkPixbufSimpleAnim *temporary_animation = gdk_pixbuf_simple_anim_new(width, height, 0);
-						gdk_pixbuf_simple_anim_add_frame(temporary_animation, temporary_pixbuf);
-
-						g_object_unref(temporary_pixbuf);
-
-						pixbuf_animation = GDK_PIXBUF_ANIMATION(temporary_animation);
-					}
-					g_object_unref(poppler_document);
-				}
+				g_object_unref(poppler_document);
 			}
-			else {
+		}
+		else {
+			GFileInputStream *input_file_stream = g_file_read(input_file, image_loader_cancellable, &error_pointer);
+			if(input_file_stream != NULL) {
 				#if (GDK_PIXBUF_MAJOR > 2 || (GDK_PIXBUF_MAJOR == 2 && GDK_PIXBUF_MINOR >= 28))
 					pixbuf_animation = gdk_pixbuf_animation_new_from_stream(G_INPUT_STREAM(input_file_stream), image_loader_cancellable, &error_pointer);
 				#else
