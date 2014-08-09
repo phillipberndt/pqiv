@@ -149,21 +149,23 @@
 #endif // }}}
 
 // Data types and global variables {{{
-#define FILE_TYPE_DEFAULT (guint)(0)
-#define FILE_TYPE_ANIMATION (guint)(1)
-#define FILE_TYPE_MEMORY_IMAGE (guint)(1<<1)
-#define FILE_TYPE_PDF (guint)(1<<2)
+#define FILE_FLAGS_NORMAL (guint)(0)
+#define FILE_FLAGS_ANIMATION (guint)(1)
+#define FILE_FLAGS_MEMORY_IMAGE (guint)(1<<1)
 
 // The structure for images
 typedef struct {
-	// Type identifier. See the FILE_TYPE_* definitions above
+	// Type identifier. Index within the file_type_handlers array.
 	guint file_type;
+
+	// Special flags
+	guint file_flags;
 
 	// The file name to display and to sort by
 	gchar *display_name;
 
 	// Either the path to the file or the actual file data
-	// if FILE_TYPE_MEMORY_IMAGE is set
+	// if FILE_FLAGS_MEMORY_IMAGE is set
 	// TODO This is a GNU extension / C11 extension. Action required?
 	union {
 		gchar *file_name;
@@ -173,34 +175,76 @@ typedef struct {
 	// The length of the data if this is a memory image
 	gsize file_data_length;
 
-	// The surface where the image is stored. Only non-NULL for
-	// the current, previous and next image.
-	cairo_surface_t *image_surface;
-
 	// The file monitor structure is used for inotify-watching of
 	// the files
 	GFileMonitor *file_monitor;
 
-	// If this flag is set, the image is reloaded even though
-	// image_surface is non-null. Used by the file monitor
-	// and by operations changing the image.
-	gboolean surface_is_out_of_date;
+	// This flag stores whether this image is currently loaded
+	// and valid. i.e. if it is set, you can assume that
+	// private_data contains a representation of the image;
+	// if not, you can NOT assume that it does not.
+	gboolean is_loaded;
 
-	// For file_type & FILE_TYPE_ANIMATION, this stores the
-	// whole animation.
-	// For file_type & FILE_TYPE_PDF, this stores the poppler
-	// document
-	//
-	// As with the surface, this is only non-NULL
-	// for the current, previous and next image.
-	union {
-		GdkPixbufAnimation *pixbuf_animation;
-		PopplerDocument *poppler_document;
-	};
+	// Cached image size
+	guint width;
+	guint height;
 
-	// If the image is a PDF, store the page number
-	guint16 poppler_page_number;
+	// File-type specific data, allocated and freed by the file type handlers
+	void *private;
 } file_t;
+
+// Definition of the built-in file types
+typedef enum { PARAMETER, RECURSION, INOTIFY, BROWSE_ORIGINAL_PARAMETER } load_images_state_t;
+typedef void (*file_type_alloc_fn_t)(load_images_state_t state, file_t *file);
+typedef void (*file_type_free_fn_t)(file_t *file);
+typedef void (*file_type_load_fn_t)(file_t *file, GInputStream *data, GError **error_pointer);
+typedef void (*file_type_unload_fn_t)(file_t *file);
+typedef double (*file_type_animation_initialize_fn_t)(file_t *file);
+typedef double (*file_type_animation_next_frame_fn_t)(file_t *file);
+
+void file_type_default_alloc(load_images_state_t state, file_t *file);
+void file_type_default_free(file_t *file);
+void file_type_default_load(file_t *file, GInputStream *data, GError **error_pointer);
+void file_type_default_unload(file_t *file);
+double file_type_default_animation_initialize(file_t *file);
+double file_type_default_animation_next_frame(file_t *file);
+
+typedef struct {
+	GtkFileFilter *file_types_handled;
+	file_type_alloc_fn_t alloc_fn;
+	file_type_free_fn_t free_fn;
+	file_type_load_fn_t load_fn;
+	file_type_unload_fn_t unload_fn;
+
+	file_type_animation_initialize_fn_t animation_initialize_fn;
+	file_type_animation_next_frame_fn_t animation_next_frame_fn;
+
+} file_type_handler_t;
+
+file_type_handler_t file_type_handlers[] = {
+	{
+		NULL /* Filled at runtime with GdkPixbuf types */,
+		file_type_default_alloc,
+		file_type_default_free,
+		file_type_default_load,
+		file_type_default_unload,
+		file_type_default_animation_initialize,
+		file_type_default_animation_next_frame
+	}
+};
+
+
+typedef struct {
+	// The surface where the image is stored. Only non-NULL for
+	// the current, previous and next image.
+	cairo_surface_t *image_surface;
+
+	// For file_type & FILE_FLAGS_ANIMATION, this stores the
+	// whole animation. As with the surface, this is only non-NULL
+	// for the current, previous and next image.
+	GdkPixbufAnimation *pixbuf_animation;
+	GdkPixbufAnimationIter *animation_iter;
+} file_private_data_default_t;
 
 // Storage of the file list
 // These lists are accessed from multiple threads:
@@ -233,7 +277,7 @@ GAsyncQueue *image_loader_queue = NULL;
 GCancellable *image_loader_cancellable = NULL;
 
 // Filter for path traversing upon building the file list
-GtkFileFilter *load_images_file_filter;
+GHashTable *load_images_file_filter_hash_table;
 GtkFileFilterInfo *load_images_file_filter_info;
 GTimer *load_images_timer;
 
@@ -293,7 +337,6 @@ gdouble current_scale_level = 1.0;
 gint current_shift_x = 0;
 gint current_shift_y = 0;
 guint32 last_button_press_time = 0;
-GdkPixbufAnimationIter *current_image_animation_iter = NULL;
 guint current_image_animation_timeout_id = 0;
 
 // -1 means no slideshow, 0 means active slideshow but no current timeout
@@ -349,7 +392,6 @@ gint64 fading_initial_time;
 gboolean options_keyboard_alias_set_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error);
 gboolean option_window_position_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error);
 gboolean option_scale_level_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error);
-typedef enum { PARAMETER, RECURSION, INOTIFY, BROWSE_ORIGINAL_PARAMETER } load_images_state_t;
 void load_images_handle_parameter(char *param, load_images_state_t state, gint depth);
 
 struct {
@@ -772,7 +814,9 @@ void load_images_handle_parameter(char *param, load_images_state_t state, gint d
 	// Check for memory image
 	if(state == PARAMETER && g_strcmp0(param, "-") == 0) {
 		file = g_new0(file_t, 1);
-		file->file_type = FILE_TYPE_MEMORY_IMAGE;
+		file->file_flags = FILE_FLAGS_MEMORY_IMAGE;
+		// TODO Is there some way to detect the file type?
+		file->file_type = 0;
 		file->display_name = g_strdup("-");
 
 		GError *error_ptr = NULL;
@@ -895,23 +939,53 @@ void load_images_handle_parameter(char *param, load_images_state_t state, gint d
 			return;
 		}
 
-		// Filter based on formats supported by GdkPixbuf
-		if(state != PARAMETER && state != BROWSE_ORIGINAL_PARAMETER) {
-			gchar *param_lowerc = g_utf8_strdown(param, -1);
-			load_images_file_filter_info->filename = load_images_file_filter_info->display_name = param_lowerc;
-			if(gtk_file_filter_filter(load_images_file_filter, load_images_file_filter_info) == FALSE) {
-				g_free(param_lowerc);
+		// Filter based on formats supported by the different handlers
+		gchar *param_lowerc = g_utf8_strdown(param, -1);
+		load_images_file_filter_info->filename = load_images_file_filter_info->display_name = param_lowerc;
+		// TODO Allow for more than one
+		size_t n = 0;
+		file_type_handler_t *file_type_handler = &file_type_handlers[0];
+		//for(file_type_handler_t *file_type_handler = &file_type_handlers[0]; n < 1; ++file_type_handler) {
+			if(gtk_file_filter_filter(file_type_handler->file_types_handled, load_images_file_filter_info) == TRUE) {
+				// Prepare file structure
+				file = g_new0(file_t, 1);
+				file->file_name = g_strdup(param);
+				file->file_type = n++;
+				file->display_name = g_filename_display_name(file->file_name);
+
+				// Handle using this handler
+				if(file_type_handler->alloc_fn != NULL) {
+					file_type_handler->alloc_fn(state, file);
+				}
+				else {
+					load_images_handle_parameter_add_file(state, file);
+				}
 				return;
 			}
-			g_free(param_lowerc);
+		//}
+		g_free(param_lowerc);
+
+		if(state != PARAMETER && state != BROWSE_ORIGINAL_PARAMETER) {
+			// At this point, if the file was not mentioned explicitly by the user,
+			// abort.
+			return;
 		}
+
+		// Assume that this file is handled by the default handler
+		// TODO Guess file type?!
 
 		// Prepare file structure
 		file = g_new0(file_t, 1);
 		file->file_name = g_strdup(param);
+		file->file_type = 0;
 		file->display_name = g_filename_display_name(file->file_name);
-	}
 
+		// TODO If we guess the file type, do not assume there is an alloc_fn!
+		file_type_handlers[0].alloc_fn(state, file);
+	}
+}/*}}}*/
+
+#if 0
 	// Handle special file types
 	int file_name_length = strlen(file->file_name);
 	if(file_name_length > 4 && g_ascii_strcasecmp(&file->file_name[file_name_length - 4], ".pdf") == 0) {
@@ -964,18 +1038,21 @@ void load_images_handle_parameter(char *param, load_images_state_t state, gint d
 		// Simply add the file
 		load_images_handle_parameter_add_file(state, file);
 	}
+#endif
 
-}/*}}}*/
 int image_tree_integer_compare(const unsigned int *a, const unsigned int *b) {/*{{{*/
 	return *a > *b;
 }/*}}}*/
 void file_tree_free_helper(BOSNode *node) {
-	// key is file->file_name or an integer
+	if(file_type_handlers[FILE(node)->file_type].free_fn != NULL) {
+		file_type_handlers[FILE(node)->file_type].free_fn(FILE(node));
+	}
+
 	unload_image(node);
 	g_free(FILE(node));
 	g_free(FILE(node)->display_name);
-	if((FILE(node)->file_type & FILE_TYPE_MEMORY_IMAGE) == 0) {
-		g_free(FILE(node)->file_name);
+	if((FILE(node)->file_type & FILE_FLAGS_MEMORY_IMAGE) == 0) {
+		g_free(FILE(node)->file_data);
 	}
 }
 void directory_tree_free_helper(BOSNode *node) {
@@ -996,8 +1073,8 @@ void load_images(int *argc, char *argv[]) {/*{{{*/
 	load_images_timer = g_timer_new();
 	g_timer_start(load_images_timer);
 
-	// Create a GTK filter for image file names
-	load_images_file_filter = gtk_file_filter_new();
+	// Fill the default handler's file name pattern
+	GtkFileFilter *load_images_file_filter = gtk_file_filter_new();
 	gtk_file_filter_add_pixbuf_formats(load_images_file_filter);
 	GSList *file_formats_iterator = gdk_pixbuf_get_formats();
 	do {
@@ -1009,9 +1086,10 @@ void load_images(int *argc, char *argv[]) {/*{{{*/
 					++file_format_extensions_iterator;
 			}
 	} while((file_formats_iterator = g_slist_next(file_formats_iterator)) != NULL);
-	// Manually add other supported file formats
-	gtk_file_filter_add_pattern(load_images_file_filter, "*.pdf");
 	g_slist_free(file_formats_iterator);
+	file_type_handlers[0].file_types_handled = load_images_file_filter;
+
+	// TODO Manually add other supported file formats
 
 	load_images_file_filter_info = g_new0(GtkFileFilterInfo, 1);
 	load_images_file_filter_info->contains = GTK_FILE_FILTER_FILENAME | GTK_FILE_FILTER_DISPLAY_NAME;
@@ -1051,7 +1129,8 @@ void load_images(int *argc, char *argv[]) {/*{{{*/
 	// If we do not want to watch directories for changes, we can now drop the variables
 	// we used for loading to free some space
 	if(!option_watch_directories) {
-		g_object_ref_sink(load_images_file_filter);
+		// TODO 
+		// g_object_ref_sink(load_images_file_filter);
 		g_free(load_images_file_filter_info);
 		bostree_destroy(directory_tree);
 	}
@@ -1069,27 +1148,21 @@ void invalidate_current_scaled_image_surface() {/*{{{*/
 gboolean image_animation_timeout_callback(gpointer user_data) {/*{{{*/
 	D_LOCK(file_tree);
 	if((BOSNode *)user_data != current_file_node) {
+		D_UNLOCK(file_tree);
+		current_image_animation_timeout_id = 0;
 		return FALSE;
 	}
-	cairo_surface_t *surface = cairo_surface_reference(CURRENT_FILE->image_surface);
+	if(file_type_handlers[CURRENT_FILE->file_type].animation_next_frame_fn == NULL) {
+		D_UNLOCK(file_tree);
+		current_image_animation_timeout_id = 0;
+		return FALSE;
+	}
+
+	double delay = file_type_handlers[CURRENT_FILE->file_type].animation_next_frame_fn(CURRENT_FILE);
 	D_UNLOCK(file_tree);
 
-	gdk_pixbuf_animation_iter_advance(current_image_animation_iter, NULL);
-	GdkPixbuf *pixbuf = gdk_pixbuf_animation_iter_get_pixbuf(current_image_animation_iter);
-
-	cairo_t *sf_cr = cairo_create(surface);
-	cairo_save(sf_cr);
-	cairo_set_source_rgba(sf_cr, 0., 0., 0., 0.);
-	cairo_set_operator(sf_cr, CAIRO_OPERATOR_SOURCE);
-	cairo_paint(sf_cr);
-	cairo_restore(sf_cr);
-	gdk_cairo_set_source_pixbuf(sf_cr, pixbuf, 0, 0);
-	cairo_paint(sf_cr);
-	cairo_destroy(sf_cr);
-	cairo_surface_destroy(surface);
-
 	current_image_animation_timeout_id = g_timeout_add(
-		gdk_pixbuf_animation_iter_get_delay_time(current_image_animation_iter),
+		delay,
 		image_animation_timeout_callback,
 		user_data);
 
@@ -1102,7 +1175,7 @@ void image_file_updated_callback(GFileMonitor *monitor, GFile *file, GFile *othe
 	BOSNode *node = (BOSNode *)user_data;
 
 	if(event_type == G_FILE_MONITOR_EVENT_CHANGES_DONE_HINT) {
-		((file_t *)node->data)->surface_is_out_of_date = TRUE;
+		((file_t *)node->data)->is_loaded = FALSE;
 		queue_image_load(node);
 	}
 }/*}}}*/
@@ -1118,13 +1191,13 @@ gboolean set_option_initial_scale_used_callback(gpointer user_data) {/*{{{*/
 gboolean main_window_resize_callback(gpointer user_data) {/*{{{*/
 	D_LOCK(file_tree);
 	// If there is no image loaded, abort
-	if(CURRENT_FILE->image_surface == NULL) {
+	if(!CURRENT_FILE->is_loaded) {
 		D_UNLOCK(file_tree);
 		return FALSE;
 	}
 	// Get the image's size
-	int image_width = cairo_image_surface_get_width(CURRENT_FILE->image_surface);
-	int image_height = cairo_image_surface_get_height(CURRENT_FILE->image_surface);
+	int image_width = CURRENT_FILE->width;
+	int image_height = CURRENT_FILE->height;
 	D_UNLOCK(file_tree);
 
 	// In in fullscreen, also abort
@@ -1145,10 +1218,9 @@ gboolean main_window_resize_callback(gpointer user_data) {/*{{{*/
 }/*}}}*/
 gboolean image_loaded_handler(gconstpointer info_text) {/*{{{*/
 	// Remove any old timeouts etc.
-	if(current_image_animation_iter != NULL) {
-		g_object_unref(current_image_animation_iter);
-		current_image_animation_iter = NULL;
+	if(current_image_animation_timeout_id > 0) {
 		g_source_remove(current_image_animation_timeout_id);
+		current_image_animation_timeout_id = 0;
 	}
 
 	D_LOCK(file_tree);
@@ -1156,23 +1228,22 @@ gboolean image_loaded_handler(gconstpointer info_text) {/*{{{*/
 	// Sometimes when a user is hitting the next image button really fast this
 	// function's execution can be delayed until CURRENT_FILE is again not loaded.
 	// Return without doing anything in that case.
-	if(CURRENT_FILE->image_surface == NULL) {
+	if(!CURRENT_FILE->is_loaded) {
 		D_UNLOCK(file_tree);
 		return FALSE;
 	}
 
 	// Initialize animation timer if the image is animated
-	if((CURRENT_FILE->file_type & FILE_TYPE_ANIMATION) != 0) {
-		current_image_animation_iter = gdk_pixbuf_animation_get_iter(CURRENT_FILE->pixbuf_animation, NULL);
+	if((CURRENT_FILE->file_flags & FILE_FLAGS_ANIMATION) != 0 && file_type_handlers[CURRENT_FILE->file_type].animation_initialize_fn != NULL) {
 		current_image_animation_timeout_id = g_timeout_add(
-			gdk_pixbuf_animation_iter_get_delay_time(current_image_animation_iter),
+			file_type_handlers[CURRENT_FILE->file_type].animation_initialize_fn(CURRENT_FILE),
 			image_animation_timeout_callback,
 			(gpointer)current_file_node);
 	}
 
 	// Update geometry hints, calculate initial window size and place window
-	int image_width = cairo_image_surface_get_width(CURRENT_FILE->image_surface);
-	int image_height = cairo_image_surface_get_height(CURRENT_FILE->image_surface);
+	const guint image_width = CURRENT_FILE->width;
+	const guint image_height = CURRENT_FILE->height;
 
 	D_UNLOCK(file_tree);
 
@@ -1280,21 +1351,56 @@ gboolean image_loaded_handler(gconstpointer info_text) {/*{{{*/
 
 	return FALSE;
 }/*}}}*/
-gboolean image_loader_load_single_destroy_old_image_callback(gpointer old_surface) {/*{{{*/
-	cairo_surface_destroy((cairo_surface_t *)old_surface);
-	return FALSE;
-}/*}}}*/
 gboolean image_loader_load_single(BOSNode *node, gboolean called_from_main) {/*{{{*/
 	// Already loaded?
 	file_t *file = (file_t *)node->data;
-	if(file->image_surface != NULL && !file->surface_is_out_of_date) {
+	if(file->is_loaded) {
 		return TRUE;
 	}
 
 	GError *error_pointer = NULL;
+
+	// Create an input stream for the image to be loaded
+	GFile *input_file = NULL;
+	GInputStream *data;
+	if((file->file_flags & FILE_FLAGS_MEMORY_IMAGE) != 0) {
+		// Memory view on a memory image
+		data = g_memory_input_stream_new_from_data(file->file_data, file->file_data_length, NULL);
+	}
+	else {
+		// Classical file or URI
+		g_cancellable_reset(image_loader_cancellable);
+
+		// Support for URIs is an extra feature. To prevent breaking compatibility,
+		// always prefer existing files over URI interpretation.
+		// For example, all files containing a colon cannot be read using the
+		// g_file_new_for_commandline_arg command, because they are interpreted
+		// as an URI with an unsupported scheme.
+		if(g_file_test(file->file_name, G_FILE_TEST_EXISTS)) {
+			input_file = g_file_new_for_path(file->file_name);
+		}
+		else {
+			input_file = g_file_new_for_commandline_arg(file->file_name);
+		}
+
+		data = G_INPUT_STREAM(g_file_read(input_file, image_loader_cancellable, &error_pointer));
+	}
+
+	if(data && file_type_handlers[file->file_type].load_fn != NULL) {
+		// Let the file type handler handle the details
+		file_type_handlers[file->file_type].load_fn(file, data, &error_pointer);
+
+		g_object_unref(data);
+	}
+
+	if(input_file) {
+		g_object_unref(input_file);
+	}
+
+#if 0
 	GdkPixbufAnimation *pixbuf_animation = NULL;
 
-	if((file->file_type & FILE_TYPE_MEMORY_IMAGE) != 0) {
+	if((file->file_type & FILE_FLAGS_MEMORY_IMAGE) != 0) {
 		GdkPixbufLoader *loader = gdk_pixbuf_loader_new();
 		if(gdk_pixbuf_loader_write(loader, file->file_data, file->file_data_length, &error_pointer)) {
 			gdk_pixbuf_loader_close(loader, &error_pointer);
@@ -1424,17 +1530,17 @@ gboolean image_loader_load_single(BOSNode *node, gboolean called_from_main) {/*{
 				g_object_unref(file->pixbuf_animation);
 			}
 			file->pixbuf_animation = g_object_ref(pixbuf_animation);
-			file->file_type |= FILE_TYPE_ANIMATION;
+			file->file_flags |= FILE_FLAGS_ANIMATION;
 		}
 		else {
-			file->file_type &= ~FILE_TYPE_ANIMATION;
+			file->file_flags &= ~FILE_FLAGS_ANIMATION;
 		}
 
 		// We apparently do not own this pixbuf!
 		GdkPixbuf *pixbuf = gdk_pixbuf_animation_get_static_image(pixbuf_animation);
 
 		if(pixbuf == NULL) {
-			if((file->file_type & FILE_TYPE_MEMORY_IMAGE) == 0) {
+			if((file->file_flags & FILE_FLAGS_MEMORY_IMAGE) == 0) {
 				g_printerr("Failed to load image %s: %s\n", file->file_name, error_pointer->message);
 			}
 			else {
@@ -1464,10 +1570,16 @@ gboolean image_loader_load_single(BOSNode *node, gboolean called_from_main) {/*{
 		g_object_unref(pixbuf_animation);
 	}
 
-	file->surface_is_out_of_date = FALSE;
+	file->memory_is_out_of_date = FALSE;
+#endif
 
-	if(file->image_surface != NULL) {
-		if(file->file_type == FILE_TYPE_DEFAULT) {
+	if(file->is_loaded) {
+		if(error_pointer) {
+			g_printerr("A recoverable error occoured: %s\n", error_pointer->message);
+			g_clear_error(&error_pointer);
+		}
+
+		if((file->file_flags & FILE_FLAGS_MEMORY_IMAGE) == 0) {
 			GFile *the_file = g_file_new_for_path(file->file_name);
 			if(the_file != NULL) {
 				file->file_monitor = g_file_monitor_file(the_file, G_FILE_MONITOR_NONE, NULL, NULL);
@@ -1481,6 +1593,21 @@ gboolean image_loader_load_single(BOSNode *node, gboolean called_from_main) {/*{
 		return TRUE;
 	}
 	else {
+		if(error_pointer) {
+			if(error_pointer->code == G_IO_ERROR_CANCELLED) {
+				g_clear_error(&error_pointer);
+				return FALSE;
+			}
+			g_printerr("Failed to load image %s: %s\n", file->display_name, error_pointer->message);
+			g_clear_error(&error_pointer);
+		}
+		else {
+			if(g_cancellable_is_cancelled(image_loader_cancellable)) {
+				return FALSE;
+			}
+			g_printerr("Failed to load image %s: Reason unknown\n", file->display_name);
+		}
+
 		// The node is invalid.  Unload it.
 		D_LOCK(file_tree);
 		if(node == current_file_node) {
@@ -1518,13 +1645,13 @@ gpointer image_loader_thread(gpointer user_data) {/*{{{*/
 			bostree_node_weak_unref(file_tree, node);
 			continue;
 		}
-		if(FILE(node)->image_surface == NULL || FILE(node)->surface_is_out_of_date) {
+		if(!FILE(node)->is_loaded) {
 			// Load image
 			image_loader_thread_currently_loading = node;
 			image_loader_load_single(node, FALSE);
 			image_loader_thread_currently_loading = NULL;
 		}
-		if(node == current_file_node && FILE(node)->image_surface != NULL) {
+		if(node == current_file_node && FILE(node)->is_loaded) {
 			current_image_drawn = FALSE;
 			g_idle_add((GSourceFunc)image_loaded_handler, NULL);
 		}
@@ -1569,11 +1696,11 @@ gboolean initialize_image_loader() {/*{{{*/
 	if(!option_lowmem) {
 		D_LOCK(file_tree);
 		BOSNode *next = next_file();
-		if(FILE(next)->image_surface == NULL) {
+		if(!FILE(next)->is_loaded) {
 			queue_image_load(next);
 		}
 		BOSNode *previous = previous_file();
-		if(FILE(previous)->image_surface == NULL) {
+		if(!FILE(previous)->is_loaded) {
 			queue_image_load(previous);
 		}
 		D_UNLOCK(file_tree);
@@ -1594,14 +1721,10 @@ void queue_image_load(BOSNode *node) {/*{{{*/
 }/*}}}*/
 void unload_image(BOSNode *node) {/*{{{*/
 	file_t *file = FILE(node);
-	if(file->image_surface != NULL) {
-		cairo_surface_destroy(file->image_surface);
-		file->image_surface = NULL;
+	if(file_type_handlers[file->file_type].unload_fn != NULL) {
+		file_type_handlers[file->file_type].unload_fn(file);
 	}
-	if(file->pixbuf_animation != NULL) {
-		g_object_unref(file->pixbuf_animation);
-		file->pixbuf_animation = NULL;
-	}
+	file->is_loaded = FALSE;
 	if(file->file_monitor != NULL) {
 		g_file_monitor_cancel(file->file_monitor);
 		if(G_IS_OBJECT(file->file_monitor)) {
@@ -1640,7 +1763,7 @@ gboolean absolute_image_movement(BOSNode *ref) {/*{{{*/
 	if((old_next != new_next && old_next != new_prev && old_next != node) || (old_next != node && option_lowmem)) {
 		unload_image(old_next);
 	}
-	if((current_file_node != new_next && current_file_node != new_prev && current_file_node != node) || CURRENT_FILE->surface_is_out_of_date || (current_file_node != node && option_lowmem)) {
+	if((current_file_node != new_next && current_file_node != new_prev && current_file_node != node) || !(CURRENT_FILE->is_loaded) || (current_file_node != node && option_lowmem)) {
 		unload_image(current_file_node);
 	}
 
@@ -1652,17 +1775,17 @@ gboolean absolute_image_movement(BOSNode *ref) {/*{{{*/
 	D_UNLOCK(file_tree);
 
 	// If the new image has not been loaded yet, display an information message
-	if(CURRENT_FILE->image_surface == NULL) {
+	if(!CURRENT_FILE->is_loaded) {
 		update_info_text(NULL);
 		gtk_widget_queue_draw(GTK_WIDGET(main_window));
 	}
 
 	queue_image_load(current_file_node);
 	if(!option_lowmem) {
-		if(FILE(new_next)->image_surface == NULL) {
+		if(!FILE(new_next)->is_loaded) {
 			queue_image_load(new_next);
 		}
-		if(FILE(new_prev)->image_surface == NULL) {
+		if(!FILE(new_prev)->is_loaded) {
 			queue_image_load(new_prev);
 		}
 	}
@@ -1704,6 +1827,10 @@ void relative_image_movement(ptrdiff_t movement) {/*{{{*/
 }/*}}}*/
 void transform_current_image(cairo_matrix_t *transformation) {/*{{{*/
 	D_LOCK(file_tree);
+
+	// TODO Reimplement differently: Store transformation matrix, work on-the-fly
+
+	/*
 	if(CURRENT_FILE->image_surface == NULL) {
 		// Image not loaded yet. Abort.
 		D_UNLOCK(file_tree);
@@ -1734,16 +1861,18 @@ void transform_current_image(cairo_matrix_t *transformation) {/*{{{*/
 	CURRENT_FILE->image_surface = new_surface;
 	current_image_drawn = FALSE;
 	invalidate_current_scaled_image_surface();
-	CURRENT_FILE->surface_is_out_of_date = TRUE;
+	CURRENT_FILE->memory_is_out_of_date = TRUE;
+	*/
 	D_UNLOCK(file_tree);
 
 	set_scale_level_to_fit();
 	image_loaded_handler(NULL);
+
 }/*}}}*/
 
 gchar *apply_external_image_filter_prepare_command(gchar *command) { /*{{{*/
 		D_LOCK(file_tree);
-		if((CURRENT_FILE->file_type & FILE_TYPE_MEMORY_IMAGE) != 0) {
+		if((CURRENT_FILE->file_flags & FILE_FLAGS_MEMORY_IMAGE) != 0) {
 			D_UNLOCK(file_tree);
 			return g_strdup(command);
 		}
@@ -1811,7 +1940,8 @@ cairo_status_t apply_external_image_filter_thread_callback(void *closure, const 
 }/*}}}*/
 gpointer apply_external_image_filter_image_writer_thread(gpointer data) {/*{{{*/
 	D_LOCK(file_tree);
-	cairo_surface_t *surface = CURRENT_FILE->image_surface;
+	// TODO Work with what here?
+	cairo_surface_t *surface = current_scaled_image_surface; // CURRENT_FILE->image_surface;
 	if(!surface) {
 		close(*(gint *)data);
 		return NULL;
@@ -1908,6 +2038,8 @@ void apply_external_image_filter(gchar *external_filter) {/*{{{*/
 					g_printerr("External command failed with exit status %d\n", status);
 				}
 				else {
+					// TODO If it is possible, use generic memory image loader here
+
 					GdkPixbufLoader *loader = gdk_pixbuf_loader_new();
 					GdkPixbuf *pixbuf = NULL;
 					if(gdk_pixbuf_loader_write(loader, (const guchar *)image_data, image_data_length, &error_pointer)) {
@@ -1927,12 +2059,15 @@ void apply_external_image_filter(gchar *external_filter) {/*{{{*/
 							cairo_paint(sf_cr);
 							cairo_destroy(sf_cr);
 
+							// TODO Replace by a different version
+							/*
 							cairo_surface_t *old_surface = CURRENT_FILE->image_surface;
 							CURRENT_FILE->image_surface = surface;
-							CURRENT_FILE->surface_is_out_of_date = TRUE;
+							CURRENT_FILE->memory_is_out_of_date = TRUE;
 							if(old_surface) {
 								cairo_surface_destroy(old_surface);
 							}
+							*/
 
 							g_idle_add(apply_external_image_filter_success_callback, NULL);
 						}
@@ -1965,7 +2100,7 @@ gpointer apply_external_image_filter_thread(gpointer external_filter_ptr) {/*{{{
 void hardlink_current_image() {/*{{{*/
 	BOSNode *the_file = bostree_node_weak_ref(current_file_node);
 
-	if((FILE(the_file)->file_type & FILE_TYPE_MEMORY_IMAGE) != 0) {
+	if((FILE(the_file)->file_flags & FILE_FLAGS_MEMORY_IMAGE) != 0) {
 		g_mkdir("./.pqiv-select", 0755);
 		gchar *store_target = NULL;
 		do {
@@ -1980,6 +2115,9 @@ void hardlink_current_image() {/*{{{*/
 		}
 		while(g_file_test(store_target, G_FILE_TEST_EXISTS));
 
+		// TODO Replace with a file type invariant version
+
+		/*
 		if(cairo_surface_write_to_png(FILE(the_file)->image_surface, store_target) == CAIRO_STATUS_SUCCESS) {
 			gchar *info_text = g_strdup_printf("Stored what you see into %s", store_target);
 			update_info_text(info_text);
@@ -1988,6 +2126,7 @@ void hardlink_current_image() {/*{{{*/
 		else {
 			update_info_text("Failed to write to the .pqiv-select subdirectory");
 		}
+		*/
 
 		g_free(store_target);
 		bostree_node_weak_unref(file_tree, the_file);
@@ -2019,6 +2158,8 @@ void hardlink_current_image() {/*{{{*/
 			*dot = 0;
 		}
 		gchar *store_target = g_strdup_printf("%s.png", link_target);
+		// TODO Replace with a file type invariant version
+		/*
 		if(cairo_surface_write_to_png(FILE(the_file)->image_surface, store_target) == CAIRO_STATUS_SUCCESS) {
 			gchar *info_text = g_strdup_printf("Failed to link file, but stored what you see into %s", store_target);
 			update_info_text(info_text);
@@ -2027,6 +2168,7 @@ void hardlink_current_image() {/*{{{*/
 		else {
 			update_info_text("Failed to write to the .pqiv-select subdirectory");
 		}
+		*/
 		g_free(store_target);
 	}
 	else {
@@ -2273,7 +2415,7 @@ void update_info_text(const gchar *action) {/*{{{*/
 	D_LOCK(file_tree);
 
 	gchar *file_name;
-	if((CURRENT_FILE->file_type & FILE_TYPE_MEMORY_IMAGE) != 0) {
+	if((CURRENT_FILE->file_flags & FILE_FLAGS_MEMORY_IMAGE) != 0) {
 		file_name = g_strdup_printf("-");
 	}
 	else {
@@ -2287,7 +2429,7 @@ void update_info_text(const gchar *action) {/*{{{*/
 		current_info_text = NULL;
 	}
 
-	if(CURRENT_FILE->image_surface == NULL) {
+	if(!CURRENT_FILE->is_loaded) {
 		// Image not loaded yet. Use loading information and abort.
 		current_info_text = g_strdup_printf("%s (Image is still loading...)", display_name);
 
@@ -2299,8 +2441,9 @@ void update_info_text(const gchar *action) {/*{{{*/
 	// Update info text
 	if(!option_hide_info_box) {
 		current_info_text = g_strdup_printf("%s (%dx%d) %03.2f%% [%d/%d]", display_name,
-			cairo_image_surface_get_width(CURRENT_FILE->image_surface),
-			cairo_image_surface_get_height(CURRENT_FILE->image_surface),
+			// TODO Replace with a file type invariant version
+			CURRENT_FILE->width,
+			CURRENT_FILE->height,
 			current_scale_level * 100.,
 			(unsigned int)(bostree_rank(current_file_node) + 1),
 			(unsigned int)(bostree_node_count(file_tree)));
@@ -2336,11 +2479,13 @@ void update_info_text(const gchar *action) {/*{{{*/
 			window_title_iter += 8;
 		}
 		else if(g_strstr_len(window_title_iter, 5, "WIDTH") != NULL) {
-			g_string_append_printf(new_window_title, "%d", cairo_image_surface_get_width(CURRENT_FILE->image_surface));
+			// TODO Replace with a file type invariant version
+			g_string_append_printf(new_window_title, "%d", CURRENT_FILE->width);
 			window_title_iter += 5;
 		}
 		else if(g_strstr_len(window_title_iter, 6, "HEIGHT") != NULL) {
-			g_string_append_printf(new_window_title, "%d", cairo_image_surface_get_height(CURRENT_FILE->image_surface));
+			// TODO Replace with a file type invariant version
+			g_string_append_printf(new_window_title, "%d", CURRENT_FILE->height);
 			window_title_iter += 6;
 		}
 		else if(g_strstr_len(window_title_iter, 4, "ZOOM") != NULL) {
@@ -2392,7 +2537,8 @@ gboolean window_draw_callback(GtkWidget *widget, cairo_t *cr_arg, gpointer user_
 	int x = 0;
 	int y = 0;
 	D_LOCK(file_tree);
-	cairo_surface_t *current_image_surface = CURRENT_FILE->image_surface;
+	// TODO Replace with an individual drawing function
+	cairo_surface_t *current_image_surface = ((file_private_data_default_t *)CURRENT_FILE->private)->image_surface;
 	if(current_image_surface) {
 		cairo_surface_reference(current_image_surface);
 	}
@@ -2416,8 +2562,8 @@ gboolean window_draw_callback(GtkWidget *widget, cairo_t *cr_arg, gpointer user_
 		cairo_restore(cr);
 
 		// Draw the image & background pattern
-		int image_width = cairo_image_surface_get_width(current_image_surface);
-		int image_height = cairo_image_surface_get_height(current_image_surface);
+		guint image_width = cairo_image_surface_get_width(current_image_surface);
+		guint image_height = cairo_image_surface_get_height(current_image_surface);
 
 		if(option_scale > 0 || main_window_in_fullscreen) {
 			x = (main_window_width - current_scale_level * image_width) / 2;
@@ -2595,12 +2741,13 @@ gboolean window_draw_callback(GtkWidget *widget, cairo_t *cr_arg, gpointer user_
 #endif
 void set_scale_level_to_fit() {/*{{{*/
 	D_LOCK(file_tree);
-	if(CURRENT_FILE->image_surface != NULL) {
+	if(CURRENT_FILE->is_loaded) {
 		if(!current_image_drawn) {
 			scale_override = FALSE;
 		}
-		int image_width = cairo_image_surface_get_width(CURRENT_FILE->image_surface);
-		int image_height = cairo_image_surface_get_height(CURRENT_FILE->image_surface);
+		// TODO Replace with a type type independent version
+		int image_width = CURRENT_FILE->width;
+		int image_height = CURRENT_FILE->height;
 
 		gdouble new_scale_level = 1.0;
 
@@ -2719,7 +2866,7 @@ gboolean window_key_press_callback(GtkWidget *widget, GdkEventKey *event, gpoint
 	}
 
 	// If the current image is not loaded, only allow stuff unrelated to the current image
-	if(CURRENT_FILE->image_surface == NULL && (
+	if(!CURRENT_FILE->is_loaded && (
 		event->keyval != GDK_KEY_space &&
 		event->keyval != GDK_KEY_Page_Up &&
 		event->keyval != GDK_KEY_KP_Page_Up &&
@@ -2792,8 +2939,8 @@ gboolean window_key_press_callback(GtkWidget *widget, GdkEventKey *event, gpoint
 				gtk_widget_queue_draw(GTK_WIDGET(main_window));
 			}
 			else {
-				int image_width = cairo_image_surface_get_width(CURRENT_FILE->image_surface);
-				int image_height = cairo_image_surface_get_height(CURRENT_FILE->image_surface);
+				const guint image_width = CURRENT_FILE->width;
+				const guint image_height = CURRENT_FILE->height;
 
 				gtk_window_resize(main_window, current_scale_level * image_width, current_scale_level * image_height);
 			}
@@ -2829,8 +2976,8 @@ gboolean window_key_press_callback(GtkWidget *widget, GdkEventKey *event, gpoint
 				gtk_widget_queue_draw(GTK_WIDGET(main_window));
 			}
 			else {
-				int image_width = cairo_image_surface_get_width(CURRENT_FILE->image_surface);
-				int image_height = cairo_image_surface_get_height(CURRENT_FILE->image_surface);
+				const guint image_width = CURRENT_FILE->width;
+				const guint image_height = CURRENT_FILE->height;
 
 				gtk_window_resize(main_window, current_scale_level * image_width, current_scale_level * image_height);
 			}
@@ -2855,7 +3002,7 @@ gboolean window_key_press_callback(GtkWidget *widget, GdkEventKey *event, gpoint
 
 		case GDK_KEY_r:
 		case GDK_KEY_R:
-			CURRENT_FILE->surface_is_out_of_date = TRUE;
+			CURRENT_FILE->is_loaded = FALSE;
 			update_info_text("Reloading image..");
 			queue_image_load(current_file_node);
 			break;
@@ -2879,12 +3026,12 @@ gboolean window_key_press_callback(GtkWidget *widget, GdkEventKey *event, gpoint
 
 		case GDK_KEY_H:
 		case GDK_KEY_h:
-			if((CURRENT_FILE->file_type & FILE_TYPE_ANIMATION) != 0) {
+			if((CURRENT_FILE->file_flags & FILE_FLAGS_ANIMATION) != 0) {
 				break;
 			}
 
 			{
-				cairo_matrix_t transformation = { -1., 0., 0., 1., cairo_image_surface_get_width(CURRENT_FILE->image_surface), 0 };
+				cairo_matrix_t transformation = { -1., 0., 0., 1., CURRENT_FILE->width, 0 };
 				transform_current_image(&transformation);
 			}
 			update_info_text("Image flipped horizontally");
@@ -2892,12 +3039,12 @@ gboolean window_key_press_callback(GtkWidget *widget, GdkEventKey *event, gpoint
 
 		case GDK_KEY_V:
 		case GDK_KEY_v:
-			if((CURRENT_FILE->file_type & FILE_TYPE_ANIMATION) != 0) {
+			if((CURRENT_FILE->file_flags & FILE_FLAGS_ANIMATION) != 0) {
 				break;
 			}
 
 			{
-				cairo_matrix_t transformation = { 1., 0., 0., -1., 0, cairo_image_surface_get_height(CURRENT_FILE->image_surface) };
+				cairo_matrix_t transformation = { 1., 0., 0., -1., 0, CURRENT_FILE->height };
 				transform_current_image(&transformation);
 			}
 			update_info_text("Image flipped vertically");
@@ -2905,12 +3052,12 @@ gboolean window_key_press_callback(GtkWidget *widget, GdkEventKey *event, gpoint
 
 		case GDK_KEY_L:
 		case GDK_KEY_l:
-			if((CURRENT_FILE->file_type & FILE_TYPE_ANIMATION) != 0) {
+			if((CURRENT_FILE->file_flags & FILE_FLAGS_ANIMATION) != 0) {
 				break;
 			}
 
 			{
-				cairo_matrix_t transformation = { 0., -1., 1., 0., 0, cairo_image_surface_get_width(CURRENT_FILE->image_surface) };
+				cairo_matrix_t transformation = { 0., -1., 1., 0., 0, CURRENT_FILE->width };
 				transform_current_image(&transformation);
 			}
 			update_info_text("Image rotated left");
@@ -2918,12 +3065,12 @@ gboolean window_key_press_callback(GtkWidget *widget, GdkEventKey *event, gpoint
 
 		case GDK_KEY_K:
 		case GDK_KEY_k:
-			if((CURRENT_FILE->file_type & FILE_TYPE_ANIMATION) != 0) {
+			if((CURRENT_FILE->file_flags & FILE_FLAGS_ANIMATION) != 0) {
 				break;
 			}
 
 			{
-				cairo_matrix_t transformation = { 0., 1., -1., 0., cairo_image_surface_get_height(CURRENT_FILE->image_surface), 0. };
+				cairo_matrix_t transformation = { 0., 1., -1., 0., CURRENT_FILE->height, 0. };
 				transform_current_image(&transformation);
 			}
 			update_info_text("Image rotated right");
@@ -3004,8 +3151,8 @@ gboolean window_key_press_callback(GtkWidget *widget, GdkEventKey *event, gpoint
 					break;
 				}
 				else if (
-					((CURRENT_FILE->file_type & FILE_TYPE_MEMORY_IMAGE) != 0 && command[0] != '|')
-					|| ((CURRENT_FILE->file_type & FILE_TYPE_ANIMATION) != 0 && command[0] == '|')) {
+					((CURRENT_FILE->file_flags & FILE_FLAGS_MEMORY_IMAGE) != 0 && command[0] != '|')
+					|| ((CURRENT_FILE->file_flags & FILE_FLAGS_ANIMATION) != 0 && command[0] == '|')) {
 
 					gchar *info = g_strdup_printf("Command %d incompatible with current file type", event->keyval - GDK_KEY_1 + 1);
 					update_info_text(info);
@@ -3213,10 +3360,10 @@ gboolean window_state_callback(GtkWidget *widget, GdkEventWindowState *event, gp
 			// this manually, at least Mutter ignores the position hint at this
 			// point.
 			D_LOCK(file_tree);
-			if(CURRENT_FILE->image_surface != NULL) {
+			if(CURRENT_FILE->is_loaded) {
 				gtk_window_move(main_window,
-					screen_geometry.x + (screen_geometry.width - cairo_image_surface_get_width(CURRENT_FILE->image_surface) * current_scale_level) / 2,
-					screen_geometry.y + (screen_geometry.height - cairo_image_surface_get_height(CURRENT_FILE->image_surface) * current_scale_level) / 2
+					screen_geometry.x + (screen_geometry.width - CURRENT_FILE->width * current_scale_level) / 2,
+					screen_geometry.y + (screen_geometry.height - CURRENT_FILE->height * current_scale_level) / 2
 				);
 			}
 			D_UNLOCK(file_tree);
@@ -3411,6 +3558,149 @@ gboolean initialize_gui_callback(gpointer user_data) {/*{{{*/
 	return FALSE;
 }/*}}}*/
 // }}}
+/* Default (GdkPixbuf) file type implementation {{{ */
+void file_type_default_alloc(load_images_state_t state, file_t *file) {
+	file->private = (void *)g_new0(file_private_data_default_t, 1);
+	load_images_handle_parameter_add_file(state, file);
+}
+
+void file_type_default_free(file_t *file) {
+	free(file->private);
+}
+
+void file_type_default_unload(file_t *file) {
+	file_private_data_default_t *private = file->private;
+	if(private->pixbuf_animation != NULL) {
+		g_object_unref(private->pixbuf_animation);
+		private->pixbuf_animation = NULL;
+	}
+	if(private->image_surface != NULL) {
+		cairo_surface_destroy(private->image_surface);
+		private->image_surface = NULL;
+	}
+	if(private->animation_iter != NULL) {
+		g_object_unref(private->animation_iter);
+		private->animation_iter = NULL;
+	}
+}
+
+double file_type_default_animation_initialize(file_t *file) {
+	file_private_data_default_t *private = file->private;
+	if(private->animation_iter == NULL) {
+		private->animation_iter = gdk_pixbuf_animation_get_iter(private->pixbuf_animation, NULL);
+	}
+	return gdk_pixbuf_animation_iter_get_delay_time(private->animation_iter);
+}
+
+double file_type_default_animation_next_frame(file_t *file) {
+	file_private_data_default_t *private = (file_private_data_default_t *)file->private;
+
+	cairo_surface_t *surface = cairo_surface_reference(private->image_surface);
+
+	gdk_pixbuf_animation_iter_advance(private->animation_iter, NULL);
+	GdkPixbuf *pixbuf = gdk_pixbuf_animation_iter_get_pixbuf(private->animation_iter);
+
+	cairo_t *sf_cr = cairo_create(surface);
+	cairo_save(sf_cr);
+	cairo_set_source_rgba(sf_cr, 0., 0., 0., 0.);
+	cairo_set_operator(sf_cr, CAIRO_OPERATOR_SOURCE);
+	cairo_paint(sf_cr);
+	cairo_restore(sf_cr);
+	gdk_cairo_set_source_pixbuf(sf_cr, pixbuf, 0, 0);
+	cairo_paint(sf_cr);
+	cairo_destroy(sf_cr);
+
+	cairo_surface_destroy(surface);
+
+	return gdk_pixbuf_animation_iter_get_delay_time(private->animation_iter);
+}
+
+gboolean file_type_default_load_destroy_old_image_callback(gpointer old_surface) {/*{{{*/
+	cairo_surface_destroy((cairo_surface_t *)old_surface);
+	return FALSE;
+}/*}}}*/
+
+void file_type_default_load(file_t *file, GInputStream *data, GError **error_pointer) {
+	file_private_data_default_t *private = (file_private_data_default_t *)file->private;
+	GdkPixbufAnimation *pixbuf_animation = NULL;
+
+	#if (GDK_PIXBUF_MAJOR > 2 || (GDK_PIXBUF_MAJOR == 2 && GDK_PIXBUF_MINOR >= 28))
+		pixbuf_animation = gdk_pixbuf_animation_new_from_stream(data, image_loader_cancellable, error_pointer);
+	#else
+		#define IMAGE_LOADER_BUFFER_SIZE (1024 * 512)
+
+		GdkPixbufLoader *loader = gdk_pixbuf_loader_new();
+		guchar *buffer = g_malloc(IMAGE_LOADER_BUFFER_SIZE);
+		while(TRUE) {
+			gssize bytes_read = g_input_stream_read(data, buffer, IMAGE_LOADER_BUFFER_SIZE, image_loader_cancellable, error_pointer);
+			if(bytes_read == 0) {
+				// All OK, finish the image loader
+				gdk_pixbuf_loader_close(loader, error_pointer);
+				pixbuf_animation = gdk_pixbuf_loader_get_animation(loader);
+				if(pixbuf_animation != NULL) {
+					g_object_ref(pixbuf_animation); // see above
+				}
+				break;
+			}
+			if(bytes_read == -1) {
+				// Error. Handle this below.
+				gdk_pixbuf_loader_close(loader, NULL);
+				break;
+			}
+			// In all other cases, write to image loader
+			if(!gdk_pixbuf_loader_write(loader, buffer, bytes_read, error_pointer)) {
+				// In case of an error, abort.
+				break;
+			}
+		}
+		g_free(buffer);
+		g_object_unref(loader);
+	#endif
+
+	if(pixbuf_animation == NULL) {
+		return;
+	}
+
+	if(!gdk_pixbuf_animation_is_static_image(pixbuf_animation)) {
+		if(private->pixbuf_animation != NULL) {
+			g_object_unref(private->pixbuf_animation);
+		}
+		private->pixbuf_animation = g_object_ref(pixbuf_animation);
+		file->file_flags |= FILE_FLAGS_ANIMATION;
+	}
+	else {
+		file->file_flags &= ~FILE_FLAGS_ANIMATION;
+	}
+
+	// We apparently do not own this pixbuf!
+	GdkPixbuf *pixbuf = gdk_pixbuf_animation_get_static_image(pixbuf_animation);
+
+	if(pixbuf != NULL) {
+		GdkPixbuf *new_pixbuf = gdk_pixbuf_apply_embedded_orientation(pixbuf);
+		pixbuf = new_pixbuf;
+
+		cairo_surface_t *surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, gdk_pixbuf_get_width(pixbuf), gdk_pixbuf_get_height(pixbuf));
+		cairo_t *sf_cr = cairo_create(surface);
+		gdk_cairo_set_source_pixbuf(sf_cr, pixbuf, 0, 0);
+		cairo_paint(sf_cr);
+		cairo_destroy(sf_cr);
+
+		D_LOCK(file_tree);
+		cairo_surface_t *old_surface = private->image_surface;
+		private->image_surface = surface;
+		if(old_surface != NULL) {
+			g_idle_add(file_type_default_load_destroy_old_image_callback, old_surface);
+		}
+		g_object_unref(pixbuf);
+		D_UNLOCK(file_tree);
+
+		file->width = cairo_image_surface_get_width(private->image_surface);
+		file->height = cairo_image_surface_get_height(private->image_surface);
+		file->is_loaded = TRUE;
+	}
+	g_object_unref(pixbuf_animation);
+}
+/* }}} */
 gboolean load_images_thread_update_info_text(gpointer user_data) {/*{{{*/
 	// If the window is already visible and new files have been found, update
 	// the info text every second
