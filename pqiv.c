@@ -2501,9 +2501,9 @@ gboolean window_draw_callback(GtkWidget *widget, cairo_t *cr_arg, gpointer user_
 
 	if(CURRENT_FILE->is_loaded) {
 		// Calculate where to draw the image and the transformation matrix to use
+		int image_transform_width, image_transform_height;
+		calculate_current_image_transformed_size(&image_transform_width, &image_transform_height);
 		if(option_scale > 0 || main_window_in_fullscreen) {
-			int image_transform_width, image_transform_height;
-			calculate_current_image_transformed_size(&image_transform_width, &image_transform_height);
 			x = (main_window_width - current_scale_level * image_transform_width) / 2;
 			y = (main_window_height - current_scale_level * image_transform_height) / 2;
 		}
@@ -2565,7 +2565,11 @@ gboolean window_draw_callback(GtkWidget *widget, cairo_t *cr_arg, gpointer user_
 		if(option_lowmem) {
 			// In low memory mode, we scale here and draw on the fly
 			cairo_scale(cr, current_scale_level, current_scale_level);
+			cairo_save(cr);
+			cairo_rectangle(cr, 0, 0, image_transform_width, image_transform_height);
+			cairo_clip(cr);
 			draw_current_image_to_context(cr);
+			cairo_restore(cr);
 		}
 		else {
 			// Elsewise, we cache a scaled copy in a separate image surface
