@@ -3,6 +3,7 @@ CROSS=
 DESTDIR=
 GTK_VERSION=0
 PQIV_WARNING_FLAGS=-Wall -Wextra -Wfloat-equal -Wpointer-arith -Wcast-align -Wstrict-overflow=5 -Wwrite-strings -Waggregate-return -Wunreachable-code -Wno-unused-parameter
+LD_LIBS=-lm
 PREFIX=/usr
 MANDIR=$(PREFIX)/share/man
 EXECUTABLE_EXTENSION=
@@ -32,7 +33,7 @@ endif
 all: pqiv$(EXECUTABLE_EXTENSION)
 
 pqiv$(EXECUTABLE_EXTENSION): pqiv.c lib/strnatcmp.o lib/bostree.o
-	$(CROSS)$(CC) $(CPPFLAGS) $(PQIV_WARNING_FLAGS) -std=gnu99 -o $@ `$(PKG_CONFIG) --cflags "$(LIBS)"` $+ `$(PKG_CONFIG) --libs "$(LIBS)"` $(CFLAGS) $(LDFLAGS)
+	$(CROSS)$(CC) $(CPPFLAGS) $(PQIV_WARNING_FLAGS) -std=gnu99 -o $@ `$(PKG_CONFIG) --cflags "$(LIBS)"` $+ `$(PKG_CONFIG) --libs "$(LIBS)"` $(CFLAGS) $(LD_LIBS) $(LDFLAGS)
 
 lib/strnatcmp.o: lib/strnatcmp.c
 	$(CROSS)$(CC) $(CPPFLAGS) -c -o $@ $+ $(CFLAGS)

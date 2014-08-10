@@ -149,9 +149,8 @@
 #endif // }}}
 
 // Data types and global variables {{{
-#define FILE_FLAGS_NORMAL (guint)(0)
-#define FILE_FLAGS_ANIMATION (guint)(1)
-#define FILE_FLAGS_MEMORY_IMAGE (guint)(1<<1)
+#define FILE_FLAGS_ANIMATION      (guint)(1)
+#define FILE_FLAGS_MEMORY_IMAGE   (guint)(1<<1)
 
 // The structure for images
 typedef struct {
@@ -159,6 +158,9 @@ typedef struct {
 	guint file_type;
 
 	// Special flags
+	// FILE_FLAGS_ANIMATION        -> Animation functions are invoked
+	//                                Set by file type handlers
+	// FILE_FLAGS_MEMORY_IMAGE     -> File lives in memory
 	guint file_flags;
 
 	// The file name to display and to sort by
@@ -194,20 +196,39 @@ typedef struct {
 } file_t;
 
 // Definition of the built-in file types
-typedef enum { PARAMETER, RECURSION, INOTIFY, BROWSE_ORIGINAL_PARAMETER } load_images_state_t;
-typedef void (*file_type_alloc_fn_t)(load_images_state_t state, file_t *file);
+
+typedef enum { PARAMETER, RECURSION, INOTIFY, BROWSE_ORIGINAL_PARAMETER, FILTER_OUTPUT } load_images_state_t;
+
+// Allocation function: Allocate the ->private structure within a file and add the
+// image(s) to the list of available images via load_images_handle_parameter_add_file()
+// Returns a pointer to the first added image
+typedef BOSNode *(*file_type_alloc_fn_t)(load_images_state_t state, file_t *file);
+
+// Deallocation, if a file is removed from the images list. Free the ->private structure
 typedef void (*file_type_free_fn_t)(file_t *file);
+
+// Actually load a file into memory
 typedef void (*file_type_load_fn_t)(file_t *file, GInputStream *data, GError **error_pointer);
+
+// Unload a file
 typedef void (*file_type_unload_fn_t)(file_t *file);
+
+// Animation support: Initialize memory for animations, return ms until first frame
 typedef double (*file_type_animation_initialize_fn_t)(file_t *file);
+
+// Animation support: Advance to the next frame, return ms until next frame
 typedef double (*file_type_animation_next_frame_fn_t)(file_t *file);
 
-void file_type_default_alloc(load_images_state_t state, file_t *file);
+// Draw the current view to a cairo context
+typedef void (*file_type_draw_fn_t)(file_t *file, cairo_t *cr);
+
+BOSNode *file_type_default_alloc(load_images_state_t state, file_t *file);
 void file_type_default_free(file_t *file);
 void file_type_default_load(file_t *file, GInputStream *data, GError **error_pointer);
 void file_type_default_unload(file_t *file);
 double file_type_default_animation_initialize(file_t *file);
 double file_type_default_animation_next_frame(file_t *file);
+void file_type_default_draw(file_t *file, cairo_t *cr);
 
 typedef struct {
 	GtkFileFilter *file_types_handled;
@@ -215,10 +236,9 @@ typedef struct {
 	file_type_free_fn_t free_fn;
 	file_type_load_fn_t load_fn;
 	file_type_unload_fn_t unload_fn;
-
 	file_type_animation_initialize_fn_t animation_initialize_fn;
 	file_type_animation_next_frame_fn_t animation_next_frame_fn;
-
+	file_type_draw_fn_t draw_fn;
 } file_type_handler_t;
 
 file_type_handler_t file_type_handlers[] = {
@@ -229,7 +249,8 @@ file_type_handler_t file_type_handlers[] = {
 		file_type_default_load,
 		file_type_default_unload,
 		file_type_default_animation_initialize,
-		file_type_default_animation_next_frame
+		file_type_default_animation_next_frame,
+		file_type_default_draw
 	}
 };
 
@@ -333,6 +354,8 @@ cairo_rectangle_int_t current_info_text_bounding_box = { 0, 0, 0, 0 };
 
 
 // Current state of the displayed image and user interaction
+// This matrix stores rotations and reflections (makes ui with scaling/transforming easier)
+cairo_matrix_t current_transformation;
 gdouble current_scale_level = 1.0;
 gint current_shift_x = 0;
 gint current_shift_y = 0;
@@ -463,6 +486,7 @@ typedef struct {
 } directory_watch_options_t;
 
 void set_scale_level_to_fit();
+void set_scale_level_for_screen();
 void info_text_queue_redraw();
 void update_info_text(const char *);
 void queue_draw();
@@ -477,6 +501,8 @@ gboolean initialize_image_loader();
 void fullscreen_hide_cursor();
 void fullscreen_show_cursor();
 void window_center_mouse();
+void calculate_current_image_transformed_size(int *image_width, int *image_height);
+cairo_surface_t *get_scaled_image_surface_for_current_image();
 // }}}
 /* Command line handling, creation of the image list {{{ */
 gboolean options_keyboard_alias_set_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error) {/*{{{*/
@@ -756,7 +782,7 @@ void load_images_directory_watch_callback(GFileMonitor *monitor, GFile *file, GF
 		info_text_queue_redraw();
 	}
 }/*}}}*/
-void load_images_handle_parameter_add_file(load_images_state_t state, file_t *file) {/*{{{*/
+BOSNode *load_images_handle_parameter_add_file(load_images_state_t state, file_t *file) {/*{{{*/
 	// Add image to images list/tree
 	// We need to check if the previous/next images have changed, because they
 	// might have been preloaded and need unloading if so.
@@ -769,8 +795,21 @@ void load_images_handle_parameter_add_file(load_images_state_t state, file_t *fi
 		old_next = next_file();
 	}
 	if(!option_sort) {
-		unsigned int *index = (unsigned int *)g_malloc(sizeof(unsigned int));
-		*index = option_shuffle ? g_random_int() : bostree_node_count(file_tree);
+		float *index = (float *)g_malloc(sizeof(float));
+		if(state == FILTER_OUTPUT) {
+			// As index, use
+			//  min(index(current) + .001, .5 index(current) + .5 index(next))
+			*index = 1.001f * *(float *)current_file_node->key;
+
+			BOSNode *next_node = bostree_next_node(current_file_node);
+			if(next_node) {
+				float alternative = .5f * (*(float *)current_file_node->key + *(float *)next_node->key);
+				*index = fminf(*index, alternative);
+			}
+		}
+		else {
+			*index = (float)(option_shuffle ? g_random_int() : bostree_node_count(file_tree));
+		}
 		new_node = bostree_insert(file_tree, (void *)index, file);
 	}
 	else {
@@ -807,6 +846,7 @@ void load_images_handle_parameter_add_file(load_images_state_t state, file_t *fi
 		update_info_text(NULL);
 		info_text_queue_redraw();
 	}
+	return new_node;
 }/*}}}*/
 void load_images_handle_parameter(char *param, load_images_state_t state, gint depth) {/*{{{*/
 	file_t *file;
@@ -1040,15 +1080,14 @@ void load_images_handle_parameter(char *param, load_images_state_t state, gint d
 	}
 #endif
 
-int image_tree_integer_compare(const unsigned int *a, const unsigned int *b) {/*{{{*/
+int image_tree_float_compare(const float *a, const float *b) {/*{{{*/
 	return *a > *b;
 }/*}}}*/
 void file_tree_free_helper(BOSNode *node) {
+	unload_image(node);
 	if(file_type_handlers[FILE(node)->file_type].free_fn != NULL) {
 		file_type_handlers[FILE(node)->file_type].free_fn(FILE(node));
 	}
-
-	unload_image(node);
 	g_free(FILE(node));
 	g_free(FILE(node)->display_name);
 	if((FILE(node)->file_type & FILE_FLAGS_MEMORY_IMAGE) == 0) {
@@ -1062,7 +1101,7 @@ void directory_tree_free_helper(BOSNode *node) {
 void load_images(int *argc, char *argv[]) {/*{{{*/
 	// Allocate memory for the file list (Used for unsorted and random order file lists)
 	file_tree = bostree_new(
-		option_sort ? (BOSTree_cmp_function)strnatcasecmp : (BOSTree_cmp_function)image_tree_integer_compare,
+		option_sort ? (BOSTree_cmp_function)strnatcasecmp : (BOSTree_cmp_function)image_tree_float_compare,
 		file_tree_free_helper
 	);
 
@@ -1196,8 +1235,8 @@ gboolean main_window_resize_callback(gpointer user_data) {/*{{{*/
 		return FALSE;
 	}
 	// Get the image's size
-	int image_width = CURRENT_FILE->width;
-	int image_height = CURRENT_FILE->height;
+	int image_width, image_height;
+	calculate_current_image_transformed_size(&image_width, &image_height);
 	D_UNLOCK(file_tree);
 
 	// In in fullscreen, also abort
@@ -1215,6 +1254,64 @@ gboolean main_window_resize_callback(gpointer user_data) {/*{{{*/
 	}
 
 	return FALSE;
+}/*}}}*/
+void main_window_adjust_for_image() {/*{{{*/
+	// We only need to adjust the window if it is not in fullscreen
+	if(main_window_in_fullscreen) {
+		queue_draw();
+		return;
+	}
+
+	int image_width, image_height;
+	calculate_current_image_transformed_size(&image_width, &image_height);
+
+	// Resize the window and update geometry hints (we enforce them below)
+	int new_window_width = current_scale_level * image_width;
+	int new_window_height = current_scale_level * image_height;
+
+	GdkGeometry hints;
+	hints.min_aspect = hints.max_aspect = new_window_width * 1.0 / new_window_height;
+	if(main_window_width >= 0 && (main_window_width != new_window_width || main_window_height != new_window_height)) {
+		if(option_window_position.x >= 0) {
+			// This is upon startup. Do not attempt to move the window
+			// directly to the startup position, this won't work. WMs don't
+			// like being told what to do.. ;-) Wait till the window is visible,
+			// then move it away.
+			g_idle_add(window_move_helper_callback, NULL);
+		}
+		else if(option_window_position.x != -1) {
+			// Tell the WM to center the window
+			gtk_window_set_position(main_window, GTK_WIN_POS_CENTER_ALWAYS);
+		}
+		if(!main_window_visible) {
+			gtk_window_set_default_size(main_window, new_window_width, new_window_height);
+			gtk_window_set_geometry_hints(main_window, NULL, &hints, GDK_HINT_ASPECT);
+			main_window_width = new_window_width;
+			main_window_height = new_window_height;
+
+			// Some window managers create a race here upon application startup:
+			// They resize, as requested above, and afterwards apply their idea of
+			// window size. To conquer that, we check for the window size again once
+			// all events are handled.
+			g_idle_add(main_window_resize_callback, NULL);
+		}
+		else {
+			gtk_window_set_geometry_hints(main_window, NULL, &hints, GDK_HINT_ASPECT);
+			gtk_window_resize(main_window, new_window_width, new_window_height);
+		}
+
+		// In theory, we do not need to draw manually here. The resizing will
+		// trigger a configure event, which will in particular redraw the
+		// window. But this does not work for tiling WMs. As _NET_WM_ACTION_RESIZE
+		// is not completely reliable either, we do queue for redraw at the
+		// cost of a double redraw.
+		queue_draw();
+	}
+	else {
+		// else: No configure event here, but that's fine: current_scale_level already
+		// has the correct value
+		queue_draw();
+	}
 }/*}}}*/
 gboolean image_loaded_handler(gconstpointer info_text) {/*{{{*/
 	// Remove any old timeouts etc.
@@ -1242,102 +1339,21 @@ gboolean image_loaded_handler(gconstpointer info_text) {/*{{{*/
 	}
 
 	// Update geometry hints, calculate initial window size and place window
-	const guint image_width = CURRENT_FILE->width;
-	const guint image_height = CURRENT_FILE->height;
-
 	D_UNLOCK(file_tree);
-
-	int screen_width = screen_geometry.width;
-	int screen_height = screen_geometry.height;
 
 	// Reset shift
 	current_shift_x = 0;
 	current_shift_y = 0;
 
-	if(!main_window_in_fullscreen) {
-		// If not in fullscreen, resize the window such that the image will be
-		// scaled ideally
+	// Reset rotation
+	cairo_matrix_init_identity(&current_transformation);
 
-		if(!current_image_drawn) {
-			scale_override = FALSE;
-		}
-
-		current_scale_level = 1.0;
-		if(option_initial_scale_used == FALSE) {
-			current_scale_level = option_initial_scale;
-		}
-		else {
-			if(option_scale > 1 || scale_override) {
-				// Scale up to 80% screen size
-				current_scale_level = screen_width * .8 / image_width;
-			}
-			else if(option_scale == 1 && image_width > screen_width * .8) {
-				// Scale down to 80% screen size
-				current_scale_level = screen_width * .8 / image_width;
-			}
-			// In both cases: If the height exceeds 80% screen size, scale
-			// down
-			if(option_scale > 0 && image_height * current_scale_level > screen_height * .8) {
-				current_scale_level = screen_height * .8 / image_height;
-			}
-		}
-
-		// Resize the window and update geometry hints (we enforce them below)
-		int new_window_width = current_scale_level * image_width;
-		int new_window_height = current_scale_level * image_height;
-		GdkGeometry hints;
-		hints.min_aspect = hints.max_aspect = new_window_width * 1.0 / new_window_height;
-		if(main_window_width >= 0 && (main_window_width != new_window_width || main_window_height != new_window_height)) {
-			if(option_window_position.x >= 0) {
-				// This is upon startup. Do not attempt to move the window
-				// directly to the startup position, this won't work. WMs don't
-				// like being told what to do.. ;-) Wait till the window is visible,
-				// then move it away.
-				g_idle_add(window_move_helper_callback, NULL);
-			}
-			else if(option_window_position.x != -1) {
-				// Tell the WM to center the window
-				gtk_window_set_position(main_window, GTK_WIN_POS_CENTER_ALWAYS);
-			}
-			if(!main_window_visible) {
-				gtk_window_set_default_size(main_window, new_window_width, new_window_height);
-				gtk_window_set_geometry_hints(main_window, NULL, &hints, GDK_HINT_ASPECT);
-				main_window_width = new_window_width;
-				main_window_height = new_window_height;
-
-				// Some window managers create a race here upon application startup:
-				// They resize, as requested above, and afterwards apply their idea of
-				// window size. To conquer that, we check for the window size again once
-				// all events are handled.
-				g_idle_add(main_window_resize_callback, NULL);
-			}
-			else {
-				gtk_window_set_geometry_hints(main_window, NULL, &hints, GDK_HINT_ASPECT);
-				gtk_window_resize(main_window, new_window_width, new_window_height);
-			}
-
-			// In theory, we do not need to draw manually here. The resizing will
-			// trigger a configure event, which will in particular redraw the
-			// window. But this does not work for tiling WMs. As _NET_WM_ACTION_RESIZE
-			// is not completely reliable either, we do queue for redraw at the
-			// cost of a double redraw.
-			queue_draw();
-		}
-		else {
-			// else: No configure event here, but that's fine: current_scale_level already
-			// has the correct value
-			queue_draw();
-		}
+	// Adjust scale level, resize, set aspect ratio and place window
+	if(!current_image_drawn) {
+		scale_override = FALSE;
 	}
-	else {
-		// In fullscreen, things are different. When an image is loaded, we need to
-		// recalculate the scale level. We do that here if the user has not specified
-		// an override
-		if(option_initial_scale_used) {
-			set_scale_level_to_fit();
-			queue_draw();
-		}
-	}
+	set_scale_level_for_screen();
+	main_window_adjust_for_image();
 	invalidate_current_scaled_image_surface();
 
 	// Show window, if not visible yet
@@ -1351,24 +1367,17 @@ gboolean image_loaded_handler(gconstpointer info_text) {/*{{{*/
 
 	return FALSE;
 }/*}}}*/
-gboolean image_loader_load_single(BOSNode *node, gboolean called_from_main) {/*{{{*/
-	// Already loaded?
-	file_t *file = (file_t *)node->data;
-	if(file->is_loaded) {
-		return TRUE;
-	}
-
-	GError *error_pointer = NULL;
-
-	// Create an input stream for the image to be loaded
-	GFile *input_file = NULL;
+GInputStream *image_loader_stream_file(file_t *file, GError **error_pointer) {/*{{{*/
 	GInputStream *data;
+
 	if((file->file_flags & FILE_FLAGS_MEMORY_IMAGE) != 0) {
 		// Memory view on a memory image
 		data = g_memory_input_stream_new_from_data(file->file_data, file->file_data_length, NULL);
 	}
 	else {
 		// Classical file or URI
+
+		GFile *input_file = NULL;
 		g_cancellable_reset(image_loader_cancellable);
 
 		// Support for URIs is an extra feature. To prevent breaking compatibility,
@@ -1383,18 +1392,35 @@ gboolean image_loader_load_single(BOSNode *node, gboolean called_from_main) {/*{
 			input_file = g_file_new_for_commandline_arg(file->file_name);
 		}
 
-		data = G_INPUT_STREAM(g_file_read(input_file, image_loader_cancellable, &error_pointer));
-	}
+		if(!input_file) {
+			return NULL;
+		}
 
-	if(data && file_type_handlers[file->file_type].load_fn != NULL) {
-		// Let the file type handler handle the details
-		file_type_handlers[file->file_type].load_fn(file, data, &error_pointer);
+		data = G_INPUT_STREAM(g_file_read(input_file, image_loader_cancellable, error_pointer));
 
-		g_object_unref(data);
-	}
-
-	if(input_file) {
 		g_object_unref(input_file);
+	}
+
+	return data;
+}/*}}}*/
+gboolean image_loader_load_single(BOSNode *node, gboolean called_from_main) {/*{{{*/
+	// Already loaded?
+	file_t *file = (file_t *)node->data;
+	if(file->is_loaded) {
+		return TRUE;
+	}
+
+	GError *error_pointer = NULL;
+
+	if(file_type_handlers[file->file_type].load_fn != NULL) {
+		// Create an input stream for the image to be loaded
+		GInputStream *data = image_loader_stream_file(file, &error_pointer);
+
+		if(data) {
+			// Let the file type handler handle the details
+			file_type_handlers[file->file_type].load_fn(file, data, &error_pointer);
+			g_object_unref(data);
+		}
 	}
 
 #if 0
@@ -1826,50 +1852,15 @@ void relative_image_movement(ptrdiff_t movement) {/*{{{*/
 	absolute_image_movement(target);
 }/*}}}*/
 void transform_current_image(cairo_matrix_t *transformation) {/*{{{*/
-	D_LOCK(file_tree);
+	// Apply the transformation to the transformation matrix
+	cairo_matrix_t operand = current_transformation;
+	cairo_matrix_multiply(&current_transformation, &operand, transformation);
 
-	// TODO Reimplement differently: Store transformation matrix, work on-the-fly
-
-	/*
-	if(CURRENT_FILE->image_surface == NULL) {
-		// Image not loaded yet. Abort.
-		D_UNLOCK(file_tree);
-		return;
-	}
-	cairo_surface_t *old_surface = cairo_surface_reference(CURRENT_FILE->image_surface);
-	D_UNLOCK(file_tree);
-
-	double sx = cairo_image_surface_get_width(old_surface);
-	double sy = cairo_image_surface_get_height(old_surface);
-
-	cairo_matrix_transform_distance(transformation, &sx, &sy);
-
-	cairo_surface_t *new_surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, fabs(sx), fabs(sy));
-	cairo_t *cr = cairo_create(new_surface);
-
-	cairo_transform(cr, transformation);
-	cairo_set_source_surface(cr, old_surface, 0, 0);
-	cairo_paint(cr);
-
-	cairo_destroy(cr);
-	cairo_surface_destroy(old_surface);
-
-	D_LOCK(file_tree);
-	if(CURRENT_FILE->image_surface == old_surface) {
-		cairo_surface_destroy(old_surface);
-	}
-	CURRENT_FILE->image_surface = new_surface;
-	current_image_drawn = FALSE;
+	// Resize and queue a redraw
+	main_window_adjust_for_image();
 	invalidate_current_scaled_image_surface();
-	CURRENT_FILE->memory_is_out_of_date = TRUE;
-	*/
-	D_UNLOCK(file_tree);
-
-	set_scale_level_to_fit();
-	image_loaded_handler(NULL);
-
+	gtk_widget_queue_draw(GTK_WIDGET(main_window));
 }/*}}}*/
-
 gchar *apply_external_image_filter_prepare_command(gchar *command) { /*{{{*/
 		D_LOCK(file_tree);
 		if((CURRENT_FILE->file_flags & FILE_FLAGS_MEMORY_IMAGE) != 0) {
@@ -1940,13 +1931,12 @@ cairo_status_t apply_external_image_filter_thread_callback(void *closure, const 
 }/*}}}*/
 gpointer apply_external_image_filter_image_writer_thread(gpointer data) {/*{{{*/
 	D_LOCK(file_tree);
-	// TODO Work with what here?
-	cairo_surface_t *surface = current_scaled_image_surface; // CURRENT_FILE->image_surface;
+	cairo_surface_t *surface = get_scaled_image_surface_for_current_image();
 	if(!surface) {
+		D_UNLOCK(file_tree);
 		close(*(gint *)data);
 		return NULL;
 	}
-	surface = cairo_surface_reference(surface);
 	D_UNLOCK(file_tree);
 
 	cairo_surface_write_to_png_stream(surface, apply_external_image_filter_thread_callback, data);
@@ -2034,50 +2024,28 @@ void apply_external_image_filter(gchar *external_filter) {/*{{{*/
 				#endif
 				g_spawn_close_pid(child_pid);
 
-				if(status != 0) {
+				if(current_file_node_at_start != current_file_node) {
+					// The user navigated away from this image. Abort.
+					g_free(image_data);
+				}
+				else if(status != 0) {
 					g_printerr("External command failed with exit status %d\n", status);
+					g_free(image_data);
 				}
 				else {
-					// TODO If it is possible, use generic memory image loader here
+					// We now have a new image in memory in the char buffer image_data. Construct a new file
+					// for the result, and load it
+					//
+					file_t *new_image = g_new0(file_t, 1);
+					new_image->display_name = g_strdup_printf("%s [Output of `%s`]", CURRENT_FILE->display_name, argv[2]);
+					new_image->file_type = 0;
+					new_image->file_flags = FILE_FLAGS_MEMORY_IMAGE;
+					new_image->file_data_length = image_data_length;
+					new_image->file_data = (guchar *)image_data;
 
-					GdkPixbufLoader *loader = gdk_pixbuf_loader_new();
-					GdkPixbuf *pixbuf = NULL;
-					if(gdk_pixbuf_loader_write(loader, (const guchar *)image_data, image_data_length, &error_pointer)) {
-						gdk_pixbuf_loader_close(loader, &error_pointer);
-						pixbuf = gdk_pixbuf_loader_get_pixbuf(loader);
-					}
-					if(pixbuf == NULL) {
-						g_printerr("Failed to load external command output: %s\n", error_pointer->message);
-						g_clear_error(&error_pointer);
-					}
-					else {
-						D_LOCK(file_tree);
-						if(bostree_node_weak_unref(file_tree, current_file_node_at_start) == current_file_node) {
-							cairo_surface_t *surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, gdk_pixbuf_get_width(pixbuf), gdk_pixbuf_get_height(pixbuf));
-							cairo_t *sf_cr = cairo_create(surface);
-							gdk_cairo_set_source_pixbuf(sf_cr, pixbuf, 0, 0);
-							cairo_paint(sf_cr);
-							cairo_destroy(sf_cr);
-
-							// TODO Replace by a different version
-							/*
-							cairo_surface_t *old_surface = CURRENT_FILE->image_surface;
-							CURRENT_FILE->image_surface = surface;
-							CURRENT_FILE->memory_is_out_of_date = TRUE;
-							if(old_surface) {
-								cairo_surface_destroy(old_surface);
-							}
-							*/
-
-							g_idle_add(apply_external_image_filter_success_callback, NULL);
-						}
-						D_UNLOCK(file_tree);
-					}
-
-					g_object_unref(loader);
+					BOSNode *loaded_file = file_type_handlers[new_image->file_type].alloc_fn(FILTER_OUTPUT, new_image);
+					absolute_image_movement(bostree_node_weak_ref(loaded_file));
 				}
-
-				g_free(image_data);
 			}
 			g_io_channel_unref(stdin_channel);
 		}
@@ -2096,7 +2064,6 @@ gpointer apply_external_image_filter_thread(gpointer external_filter_ptr) {/*{{{
 	apply_external_image_filter((gchar *)external_filter_ptr);
 	return NULL;
 }/*}}}*/
-
 void hardlink_current_image() {/*{{{*/
 	BOSNode *the_file = bostree_node_weak_ref(current_file_node);
 
@@ -2115,18 +2082,18 @@ void hardlink_current_image() {/*{{{*/
 		}
 		while(g_file_test(store_target, G_FILE_TEST_EXISTS));
 
-		// TODO Replace with a file type invariant version
-
-		/*
-		if(cairo_surface_write_to_png(FILE(the_file)->image_surface, store_target) == CAIRO_STATUS_SUCCESS) {
-			gchar *info_text = g_strdup_printf("Stored what you see into %s", store_target);
-			update_info_text(info_text);
-			g_free(info_text);
+		cairo_surface_t *surface = get_scaled_image_surface_for_current_image();
+		if(surface) {
+			if(cairo_surface_write_to_png(surface, store_target) == CAIRO_STATUS_SUCCESS) {
+				gchar *info_text = g_strdup_printf("Stored what you see into %s", store_target);
+				update_info_text(info_text);
+				g_free(info_text);
+			}
+			else {
+				update_info_text("Failed to write to the .pqiv-select subdirectory");
+			}
+			cairo_surface_destroy(surface);
 		}
-		else {
-			update_info_text("Failed to write to the .pqiv-select subdirectory");
-		}
-		*/
 
 		g_free(store_target);
 		bostree_node_weak_unref(file_tree, the_file);
@@ -2158,17 +2125,20 @@ void hardlink_current_image() {/*{{{*/
 			*dot = 0;
 		}
 		gchar *store_target = g_strdup_printf("%s.png", link_target);
-		// TODO Replace with a file type invariant version
-		/*
-		if(cairo_surface_write_to_png(FILE(the_file)->image_surface, store_target) == CAIRO_STATUS_SUCCESS) {
-			gchar *info_text = g_strdup_printf("Failed to link file, but stored what you see into %s", store_target);
-			update_info_text(info_text);
-			g_free(info_text);
+
+
+		cairo_surface_t *surface = get_scaled_image_surface_for_current_image();
+		if(surface) {
+			if(cairo_surface_write_to_png(surface, store_target) == CAIRO_STATUS_SUCCESS) {
+				gchar *info_text = g_strdup_printf("Failed to link file, but stored what you see into %s", store_target);
+				update_info_text(info_text);
+				g_free(info_text);
+			}
+			else {
+				update_info_text("Failed to write to the .pqiv-select subdirectory");
+			}
+			cairo_surface_destroy(surface);
 		}
-		else {
-			update_info_text("Failed to write to the .pqiv-select subdirectory");
-		}
-		*/
 		g_free(store_target);
 	}
 	else {
@@ -2198,6 +2168,57 @@ gboolean fading_timeout_callback(gpointer user_data) {/*{{{*/
 	fading_current_alpha_stage = new_stage;
 	gtk_widget_queue_draw(GTK_WIDGET(main_window));
 	return (fading_current_alpha_stage < 1.); // FALSE aborts the source
+}/*}}}*/
+void calculate_current_image_transformed_size(int *image_width, int *image_height) {/*{{{*/
+	double transform_width = (double)CURRENT_FILE->width;
+	double transform_height = (double)CURRENT_FILE->height;
+	cairo_matrix_transform_distance(&current_transformation, &transform_width, &transform_height);
+	*image_width = (int)fabs(transform_width);
+	*image_height = (int)fabs(transform_height);
+}/*}}}*/
+void draw_current_image_to_context(cairo_t *cr) {/*{{{*/
+	if(file_type_handlers[CURRENT_FILE->file_type].draw_fn != NULL) {
+		file_type_handlers[CURRENT_FILE->file_type].draw_fn(CURRENT_FILE, cr);
+	}
+}/*}}}*/
+void setup_checkerboard_pattern() {/*{{{*/
+	// Create pattern
+    cairo_surface_t *surface;
+	surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, 16, 16);
+	cairo_t *ccr = cairo_create(surface);
+	cairo_set_source_rgba(ccr, .5, .5, .5, 1.);
+	cairo_paint(ccr);
+	cairo_set_source_rgba(ccr, 1., 1., 1., 1.);
+	cairo_rectangle(ccr, 0, 0, 8, 8);
+	cairo_fill(ccr);
+	cairo_rectangle(ccr, 8, 8, 16, 16);
+	cairo_fill(ccr);
+	cairo_destroy(ccr);
+    background_checkerboard_pattern = cairo_pattern_create_for_surface(surface);
+    cairo_surface_destroy(surface);
+    cairo_pattern_set_extend(background_checkerboard_pattern, CAIRO_EXTEND_REPEAT);
+    cairo_pattern_set_filter(background_checkerboard_pattern, CAIRO_FILTER_NEAREST);
+}/*}}}*/
+cairo_surface_t *get_scaled_image_surface_for_current_image() {/*{{{*/
+	if(current_scaled_image_surface != NULL) {
+		return cairo_surface_reference(current_scaled_image_surface);
+	}
+	if(!CURRENT_FILE->is_loaded) {
+		return NULL;
+	}
+
+	cairo_surface_t *retval = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, current_scale_level * CURRENT_FILE->width, current_scale_level * CURRENT_FILE->height);
+
+	cairo_t *cr = cairo_create(retval);
+	cairo_scale(cr, current_scale_level, current_scale_level);
+	draw_current_image_to_context(cr);
+	cairo_destroy(cr);
+
+	if(!option_lowmem) {
+		current_scaled_image_surface = cairo_surface_reference(retval);
+	}
+
+	return retval;
 }/*}}}*/
 // }}}
 /* Jump dialog {{{ */
@@ -2441,7 +2462,6 @@ void update_info_text(const gchar *action) {/*{{{*/
 	// Update info text
 	if(!option_hide_info_box) {
 		current_info_text = g_strdup_printf("%s (%dx%d) %03.2f%% [%d/%d]", display_name,
-			// TODO Replace with a file type invariant version
 			CURRENT_FILE->width,
 			CURRENT_FILE->height,
 			current_scale_level * 100.,
@@ -2479,12 +2499,10 @@ void update_info_text(const gchar *action) {/*{{{*/
 			window_title_iter += 8;
 		}
 		else if(g_strstr_len(window_title_iter, 5, "WIDTH") != NULL) {
-			// TODO Replace with a file type invariant version
 			g_string_append_printf(new_window_title, "%d", CURRENT_FILE->width);
 			window_title_iter += 5;
 		}
 		else if(g_strstr_len(window_title_iter, 6, "HEIGHT") != NULL) {
-			// TODO Replace with a file type invariant version
 			g_string_append_printf(new_window_title, "%d", CURRENT_FILE->height);
 			window_title_iter += 6;
 		}
@@ -2514,39 +2532,37 @@ gboolean window_close_callback(GtkWidget *object, gpointer user_data) {/*{{{*/
 
 	return FALSE;
 }/*}}}*/
-void setup_checkerboard_pattern() {/*{{{*/
-	// Create pattern
-    cairo_surface_t *surface;
-	surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, 16, 16);
-	cairo_t *ccr = cairo_create(surface);
-	cairo_set_source_rgba(ccr, .5, .5, .5, 1.);
-	cairo_paint(ccr);
-	cairo_set_source_rgba(ccr, 1., 1., 1., 1.);
-	cairo_rectangle(ccr, 0, 0, 8, 8);
-	cairo_fill(ccr);
-	cairo_rectangle(ccr, 8, 8, 16, 16);
-	cairo_fill(ccr);
-	cairo_destroy(ccr);
-    background_checkerboard_pattern = cairo_pattern_create_for_surface(surface);
-    cairo_surface_destroy(surface);
-    cairo_pattern_set_extend(background_checkerboard_pattern, CAIRO_EXTEND_REPEAT);
-    cairo_pattern_set_filter(background_checkerboard_pattern, CAIRO_FILTER_NEAREST);
-}/*}}}*/
 gboolean window_draw_callback(GtkWidget *widget, cairo_t *cr_arg, gpointer user_data) {/*{{{*/
 	// Draw image
 	int x = 0;
 	int y = 0;
 	D_LOCK(file_tree);
-	// TODO Replace with an individual drawing function
-	cairo_surface_t *current_image_surface = ((file_private_data_default_t *)CURRENT_FILE->private)->image_surface;
-	if(current_image_surface) {
-		cairo_surface_reference(current_image_surface);
-	}
-	D_UNLOCK(file_tree);
-	if(current_image_surface != NULL) {
-		// Create an image surface to draw to first
+
+	if(CURRENT_FILE->is_loaded) {
+		// Calculate where to draw the image and the transformation matrix to use
+		if(option_scale > 0 || main_window_in_fullscreen) {
+			int image_transform_width, image_transform_height;
+			calculate_current_image_transformed_size(&image_transform_width, &image_transform_height);
+			x = (main_window_width - current_scale_level * image_transform_width) / 2;
+			y = (main_window_height - current_scale_level * image_transform_height) / 2;
+		}
+		else {
+			// When scaling is disabled always use the upper left corder to avoid
+			// problems with window managers ignoring the large window size request.
+			x = y = 0;
+		}
+		cairo_matrix_t apply_transformation = current_transformation;
+		apply_transformation.x0 *= current_scale_level;
+		apply_transformation.y0 *= current_scale_level;
+
+		// Create a temporary image surface to render to first.
+		//
 		// We use this for fading and to display the last image if the current image is
 		// still unavailable
+		//
+		// The temporary image surface contains the image as it
+		// is displayed on the screen later, with all transformations applied.
+
 		#if CAIRO_VERSION >= CAIRO_VERSION_ENCODE(1, 12, 0)
 			cairo_surface_t *temporary_image_surface = cairo_surface_create_similar_image(cairo_get_target(cr_arg), CAIRO_FORMAT_ARGB32, main_window_width, main_window_height);
 		#else
@@ -2561,67 +2577,45 @@ gboolean window_draw_callback(GtkWidget *widget, cairo_t *cr_arg, gpointer user_
 		cairo_paint(cr);
 		cairo_restore(cr);
 
-		// Draw the image & background pattern
-		guint image_width = cairo_image_surface_get_width(current_image_surface);
-		guint image_height = cairo_image_surface_get_height(current_image_surface);
+		// Draw background pattern
+		cairo_save(cr);
+		cairo_translate(cr, current_shift_x, current_shift_y);
+		cairo_translate(cr, x, y);
+		cairo_transform(cr, &apply_transformation);
+		cairo_scale(cr, current_scale_level, current_scale_level);
+		if(background_checkerboard_pattern != NULL && !option_transparent_background) {
+			cairo_save(cr);
+			cairo_new_path(cr);
+			cairo_rectangle(cr, 0, 0, CURRENT_FILE->width, CURRENT_FILE->height);
+			cairo_close_path(cr);
+			cairo_clip(cr);
+			cairo_set_source(cr, background_checkerboard_pattern);
+			cairo_paint(cr);
+			cairo_restore(cr);
+		}
+		cairo_restore(cr);
 
-		if(option_scale > 0 || main_window_in_fullscreen) {
-			x = (main_window_width - current_scale_level * image_width) / 2;
-			y = (main_window_height - current_scale_level * image_height) / 2;
+		// Apply any transformations
+		cairo_translate(cr, current_shift_x, current_shift_y);
+		cairo_translate(cr, x, y);
+		cairo_transform(cr, &apply_transformation);
+
+		// Draw the scaled image.
+		if(option_lowmem) {
+			// In low memory mode, we scale here and draw on the fly
+			cairo_scale(cr, current_scale_level, current_scale_level);
+			draw_current_image_to_context(cr);
 		}
 		else {
-			// When scaling is disabled always use the upper left corder to avoid
-			// problems with window managers ignoring the large window size request.
-			x = y = 0;
-		}
-
-		// Scale the image
-		if(current_scaled_image_surface == NULL) {
-			cairo_t *cr_scale;
-			if(option_lowmem) {
-				// If in low memory mode, we do not store the scaled image surface
-				// separately
-				cr_scale = cr;
-				cairo_translate(cr, x, y);
-				cairo_translate(cr, current_shift_x, current_shift_y);
-			}
-			else {
-				#if CAIRO_VERSION >= CAIRO_VERSION_ENCODE(1, 12, 0)
-					current_scaled_image_surface = cairo_surface_create_similar_image(cairo_get_target(cr_arg), CAIRO_FORMAT_ARGB32, current_scale_level * image_width, current_scale_level * image_height);
-				#else
-					current_scaled_image_surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, current_scale_level * image_width, current_scale_level * image_height);
-				#endif
-				cr_scale = cairo_create(current_scaled_image_surface);
-			}
-
-			cairo_scale(cr_scale, current_scale_level, current_scale_level);
-			if(background_checkerboard_pattern != NULL && !option_transparent_background) {
-				cairo_save(cr_scale);
-				cairo_new_path(cr_scale);
-				cairo_rectangle(cr_scale, 1, 1, image_width - 2, image_height - 2);
-				cairo_close_path(cr_scale);
-				cairo_clip(cr_scale);
-				cairo_set_source(cr_scale, background_checkerboard_pattern);
-				cairo_paint(cr_scale);
-				cairo_restore(cr_scale);
-			}
-
-			cairo_set_source_surface(cr_scale, current_image_surface, 0, 0);
-			cairo_paint(cr_scale);
-
-			if(!option_lowmem) {
-				cairo_destroy(cr_scale);
-			}
-		}
-
-		// Move to the desired coordinates, and draw
-		if(current_scaled_image_surface != NULL) {
-			cairo_translate(cr, x, y);
-			cairo_translate(cr, current_shift_x, current_shift_y);
-			cairo_set_source_surface(cr, current_scaled_image_surface, 0, 0);
-			cairo_set_operator(cr, CAIRO_OPERATOR_SOURCE);
+			// Elsewise, we cache a scaled copy in a separate image surface
+			// to speed up rotations on scaled images
+			cairo_surface_t *temporary_scaled_image_surface = get_scaled_image_surface_for_current_image();
+			cairo_set_source_surface(cr, temporary_scaled_image_surface, 0, 0);
 			cairo_paint(cr);
+			cairo_surface_destroy(temporary_scaled_image_surface);
 		}
+
+		// The temporary image surface is now complete.
 		cairo_destroy(cr);
 
 		// If currently fading, draw the surface along with the old image
@@ -2666,8 +2660,6 @@ gboolean window_draw_callback(GtkWidget *widget, cairo_t *cr_arg, gpointer user_
 		}
 
 		current_image_drawn = TRUE;
-
-		cairo_surface_destroy(current_image_surface); // See top of function
 	}
 	else {
 		// The image has not yet been loaded. If available, draw from the
@@ -2678,6 +2670,7 @@ gboolean window_draw_callback(GtkWidget *widget, cairo_t *cr_arg, gpointer user_
 			cairo_paint(cr_arg);
 		}
 	}
+	D_UNLOCK(file_tree);
 
 	// Draw info box (directly to the screen)
 	if(current_info_text != NULL) {
@@ -2724,6 +2717,7 @@ gboolean window_draw_callback(GtkWidget *widget, cairo_t *cr_arg, gpointer user_
 		// Store where the box was drawn to allow for partial updates of the screen
 		current_info_text_bounding_box.x = (main_window_in_fullscreen == TRUE ? 0 : (x < 0 ? 0 : x)) + 10 - 5;
 		current_info_text_bounding_box.y = (main_window_in_fullscreen == TRUE ? 0 : (y < 0 ? 0 : y)) + 20 -(y2 - y1) - 2;
+
 		 // Redraw some extra pixels to make sure a wider new box would be covered:
 		current_info_text_bounding_box.width = x2 - x1 + 10 + 30;
 		current_info_text_bounding_box.height = y2 - y1 + 8;
@@ -2739,15 +2733,51 @@ gboolean window_draw_callback(GtkWidget *widget, cairo_t *cr_arg, gpointer user_
 		return TRUE;
 	}/*}}}*/
 #endif
+void set_scale_level_for_screen() {/*{{{*/
+	if(!main_window_in_fullscreen) {
+		// Calculate diplay width/heights with rotation, but without scaling, applied
+		int image_width, image_height;
+		calculate_current_image_transformed_size(&image_width, &image_height);
+		const int screen_width = screen_geometry.width;
+		const int screen_height = screen_geometry.height;
+
+		current_scale_level = 1.0;
+		if(option_initial_scale_used == FALSE) {
+			current_scale_level = option_initial_scale;
+		}
+		else {
+			if(option_scale > 1 || scale_override) {
+				// Scale up to 80% screen size
+				current_scale_level = screen_width * .8 / image_width;
+			}
+			else if(option_scale == 1 && image_width > screen_width * .8) {
+				// Scale down to 80% screen size
+				current_scale_level = screen_width * .8 / image_width;
+			}
+			// In both cases: If the height exceeds 80% screen size, scale
+			// down
+			if(option_scale > 0 && image_height * current_scale_level > screen_height * .8) {
+				current_scale_level = screen_height * .8 / image_height;
+			}
+		}
+	}
+	else {
+		// In fullscreen, the screen size and window size match, so the
+		// function to adjust to the window size works just fine (and does
+		// not come with the 80%, as users would expect in fullscreen)
+		set_scale_level_to_fit();
+	}
+}/*}}}*/
 void set_scale_level_to_fit() {/*{{{*/
 	D_LOCK(file_tree);
 	if(CURRENT_FILE->is_loaded) {
 		if(!current_image_drawn) {
 			scale_override = FALSE;
 		}
-		// TODO Replace with a type type independent version
-		int image_width = CURRENT_FILE->width;
-		int image_height = CURRENT_FILE->height;
+
+		// Calculate diplay width/heights with rotation, but without scaling, applied
+		int image_width, image_height;
+		calculate_current_image_transformed_size(&image_width, &image_height);
 
 		gdouble new_scale_level = 1.0;
 
@@ -2939,8 +2969,8 @@ gboolean window_key_press_callback(GtkWidget *widget, GdkEventKey *event, gpoint
 				gtk_widget_queue_draw(GTK_WIDGET(main_window));
 			}
 			else {
-				const guint image_width = CURRENT_FILE->width;
-				const guint image_height = CURRENT_FILE->height;
+				int image_width, image_height;
+				calculate_current_image_transformed_size(&image_width, &image_height);
 
 				gtk_window_resize(main_window, current_scale_level * image_width, current_scale_level * image_height);
 			}
@@ -2976,8 +3006,10 @@ gboolean window_key_press_callback(GtkWidget *widget, GdkEventKey *event, gpoint
 				gtk_widget_queue_draw(GTK_WIDGET(main_window));
 			}
 			else {
-				const guint image_width = CURRENT_FILE->width;
-				const guint image_height = CURRENT_FILE->height;
+				int image_width, image_height;
+				calculate_current_image_transformed_size(&image_width, &image_height);
+				image_width = abs(image_width);
+				image_height = abs(image_height);
 
 				gtk_window_resize(main_window, current_scale_level * image_width, current_scale_level * image_height);
 			}
@@ -2990,9 +3022,10 @@ gboolean window_key_press_callback(GtkWidget *widget, GdkEventKey *event, gpoint
 				option_scale = 0;
 			}
 			current_image_drawn = FALSE;
+			set_scale_level_for_screen();
+			main_window_adjust_for_image();
 			invalidate_current_scaled_image_surface();
-			set_scale_level_to_fit();
-			image_loaded_handler(NULL);
+			gtk_widget_queue_draw(GTK_WIDGET(main_window));
 			switch(option_scale) {
 				case 0: update_info_text("Scaling disabled"); break;
 				case 1: update_info_text("Automatic scaledown enabled"); break;
@@ -3009,9 +3042,12 @@ gboolean window_key_press_callback(GtkWidget *widget, GdkEventKey *event, gpoint
 
 		case GDK_KEY_0:
 			current_image_drawn = FALSE;
-			set_scale_level_to_fit();
+			scale_override = FALSE;
+			set_scale_level_for_screen();
+			main_window_adjust_for_image();
 			invalidate_current_scaled_image_surface();
-			image_loaded_handler(NULL);
+			gtk_widget_queue_draw(GTK_WIDGET(main_window));
+			update_info_text(NULL);
 			break;
 
 		case GDK_KEY_F:
@@ -3026,12 +3062,11 @@ gboolean window_key_press_callback(GtkWidget *widget, GdkEventKey *event, gpoint
 
 		case GDK_KEY_H:
 		case GDK_KEY_h:
-			if((CURRENT_FILE->file_flags & FILE_FLAGS_ANIMATION) != 0) {
-				break;
-			}
-
 			{
-				cairo_matrix_t transformation = { -1., 0., 0., 1., CURRENT_FILE->width, 0 };
+				int image_width, image_height;
+				calculate_current_image_transformed_size(&image_width, &image_height);
+
+				cairo_matrix_t transformation = { -1., 0., 0., 1., image_width, 0 };
 				transform_current_image(&transformation);
 			}
 			update_info_text("Image flipped horizontally");
@@ -3039,12 +3074,11 @@ gboolean window_key_press_callback(GtkWidget *widget, GdkEventKey *event, gpoint
 
 		case GDK_KEY_V:
 		case GDK_KEY_v:
-			if((CURRENT_FILE->file_flags & FILE_FLAGS_ANIMATION) != 0) {
-				break;
-			}
-
 			{
-				cairo_matrix_t transformation = { 1., 0., 0., -1., 0, CURRENT_FILE->height };
+				int image_width, image_height;
+				calculate_current_image_transformed_size(&image_width, &image_height);
+
+				cairo_matrix_t transformation = { 1., 0., 0., -1., 0, image_height };
 				transform_current_image(&transformation);
 			}
 			update_info_text("Image flipped vertically");
@@ -3052,12 +3086,11 @@ gboolean window_key_press_callback(GtkWidget *widget, GdkEventKey *event, gpoint
 
 		case GDK_KEY_L:
 		case GDK_KEY_l:
-			if((CURRENT_FILE->file_flags & FILE_FLAGS_ANIMATION) != 0) {
-				break;
-			}
-
 			{
-				cairo_matrix_t transformation = { 0., -1., 1., 0., 0, CURRENT_FILE->width };
+				int image_width, image_height;
+				calculate_current_image_transformed_size(&image_width, &image_height);
+
+				cairo_matrix_t transformation = { 0., -1., 1., 0., 0, image_width };
 				transform_current_image(&transformation);
 			}
 			update_info_text("Image rotated left");
@@ -3065,12 +3098,11 @@ gboolean window_key_press_callback(GtkWidget *widget, GdkEventKey *event, gpoint
 
 		case GDK_KEY_K:
 		case GDK_KEY_k:
-			if((CURRENT_FILE->file_flags & FILE_FLAGS_ANIMATION) != 0) {
-				break;
-			}
-
 			{
-				cairo_matrix_t transformation = { 0., 1., -1., 0., CURRENT_FILE->height, 0. };
+				int image_width, image_height;
+				calculate_current_image_transformed_size(&image_width, &image_height);
+
+				cairo_matrix_t transformation = { 0., 1., -1., 0., image_height, 0. };
 				transform_current_image(&transformation);
 			}
 			update_info_text("Image rotated right");
@@ -3352,18 +3384,33 @@ gboolean window_state_callback(GtkWidget *widget, GdkEventWindowState *event, gp
 		}
 		main_window_in_fullscreen = new_in_fs_state;
 
+		// Reset shift for all switches between fs/non-fs
+		current_shift_x = 0;
+		current_shift_y = 0;
+
 		if(main_window_in_fullscreen) {
 			window_state_into_fullscreen_actions();
 		}
 		else {
+			// If the fullscreen state is left, readjust image placement/size/..
+			scale_override = FALSE;
+			set_scale_level_for_screen();
+			main_window_adjust_for_image();
+			invalidate_current_scaled_image_surface();
+			fullscreen_show_cursor();
+
+			/*
 			// Move the window back to the center of the screen.  We must do
 			// this manually, at least Mutter ignores the position hint at this
 			// point.
 			D_LOCK(file_tree);
 			if(CURRENT_FILE->is_loaded) {
+				int image_width, image_height;
+				calculate_current_image_transformed_size(&image_width, &image_height);
+
 				gtk_window_move(main_window,
-					screen_geometry.x + (screen_geometry.width - CURRENT_FILE->width * current_scale_level) / 2,
-					screen_geometry.y + (screen_geometry.height - CURRENT_FILE->height * current_scale_level) / 2
+					screen_geometry.x + (screen_geometry.width - image_width * current_scale_level) / 2,
+					screen_geometry.y + (screen_geometry.height - image_height * current_scale_level) / 2
 				);
 			}
 			D_UNLOCK(file_tree);
@@ -3382,6 +3429,7 @@ gboolean window_state_callback(GtkWidget *widget, GdkEventWindowState *event, gp
 				g_idle_add(set_scale_level_to_fit_callback, NULL);
 			}
 			g_idle_add((GSourceFunc)image_loaded_handler, NULL);
+			*/
 		}
 
 		update_info_text(NULL);
@@ -3559,9 +3607,9 @@ gboolean initialize_gui_callback(gpointer user_data) {/*{{{*/
 }/*}}}*/
 // }}}
 /* Default (GdkPixbuf) file type implementation {{{ */
-void file_type_default_alloc(load_images_state_t state, file_t *file) {
+BOSNode *file_type_default_alloc(load_images_state_t state, file_t *file) {
 	file->private = (void *)g_new0(file_private_data_default_t, 1);
-	load_images_handle_parameter_add_file(state, file);
+	return load_images_handle_parameter_add_file(state, file);
 }
 
 void file_type_default_free(file_t *file) {
@@ -3700,7 +3748,16 @@ void file_type_default_load(file_t *file, GInputStream *data, GError **error_poi
 	}
 	g_object_unref(pixbuf_animation);
 }
+
+void file_type_default_draw(file_t *file, cairo_t *cr) {
+	file_private_data_default_t *private = (file_private_data_default_t *)file->private;
+
+	cairo_surface_t *current_image_surface = private->image_surface;
+	cairo_set_source_surface(cr, current_image_surface, 0, 0);
+	cairo_paint(cr);
+}
 /* }}} */
+
 gboolean load_images_thread_update_info_text(gpointer user_data) {/*{{{*/
 	// If the window is already visible and new files have been found, update
 	// the info text every second
@@ -3759,6 +3816,7 @@ int main(int argc, char *argv[]) {
 	else {
 		current_scale_level = option_initial_scale;
 	}
+	cairo_matrix_init_identity(&current_transformation);
 
 	global_argc = argc;
 	global_argv = argv;
