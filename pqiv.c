@@ -195,10 +195,9 @@ typedef struct {
 	void *private;
 } file_t;
 
-// Definition of the built-in file types
+// Definition of the built-in file types {{{
 
 typedef enum { PARAMETER, RECURSION, INOTIFY, BROWSE_ORIGINAL_PARAMETER, FILTER_OUTPUT } load_images_state_t;
-
 // Allocation function: Allocate the ->private structure within a file and add the
 // image(s) to the list of available images via load_images_handle_parameter_add_file()
 // Returns a pointer to the first added image
@@ -222,14 +221,6 @@ typedef double (*file_type_animation_next_frame_fn_t)(file_t *file);
 // Draw the current view to a cairo context
 typedef void (*file_type_draw_fn_t)(file_t *file, cairo_t *cr);
 
-BOSNode *file_type_default_alloc(load_images_state_t state, file_t *file);
-void file_type_default_free(file_t *file);
-void file_type_default_load(file_t *file, GInputStream *data, GError **error_pointer);
-void file_type_default_unload(file_t *file);
-double file_type_default_animation_initialize(file_t *file);
-double file_type_default_animation_next_frame(file_t *file);
-void file_type_default_draw(file_t *file, cairo_t *cr);
-
 typedef struct {
 	GtkFileFilter *file_types_handled;
 	file_type_alloc_fn_t alloc_fn;
@@ -241,31 +232,12 @@ typedef struct {
 	file_type_draw_fn_t draw_fn;
 } file_type_handler_t;
 
-file_type_handler_t file_type_handlers[] = {
-	{
-		NULL /* Filled at runtime with GdkPixbuf types */,
-		file_type_default_alloc,
-		file_type_default_free,
-		file_type_default_load,
-		file_type_default_unload,
-		file_type_default_animation_initialize,
-		file_type_default_animation_next_frame,
-		file_type_default_draw
-	}
-};
+// Initialization function: Tell pqiv about a backend
+typedef void (*file_type_initializer_fn_t)(file_type_handler_t *info);
 
+file_type_handler_t *file_type_handlers = NULL;
 
-typedef struct {
-	// The surface where the image is stored. Only non-NULL for
-	// the current, previous and next image.
-	cairo_surface_t *image_surface;
-
-	// For file_type & FILE_FLAGS_ANIMATION, this stores the
-	// whole animation. As with the surface, this is only non-NULL
-	// for the current, previous and next image.
-	GdkPixbufAnimation *pixbuf_animation;
-	GdkPixbufAnimationIter *animation_iter;
-} file_private_data_default_t;
+/* }}} */
 
 // Storage of the file list
 // These lists are accessed from multiple threads:
@@ -982,15 +954,16 @@ void load_images_handle_parameter(char *param, load_images_state_t state, gint d
 		// Filter based on formats supported by the different handlers
 		gchar *param_lowerc = g_utf8_strdown(param, -1);
 		load_images_file_filter_info->filename = load_images_file_filter_info->display_name = param_lowerc;
-		// TODO Allow for more than one
+
+		// Check if one of the file type handlers can handle this file
 		size_t n = 0;
 		file_type_handler_t *file_type_handler = &file_type_handlers[0];
-		//for(file_type_handler_t *file_type_handler = &file_type_handlers[0]; n < 1; ++file_type_handler) {
+		while(file_type_handler->file_types_handled) {
 			if(gtk_file_filter_filter(file_type_handler->file_types_handled, load_images_file_filter_info) == TRUE) {
 				// Prepare file structure
 				file = g_new0(file_t, 1);
 				file->file_name = g_strdup(param);
-				file->file_type = n++;
+				file->file_type = n;
 				file->display_name = g_filename_display_name(file->file_name);
 
 				// Handle using this handler
@@ -1002,7 +975,10 @@ void load_images_handle_parameter(char *param, load_images_state_t state, gint d
 				}
 				return;
 			}
-		//}
+
+			n++;
+			file_type_handler++;
+		}
 		g_free(param_lowerc);
 
 		if(state != PARAMETER && state != BROWSE_ORIGINAL_PARAMETER) {
@@ -1112,24 +1088,7 @@ void load_images(int *argc, char *argv[]) {/*{{{*/
 	load_images_timer = g_timer_new();
 	g_timer_start(load_images_timer);
 
-	// Fill the default handler's file name pattern
-	GtkFileFilter *load_images_file_filter = gtk_file_filter_new();
-	gtk_file_filter_add_pixbuf_formats(load_images_file_filter);
-	GSList *file_formats_iterator = gdk_pixbuf_get_formats();
-	do {
-			gchar **file_format_extensions_iterator = gdk_pixbuf_format_get_extensions(file_formats_iterator->data);
-			while(*file_format_extensions_iterator != NULL) {
-					gchar *extn = g_strdup_printf("*.%s", *file_format_extensions_iterator);
-					gtk_file_filter_add_pattern(load_images_file_filter, extn);
-					g_free(extn);
-					++file_format_extensions_iterator;
-			}
-	} while((file_formats_iterator = g_slist_next(file_formats_iterator)) != NULL);
-	g_slist_free(file_formats_iterator);
-	file_type_handlers[0].file_types_handled = load_images_file_filter;
-
-	// TODO Manually add other supported file formats
-
+	// Prepare the file filter info structure used for handler detection
 	load_images_file_filter_info = g_new0(GtkFileFilterInfo, 1);
 	load_images_file_filter_info->contains = GTK_FILE_FILTER_FILENAME | GTK_FILE_FILTER_DISPLAY_NAME;
 
@@ -1378,7 +1337,9 @@ GInputStream *image_loader_stream_file(file_t *file, GError **error_pointer) {/*
 		// Classical file or URI
 
 		GFile *input_file = NULL;
-		g_cancellable_reset(image_loader_cancellable);
+		if(image_loader_cancellable) {
+			g_cancellable_reset(image_loader_cancellable);
+		}
 
 		// Support for URIs is an extra feature. To prevent breaking compatibility,
 		// always prefer existing files over URI interpretation.
@@ -3606,17 +3567,28 @@ gboolean initialize_gui_callback(gpointer user_data) {/*{{{*/
 	return FALSE;
 }/*}}}*/
 // }}}
+
 /* Default (GdkPixbuf) file type implementation {{{ */
-BOSNode *file_type_default_alloc(load_images_state_t state, file_t *file) {
+typedef struct {
+	// The surface where the image is stored. Only non-NULL for
+	// the current, previous and next image.
+	cairo_surface_t *image_surface;
+
+	// For file_type & FILE_FLAGS_ANIMATION, this stores the
+	// whole animation. As with the surface, this is only non-NULL
+	// for the current, previous and next image.
+	GdkPixbufAnimation *pixbuf_animation;
+	GdkPixbufAnimationIter *animation_iter;
+} file_private_data_default_t;
+
+BOSNode *file_type_default_alloc(load_images_state_t state, file_t *file) {/*{{{*/
 	file->private = (void *)g_new0(file_private_data_default_t, 1);
 	return load_images_handle_parameter_add_file(state, file);
-}
-
-void file_type_default_free(file_t *file) {
+}/*}}}*/
+void file_type_default_free(file_t *file) {/*{{{*/
 	free(file->private);
-}
-
-void file_type_default_unload(file_t *file) {
+}/*}}}*/
+void file_type_default_unload(file_t *file) {/*{{{*/
 	file_private_data_default_t *private = file->private;
 	if(private->pixbuf_animation != NULL) {
 		g_object_unref(private->pixbuf_animation);
@@ -3630,17 +3602,15 @@ void file_type_default_unload(file_t *file) {
 		g_object_unref(private->animation_iter);
 		private->animation_iter = NULL;
 	}
-}
-
-double file_type_default_animation_initialize(file_t *file) {
+}/*}}}*/
+double file_type_default_animation_initialize(file_t *file) {/*{{{*/
 	file_private_data_default_t *private = file->private;
 	if(private->animation_iter == NULL) {
 		private->animation_iter = gdk_pixbuf_animation_get_iter(private->pixbuf_animation, NULL);
 	}
 	return gdk_pixbuf_animation_iter_get_delay_time(private->animation_iter);
-}
-
-double file_type_default_animation_next_frame(file_t *file) {
+}/*}}}*/
+double file_type_default_animation_next_frame(file_t *file) {/*{{{*/
 	file_private_data_default_t *private = (file_private_data_default_t *)file->private;
 
 	cairo_surface_t *surface = cairo_surface_reference(private->image_surface);
@@ -3661,14 +3631,12 @@ double file_type_default_animation_next_frame(file_t *file) {
 	cairo_surface_destroy(surface);
 
 	return gdk_pixbuf_animation_iter_get_delay_time(private->animation_iter);
-}
-
+}/*}}}*/
 gboolean file_type_default_load_destroy_old_image_callback(gpointer old_surface) {/*{{{*/
 	cairo_surface_destroy((cairo_surface_t *)old_surface);
 	return FALSE;
 }/*}}}*/
-
-void file_type_default_load(file_t *file, GInputStream *data, GError **error_pointer) {
+void file_type_default_load(file_t *file, GInputStream *data, GError **error_pointer) {/*{{{*/
 	file_private_data_default_t *private = (file_private_data_default_t *)file->private;
 	GdkPixbufAnimation *pixbuf_animation = NULL;
 
@@ -3747,16 +3715,145 @@ void file_type_default_load(file_t *file, GInputStream *data, GError **error_poi
 		file->is_loaded = TRUE;
 	}
 	g_object_unref(pixbuf_animation);
-}
-
-void file_type_default_draw(file_t *file, cairo_t *cr) {
+}/*}}}*/
+void file_type_default_draw(file_t *file, cairo_t *cr) {/*{{{*/
 	file_private_data_default_t *private = (file_private_data_default_t *)file->private;
 
 	cairo_surface_t *current_image_surface = private->image_surface;
 	cairo_set_source_surface(cr, current_image_surface, 0, 0);
 	cairo_paint(cr);
-}
+}/*}}}*/
+
+void file_type_default_initializer(file_type_handler_t *info) {/*{{{*/
+	// Fill the file filter pattern
+	info->file_types_handled = gtk_file_filter_new();
+	gtk_file_filter_add_pixbuf_formats(info->file_types_handled);
+	GSList *file_formats_iterator = gdk_pixbuf_get_formats();
+	do {
+			gchar **file_format_extensions_iterator = gdk_pixbuf_format_get_extensions(file_formats_iterator->data);
+			while(*file_format_extensions_iterator != NULL) {
+					gchar *extn = g_strdup_printf("*.%s", *file_format_extensions_iterator);
+					gtk_file_filter_add_pattern(info->file_types_handled, extn);
+					g_free(extn);
+					++file_format_extensions_iterator;
+			}
+	} while((file_formats_iterator = g_slist_next(file_formats_iterator)) != NULL);
+	g_slist_free(file_formats_iterator);
+
+	// Assign the handlers
+	info->alloc_fn                 =  file_type_default_alloc;
+	info->free_fn                  =  file_type_default_free;
+	info->load_fn                  =  file_type_default_load;
+	info->unload_fn                =  file_type_default_unload;
+	info->animation_initialize_fn  =  file_type_default_animation_initialize;
+	info->animation_next_frame_fn  =  file_type_default_animation_next_frame;
+	info->draw_fn                  =  file_type_default_draw;
+}/*}}}*/
 /* }}} */
+/* Poppler backend {{{ */
+typedef struct {
+	// The page to be displayed
+	PopplerPage *page;
+
+	// The page number, for loading
+	guint page_number;
+} file_private_data_poppler_t;
+
+BOSNode *file_type_poppler_alloc(load_images_state_t state, file_t *file) {/*{{{*/
+	// We have to load the file now to get the number of pages
+	GError *error_pointer = NULL;
+	GInputStream *data = image_loader_stream_file(file, &error_pointer);
+	BOSNode *first_node = NULL;
+
+	if(data) {
+		PopplerDocument *poppler_document = poppler_document_new_from_stream(data, -1, NULL, NULL, &error_pointer);
+		if(poppler_document) {
+			int n_pages = poppler_document_get_n_pages(poppler_document);
+			g_object_unref(poppler_document);
+
+			file_t *files_for_page = g_new0(file_t, n_pages);
+			file_private_data_poppler_t *private_data_for_page = g_new0(file_private_data_poppler_t, n_pages);
+			for(int n=0; n<n_pages; n++) {
+				files_for_page[n] = *file;
+				files_for_page[n].file_name = g_strdup(file->file_name);
+				files_for_page[n].display_name = g_strdup_printf("%s[%d]", file->display_name, n + 1);
+				files_for_page[n].private = &private_data_for_page[n];
+				private_data_for_page[n].page_number = n;
+
+				if(n == 0) {
+					first_node = load_images_handle_parameter_add_file(state, &files_for_page[0]);
+				}
+				else {
+					load_images_handle_parameter_add_file(state, &files_for_page[n]);
+				}
+			}
+		}
+		g_object_unref(data);
+	}
+
+	if(error_pointer) {
+		g_printerr("Failed to load PDF %s: %s\n", file->display_name, error_pointer->message);
+	}
+
+	g_free(file);
+
+	return first_node;
+}/*}}}*/
+void file_type_poppler_free(file_t *file) {/*{{{*/
+	free(file->private);
+}/*}}}*/
+void file_type_poppler_unload(file_t *file) {/*{{{*/
+	file_private_data_poppler_t *private = file->private;
+	if(private->page) {
+		g_object_unref(private->page);
+		private->page = NULL;
+	}
+}/*}}}*/
+void file_type_poppler_load(file_t *file, GInputStream *data, GError **error_pointer) {/*{{{*/
+	file_private_data_poppler_t *private = file->private;
+	PopplerDocument *document = poppler_document_new_from_stream(data, -1, NULL, image_loader_cancellable, error_pointer);
+
+	private->page = poppler_document_get_page(document, private->page_number);
+
+	if(private->page) {
+		double width, height;
+		poppler_page_get_size(private->page, &width, &height);
+		file->width = width;
+		file->height = height;
+		file->is_loaded = TRUE;
+	}
+
+	g_object_unref(document);
+}/*}}}*/
+void file_type_poppler_draw(file_t *file, cairo_t *cr) {/*{{{*/
+	file_private_data_poppler_t *private = (file_private_data_poppler_t *)file->private;
+
+	cairo_set_source_rgb(cr, 1., 1., 1.);
+	cairo_paint(cr);
+	poppler_page_render(private->page, cr);
+}/*}}}*/
+
+void file_type_poppler_initializer(file_type_handler_t *info) {/*{{{*/
+	// Fill the file filter pattern
+	info->file_types_handled = gtk_file_filter_new();
+	gtk_file_filter_add_pattern(info->file_types_handled, "*.pdf");
+
+	// Assign the handlers
+	info->alloc_fn                 =  file_type_poppler_alloc;
+	info->free_fn                  =  file_type_poppler_free;
+	info->load_fn                  =  file_type_poppler_load;
+	info->unload_fn                =  file_type_poppler_unload;
+	info->draw_fn                  =  file_type_poppler_draw;
+}/*}}}*/
+/* }}} */
+
+
+void initialize_file_type_handlers() {/*{{{*/
+	// TODO Do this dynamically
+	file_type_handlers = g_new0(file_type_handler_t, 3);
+	file_type_default_initializer(&file_type_handlers[0]);
+	file_type_poppler_initializer(&file_type_handlers[1]);
+}/*}}}*/
 
 gboolean load_images_thread_update_info_text(gpointer user_data) {/*{{{*/
 	// If the window is already visible and new files have been found, update
@@ -3803,6 +3900,8 @@ int main(int argc, char *argv[]) {
 		gdk_threads_init();
 	#endif
 	gtk_init(&argc, &argv);
+
+	initialize_file_type_handlers();
 
 	parse_configuration_file(&argc, &argv);
 	parse_command_line(&argc, argv);
