@@ -1694,6 +1694,7 @@ gpointer apply_external_image_filter_image_writer_thread(gpointer data) {/*{{{*/
 	D_LOCK(file_tree);
 	cairo_surface_t *surface = CURRENT_FILE->image_surface;
 	if(!surface) {
+		D_UNLOCK(file_tree);
 		close(*(gint *)data);
 		return NULL;
 	}
@@ -3307,9 +3308,9 @@ gboolean load_images_thread_update_info_text(gpointer user_data) {/*{{{*/
 	// the info text every second
 	static gsize last_image_count = 0;
 	if(main_window_visible == TRUE) {
-		G_LOCK(file_tree);
+		D_LOCK(file_tree);
 		gsize image_count = bostree_node_count(file_tree);
-		G_UNLOCK(file_tree);
+		D_UNLOCK(file_tree);
 
 		if(image_count != last_image_count) {
 			last_image_count = image_count;
