@@ -24,6 +24,7 @@
 #include "lib/bostree.h"
 #include <cairo/cairo.h>
 #include <gio/gio.h>
+#include <gio/gunixinputstream.h>
 #include <glib.h>
 #include <glib/gstdio.h>
 #include <gtk/gtk.h>
@@ -166,16 +167,11 @@ typedef struct {
 	// The file name to display and to sort by
 	gchar *display_name;
 
-	// Either the path to the file or the actual file data
-	// if FILE_FLAGS_MEMORY_IMAGE is set
-	// TODO This is a GNU extension / C11 extension. Action required?
-	union {
-		gchar *file_name;
-		guchar *file_data;
-	};
+	// The URI or file name of the file
+	gchar *file_name;
 
-	// The length of the data if this is a memory image
-	gsize file_data_length;
+	// If the file is a memory image, the actual image data
+	GBytes *file_data;
 
 	// The file monitor structure is used for inotify-watching of
 	// the files
@@ -820,6 +816,26 @@ BOSNode *load_images_handle_parameter_add_file(load_images_state_t state, file_t
 	}
 	return new_node;
 }/*}}}*/
+GBytes *g_input_stream_read_completely(GInputStream *input_stream, GCancellable *cancellable, GError **error_pointer) {/*{{{*/
+	size_t data_length = 0;
+	char *data = g_malloc(1<<23); // + 8 Mib
+	while(TRUE) {
+		gsize bytes_read;
+		if(!g_input_stream_read_all(input_stream, &data[data_length], 1<<23, &bytes_read, cancellable, error_pointer)) {
+			g_free(data);
+			return 0;
+		}
+		data_length += bytes_read;
+		if(bytes_read < 1<<23) {
+			data = g_realloc(data, data_length);
+			break;
+		}
+		else {
+			data = g_realloc(data, data_length + (1<<23));
+		}
+	}
+	return g_bytes_new_take((guint8*)data, data_length);
+}/*}}}*/
 void load_images_handle_parameter(char *param, load_images_state_t state, gint depth) {/*{{{*/
 	file_t *file;
 
@@ -827,23 +843,25 @@ void load_images_handle_parameter(char *param, load_images_state_t state, gint d
 	if(state == PARAMETER && g_strcmp0(param, "-") == 0) {
 		file = g_new0(file_t, 1);
 		file->file_flags = FILE_FLAGS_MEMORY_IMAGE;
-		// TODO Is there some way to detect the file type?
+		// TODO Guess the file type instead of using the default one
 		file->file_type = 0;
 		file->display_name = g_strdup("-");
 
 		GError *error_ptr = NULL;
-		GIOChannel *stdin_channel = g_io_channel_unix_new(0);
-		g_io_channel_set_encoding(stdin_channel, NULL, NULL);
-		if(g_io_channel_read_to_end(stdin_channel, (gchar **)&file->file_data, &file->file_data_length, &error_ptr) != G_IO_STATUS_NORMAL) {
+		GInputStream *stdin_stream = g_unix_input_stream_new(0, FALSE);
+		file->file_data = g_input_stream_read_completely(stdin_stream, NULL, &error_ptr);
+		if(!file->file_data) {
 			g_printerr("Failed to load image from stdin: %s\n", error_ptr->message);
 			g_clear_error(&error_ptr);
 			g_free(file);
-			g_io_channel_unref(stdin_channel);
+			g_object_unref(stdin_stream);
 			return;
 		}
-		g_io_channel_unref(stdin_channel);
+		g_object_unref(stdin_stream);
 
-		// We will add the file to the file tree below
+		// Add assuming default file type
+		// TODO Guess
+		file_type_handlers[file->file_type].alloc_fn(state, file);
 	}
 	else {
 		// If the browse option is enabled, add the containing directory's images instead of the parameter itself
@@ -964,7 +982,7 @@ void load_images_handle_parameter(char *param, load_images_state_t state, gint d
 				file = g_new0(file_t, 1);
 				file->file_name = g_strdup(param);
 				file->file_type = n;
-				file->display_name = g_filename_display_name(file->file_name);
+				file->display_name = g_filename_display_name(param);
 
 				// Handle using this handler
 				if(file_type_handler->alloc_fn != NULL) {
@@ -1064,11 +1082,13 @@ void file_tree_free_helper(BOSNode *node) {
 	if(file_type_handlers[FILE(node)->file_type].free_fn != NULL) {
 		file_type_handlers[FILE(node)->file_type].free_fn(FILE(node));
 	}
-	g_free(FILE(node));
 	g_free(FILE(node)->display_name);
-	if((FILE(node)->file_type & FILE_FLAGS_MEMORY_IMAGE) == 0) {
-		g_free(FILE(node)->file_data);
+	g_free(FILE(node)->file_name);
+	if(FILE(node)->file_data) {
+		g_bytes_unref(FILE(node)->file_data);
+		FILE(node)->file_data = NULL;
 	}
+	g_free(FILE(node));
 }
 void directory_tree_free_helper(BOSNode *node) {
 	free(node->key);
@@ -1331,7 +1351,7 @@ GInputStream *image_loader_stream_file(file_t *file, GError **error_pointer) {/*
 
 	if((file->file_flags & FILE_FLAGS_MEMORY_IMAGE) != 0) {
 		// Memory view on a memory image
-		data = g_memory_input_stream_new_from_data(file->file_data, file->file_data_length, NULL);
+		data = g_memory_input_stream_new_from_bytes(file->file_data);
 	}
 	else {
 		// Classical file or URI
@@ -2001,8 +2021,7 @@ void apply_external_image_filter(gchar *external_filter) {/*{{{*/
 					new_image->display_name = g_strdup_printf("%s [Output of `%s`]", CURRENT_FILE->display_name, argv[2]);
 					new_image->file_type = 0;
 					new_image->file_flags = FILE_FLAGS_MEMORY_IMAGE;
-					new_image->file_data_length = image_data_length;
-					new_image->file_data = (guchar *)image_data;
+					new_image->file_data = g_bytes_new_take(image_data, image_data_length);
 
 					BOSNode *loaded_file = file_type_handlers[new_image->file_type].alloc_fn(FILTER_OUTPUT, new_image);
 					absolute_image_movement(bostree_node_weak_ref(loaded_file));
@@ -3756,7 +3775,12 @@ void file_type_default_initializer(file_type_handler_t *info) {/*{{{*/
 /* }}} */
 /* Poppler backend {{{ */
 typedef struct {
+	// The byte data from the document; must apparently be kept in memory
+	// for poppler to work properly
+	char *data;
+
 	// The page to be displayed
+	PopplerDocument *document;
 	PopplerPage *page;
 
 	// The page number, for loading
@@ -3771,6 +3795,7 @@ BOSNode *file_type_poppler_alloc(load_images_state_t state, file_t *file) {/*{{{
 
 	if(data) {
 		PopplerDocument *poppler_document = poppler_document_new_from_stream(data, -1, NULL, NULL, &error_pointer);
+
 		if(poppler_document) {
 			int n_pages = poppler_document_get_n_pages(poppler_document);
 			g_object_unref(poppler_document);
@@ -3779,8 +3804,18 @@ BOSNode *file_type_poppler_alloc(load_images_state_t state, file_t *file) {/*{{{
 			file_private_data_poppler_t *private_data_for_page = g_new0(file_private_data_poppler_t, n_pages);
 			for(int n=0; n<n_pages; n++) {
 				files_for_page[n] = *file;
-				files_for_page[n].file_name = g_strdup(file->file_name);
-				files_for_page[n].display_name = g_strdup_printf("%s[%d]", file->display_name, n + 1);
+				if((file->file_flags & FILE_FLAGS_MEMORY_IMAGE)) {
+					g_bytes_ref(files_for_page[n].file_data);
+				}
+				else {
+					files_for_page[n].file_name = g_strdup(file->file_name);
+				}
+				if(n == 0) {
+					files_for_page[n].display_name = g_strdup(file->display_name);
+				}
+				else {
+					files_for_page[n].display_name = g_strdup_printf("%s[%d]", file->display_name, n + 1);
+				}
 				files_for_page[n].private = &private_data_for_page[n];
 				private_data_for_page[n].page_number = n;
 
@@ -3806,18 +3841,29 @@ BOSNode *file_type_poppler_alloc(load_images_state_t state, file_t *file) {/*{{{
 void file_type_poppler_free(file_t *file) {/*{{{*/
 	free(file->private);
 }/*}}}*/
-void file_type_poppler_unload(file_t *file) {/*{{{*/
-	file_private_data_poppler_t *private = file->private;
-	if(private->page) {
-		g_object_unref(private->page);
-		private->page = NULL;
-	}
-}/*}}}*/
 void file_type_poppler_load(file_t *file, GInputStream *data, GError **error_pointer) {/*{{{*/
 	file_private_data_poppler_t *private = file->private;
-	PopplerDocument *document = poppler_document_new_from_stream(data, -1, NULL, image_loader_cancellable, error_pointer);
 
-	private->page = poppler_document_get_page(document, private->page_number);
+	// We need to load the data into memory, because poppler has problems with serving from streams
+	size_t data_length = 0;
+	private->data = g_malloc(1<<23); // + 8 Mib
+	while(TRUE) {
+		gsize bytes_read;
+		if(!g_input_stream_read_all(data, &private->data[data_length], 1<<23, &bytes_read, image_loader_cancellable, error_pointer)) {
+			return;
+		}
+		data_length += bytes_read;
+		if(bytes_read < 1<<23) {
+			private->data = g_realloc(private->data, data_length);
+			break;
+		}
+		else {
+			private->data = g_realloc(private->data, data_length + (1<<23));
+		}
+	}
+
+	private->document = poppler_document_new_from_data(private->data, data_length, NULL, error_pointer);
+	private->page = poppler_document_get_page(private->document, private->page_number);
 
 	if(private->page) {
 		double width, height;
@@ -3826,8 +3872,21 @@ void file_type_poppler_load(file_t *file, GInputStream *data, GError **error_poi
 		file->height = height;
 		file->is_loaded = TRUE;
 	}
-
-	g_object_unref(document);
+}/*}}}*/
+void file_type_poppler_unload(file_t *file) {/*{{{*/
+	file_private_data_poppler_t *private = file->private;
+	if(private->page) {
+		g_object_unref(private->page);
+		private->page = NULL;
+	}
+	if(private->document) {
+		g_object_unref(private->document);
+		private->document = NULL;
+	}
+	if(private->data) {
+		g_free(private->data);
+		private->data = NULL;
+	}
 }/*}}}*/
 void file_type_poppler_draw(file_t *file, cairo_t *cr) {/*{{{*/
 	file_private_data_poppler_t *private = (file_private_data_poppler_t *)file->private;
