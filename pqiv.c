@@ -1278,6 +1278,8 @@ gboolean image_loaded_handler(gconstpointer info_text) {/*{{{*/
 	set_scale_level_for_screen();
 	main_window_adjust_for_image();
 	invalidate_current_scaled_image_surface();
+	current_image_drawn = FALSE;
+	queue_draw();
 
 	// Show window, if not visible yet
 	if(!main_window_visible) {
@@ -1295,7 +1297,13 @@ GInputStream *image_loader_stream_file(file_t *file, GError **error_pointer) {/*
 
 	if((file->file_flags & FILE_FLAGS_MEMORY_IMAGE) != 0) {
 		// Memory view on a memory image
+		#if GLIB_CHECK_VERSION(2, 34, 0)
 		data = g_memory_input_stream_new_from_bytes(file->file_data);
+		#else
+		gsize size = 0;
+		// TODO Is it possible to use this fallback and still refcount file_data?
+		data = g_memory_input_stream_new_from_data(g_bytes_get_data(file->file_data, &size), size, NULL);;
+		#endif
 	}
 	else {
 		// Classical file or URI
@@ -3545,7 +3553,7 @@ void file_type_default_initializer(file_type_handler_t *info) {/*{{{*/
 typedef struct {
 	// The byte data from the document; must apparently be kept in memory
 	// for poppler to work properly
-	char *data;
+	GBytes *data;
 
 	// The page to be displayed
 	PopplerDocument *document;
@@ -3558,11 +3566,19 @@ typedef struct {
 BOSNode *file_type_poppler_alloc(load_images_state_t state, file_t *file) {/*{{{*/
 	// We have to load the file now to get the number of pages
 	GError *error_pointer = NULL;
-	GInputStream *data = image_loader_stream_file(file, &error_pointer);
+
+	GInputStream *data_stream = image_loader_stream_file(file, &error_pointer);
 	BOSNode *first_node = NULL;
 
-	if(data) {
-		PopplerDocument *poppler_document = poppler_document_new_from_stream(data, -1, NULL, NULL, &error_pointer);
+	if(data_stream) {
+		#if POPPLER_CHECK_VERSION(0, 22, 0)
+			PopplerDocument *poppler_document = poppler_document_new_from_stream(data_stream, -1, NULL, NULL, &error_pointer);
+		#else
+			GBytes *data_bytes = g_input_stream_read_completely(data_stream, image_loader_cancellable, &error_pointer);
+			gsize data_size;
+			char *data_ptr = (char *)g_bytes_get_data(data_bytes, &data_size);
+			PopplerDocument *poppler_document = poppler_document_new_from_data(data_ptr, (int)data_size, NULL, &error_pointer);
+		#endif
 
 		if(poppler_document) {
 			int n_pages = poppler_document_get_n_pages(poppler_document);
@@ -3595,7 +3611,11 @@ BOSNode *file_type_poppler_alloc(load_images_state_t state, file_t *file) {/*{{{
 				}
 			}
 		}
-		g_object_unref(data);
+
+		#if !POPPLER_CHECK_VERSION(0, 22, 0)
+			g_bytes_unref(data_bytes);
+		#endif
+		g_object_unref(data_stream);
 	}
 
 	if(error_pointer) {
@@ -3613,24 +3633,10 @@ void file_type_poppler_load(file_t *file, GInputStream *data, GError **error_poi
 	file_private_data_poppler_t *private = file->private;
 
 	// We need to load the data into memory, because poppler has problems with serving from streams
-	size_t data_length = 0;
-	private->data = g_malloc(1<<23); // + 8 Mib
-	while(TRUE) {
-		gsize bytes_read;
-		if(!g_input_stream_read_all(data, &private->data[data_length], 1<<23, &bytes_read, image_loader_cancellable, error_pointer)) {
-			return;
-		}
-		data_length += bytes_read;
-		if(bytes_read < 1<<23) {
-			private->data = g_realloc(private->data, data_length);
-			break;
-		}
-		else {
-			private->data = g_realloc(private->data, data_length + (1<<23));
-		}
-	}
-
-	private->document = poppler_document_new_from_data(private->data, data_length, NULL, error_pointer);
+	private->data = g_input_stream_read_completely(data, image_loader_cancellable, error_pointer);
+	gsize data_size;
+	char *data_ptr = (char *)g_bytes_get_data(private->data, &data_size);
+	private->document = poppler_document_new_from_data(data_ptr, (int)data_size, NULL, error_pointer);
 	private->page = poppler_document_get_page(private->document, private->page_number);
 
 	if(private->page) {
@@ -3652,7 +3658,7 @@ void file_type_poppler_unload(file_t *file) {/*{{{*/
 		private->document = NULL;
 	}
 	if(private->data) {
-		g_free(private->data);
+		g_bytes_unref(private->data);
 		private->data = NULL;
 	}
 }/*}}}*/
