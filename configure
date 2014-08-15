@@ -156,7 +156,7 @@ if [ -n "${CROSS}" ]; then
 	fi
 fi
 
-echo -n "Checking if GTK, cairo and glib are installed.. "
+echo -n "Checking if the prerequisites are installed.. "
 if $PKG_CONFIG --exists "$LIBS_GTK3"; then
 	echo "ok"
 else

@@ -13,6 +13,7 @@ ifeq ($(wildcard config.make),config.make)
 	include config.make
 endif
 
+# GTK3/2 chooser
 LIBS_GTK3=gtk+-3.0 gdk-3.0 glib-2.0 >= 2.8 cairo >= 1.6 gio-2.0 gdk-pixbuf-2.0 >= 2.2 poppler-glib
 LIBS_GTK2=gtk+-2.0 >= 2.6 gdk-2.0 >= 2.8 glib-2.0 >= 2.8 cairo >= 1.6 gio-2.0 gdk-pixbuf-2.0 >= 2.2 poppler-glib
 
@@ -29,6 +30,21 @@ endif
 ifeq ($(GTK_VERSION), 3)
 	LIBS=$(LIBS_GTK3)
 endif
+
+# Add platform specific gio for stdin loading
+ifeq ($(EXECUTABLE_EXTENSION), .exe)
+	LIBS+=gio-windows-2.0
+else
+	LIBS+=gio-unix-2.0
+endif
+
+# This might be required if you use mingw, and is required as of
+# Aug 2014 for mxe, but IMHO shouldn't be required / is a bug in
+# poppler (which does not specify this dependency):
+#
+# ifeq ($(EXECUTABLE_EXTENSION), .exe)
+#    LIBS+=lcms2
+# endif
 
 all: pqiv$(EXECUTABLE_EXTENSION)
 

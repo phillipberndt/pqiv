@@ -24,7 +24,6 @@
 #include "lib/bostree.h"
 #include <cairo/cairo.h>
 #include <gio/gio.h>
-#include <gio/gunixinputstream.h>
 #include <glib.h>
 #include <glib/gstdio.h>
 #include <gtk/gtk.h>
@@ -48,9 +47,11 @@
 		#endif
 	#endif
 	#include <windows.h>
+	#include <gio/gwin32inputstream.h>
 #else
 	#include <sys/wait.h>
 	#include <gdk/gdkx.h>
+	#include <gio/gunixinputstream.h>
 
 	#if GTK_MAJOR_VERSION < 3
 		#include <X11/Xatom.h>
@@ -848,7 +849,11 @@ void load_images_handle_parameter(char *param, load_images_state_t state, gint d
 		file->display_name = g_strdup("-");
 
 		GError *error_ptr = NULL;
-		GInputStream *stdin_stream = g_unix_input_stream_new(0, FALSE);
+		#ifdef _WIN32
+			GInputStream *stdin_stream = g_win32_input_stream_new(GetStdHandle(STD_INPUT_HANDLE), FALSE);
+		#else
+			GInputStream *stdin_stream = g_unix_input_stream_new(0, FALSE);
+		#endif
 		file->file_data = g_input_stream_read_completely(stdin_stream, NULL, &error_ptr);
 		if(!file->file_data) {
 			g_printerr("Failed to load image from stdin: %s\n", error_ptr->message);
@@ -916,9 +921,9 @@ void load_images_handle_parameter(char *param, load_images_state_t state, gint d
 			// Display progress
 			if(g_timer_elapsed(load_images_timer, NULL) > 5.) {
 				#ifdef _WIN32
-				g_print("Loading in %-50.50s ...\r", param);
+					g_print("Loading in %-50.50s ...\r", param);
 				#else
-				g_print("\033[s\033[JLoading in %s ...\033[u", param);
+					g_print("\033[s\033[JLoading in %s ...\033[u", param);
 				#endif
 			}
 
@@ -1744,9 +1749,9 @@ void apply_external_image_filter(gchar *external_filter) {/*{{{*/
 		if(!g_spawn_async_with_pipes(NULL, argv, NULL,
 			// In win32, the G_SPAWN_DO_NOT_REAP_CHILD is required to get the process handle
 			#ifdef _WIN32
-			G_SPAWN_DO_NOT_REAP_CHILD,
+				G_SPAWN_DO_NOT_REAP_CHILD,
 			#else
-			0,
+				0,
 			#endif
 			NULL, NULL, &child_pid, &child_stdin, &child_stdout, NULL, &error_pointer)
 		) {
