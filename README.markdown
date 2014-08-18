@@ -48,9 +48,9 @@ Usual stuff. `./configure && make && make install`. Actually, the configure
 script is optional for now.
 
 You'll need
- * gtk+ 3.0 *or* gtk+ 2.8
+ * gtk+ 3.0 *or* gtk+ 2.6
  * gdk-pixbuf 2.2 (included in gtk+)
- * glib 2.8
+ * glib 2.6
  * cairo 1.6
  * gio 2.0
  * gdk 2.8

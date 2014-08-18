@@ -71,8 +71,8 @@ while [ $# -gt 0 ]; do
 			;;
 		--mandir)
 			MANDIR=${VALUE}
-			MANDIR="${MANDIR//{/(}"
-			MANDIR="${MANDIR//\}/)}"
+			MANDIR="${MANDIR//\{/\(}"
+			MANDIR="${MANDIR//\}/\)}"
 			MANDIR="${MANDIR//prefix/PREFIX}"
 			echo "Use of autoconf option --mandir is discouraged, because support is incomplete. Rewrote \`$VALUE' to \`$MANDIR' and used that as the MANDIR Make variable." >&2
 			;;
@@ -90,9 +90,9 @@ while [ $# -gt 0 ]; do
 	shift
 done
 
-# If cross-compiling, check if cc is present (usually it's not)
+# If cross-compiling, check if cc is present (usually it is not)
 if [ -n "$CROSS" -a -z "$CC" ]; then
-	echo -n "Checking for cross-compiler cc.. "
+	echo -n "Checking for cross-compiler cc..              "
 	if ! which ${CROSS}cc >/dev/null 2>&1; then
 		if which ${CROSS}clang >/dev/null 2>&1; then
 			export CC=clang
@@ -111,7 +111,7 @@ if [ -n "$CROSS" -a -z "$CC" ]; then
 fi
 
 # Determine binary extension (for Windows)
-echo -n "Determining executable extension.. "
+echo -n "Determining executable extension..            "
 DIR=`tempdir`
 cd $DIR
 echo 'int main(int argc, char *argv[]) { return 0; }' > test.c
@@ -123,8 +123,9 @@ rm -f $EXECUTABLE
 cd ..
 rmdir $DIR
 if [ "$RV" != 0 ]; then
-	echo "The compiler can't compile executables!?" >&2
 	echo
+	echo
+	echo "The compiler can't compile executables!?" >&2
 	exit 1
 fi
 EXECUTABLE_EXTENSION=${EXECUTABLE#a}
@@ -134,18 +135,14 @@ fi
 echo ${EXECUTABLE_EXTENSION:-(none)}
 
 # Do a rudimental prerequisites check to have user-friendlier error messages
-while read -r LINE; do
-	for VAR in LIBS_GTK3 LIBS_GTK2; do
-		if [ "${LINE#$VAR=}" != "${LINE}" ]; then
-			eval ${VAR}=\"${LINE#$VAR=}\"
-		fi
-	done
-done < Makefile
+LIBS_GTK3="`make get_libs GTK_VERSION=3`"
+LIBS_GTK2="`make get_libs GTK_VERSION=2`"
 
 if [ -n "${CROSS}" ]; then
-	echo -n "Checking for pkg-config.. "
+	echo -n "Checking for pkg-config..                     "
 	PKG_CONFIG=${CROSS}pkg-config
 	if ! which ${PKG_CONFIG} >/dev/null 2>&1; then
+		echo
 		echo
 		echo "Did not find a specialized tool ${CROSS}pkg-config, defaulting to pkg-config" >&2
 		echo "If you really ARE cross-compiling, the build might therefore fail!" >&2
@@ -164,6 +161,7 @@ else
 		if [ "$GTK_VERSION" = 3 ]; then
 			echo "failed."
 			echo
+			echo
 			echo "GTK 2 was found, but you manually specified --gtk-version=3, which was not found." >&2
 			echo "If you want GTK3, install the development packages for" >&2
 			echo " ${LIBS_GTK3}" >&2
@@ -173,6 +171,7 @@ else
 		GTK_VERSION=2
 	else
 		echo "failed."
+		echo
 		echo
 		echo "Please install either the development packages for " >&2
 		echo " ${LIBS_GTK3}" >&2

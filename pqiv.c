@@ -3689,7 +3689,6 @@ void file_type_poppler_initializer(file_type_handler_t *info) {/*{{{*/
 }/*}}}*/
 /* }}} */
 
-
 void initialize_file_type_handlers() {/*{{{*/
 	// TODO Do this dynamically
 	file_type_handlers = g_new0(file_type_handler_t, 3);
