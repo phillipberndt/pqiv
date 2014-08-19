@@ -135,9 +135,6 @@ fi
 echo ${EXECUTABLE_EXTENSION:-(none)}
 
 # Do a rudimental prerequisites check to have user-friendlier error messages
-LIBS_GTK3="`make get_libs GTK_VERSION=3`"
-LIBS_GTK2="`make get_libs GTK_VERSION=2`"
-
 if [ -n "${CROSS}" ]; then
 	echo -n "Checking for pkg-config..                     "
 	PKG_CONFIG=${CROSS}pkg-config
@@ -154,6 +151,9 @@ if [ -n "${CROSS}" ]; then
 fi
 
 echo -n "Checking if the prerequisites are installed.. "
+LIBS_GTK3="`make get_libs GTK_VERSION=3 EXECUTABLE_EXTENSION=$EXECUTABLE_EXTENSION OMIT_REAL_VARIABLES=1`"
+LIBS_GTK2="`make get_libs GTK_VERSION=2 EXECUTABLE_EXTENSION=$EXECUTABLE_EXTENSION OMIT_REAL_VARIABLES=1`"
+
 if $PKG_CONFIG --exists "$LIBS_GTK3"; then
 	echo "ok"
 else
