@@ -54,14 +54,14 @@ endif
 #    LDLIBS+=-llcms2
 # endif
 
-ifneq ($(OMIT_REAL_VARIABLES),1)
-	CFLAGS_REAL:=-std=gnu99 $(PQIV_WARNING_FLAGS) $(CFLAGS) $(shell $(PKG_CONFIG) --cflags "$(LIBS)")
-	LDLIBS_REAL:=$(LDLIBS) $(shell $(PKG_CONFIG) --libs "$(LIBS)")
-	LDFLAGS_REAL:=$(LDFLAGS)
-endif
+CFLAGS_REAL=-std=gnu99 $(PQIV_WARNING_FLAGS) $(CFLAGS) $(shell $(PKG_CONFIG) --cflags "$(LIBS)")
+LDLIBS_REAL=$(LDLIBS) $(shell $(PKG_CONFIG) --libs "$(LIBS)")
+LDFLAGS_REAL=$(LDFLAGS)
+
 
 all: pqiv$(EXECUTABLE_EXTENSION)
 .PHONY: get_libs _build_variables clean distclean install uninstall all
+
 
 pqiv$(EXECUTABLE_EXTENSION): pqiv.c lib/strnatcmp.o lib/bostree.o
 	$(CROSS)$(CC) $(CPPFLAGS) -o $@ $(CFLAGS_REAL) $+ $(LDLIBS_REAL) $(LDFLAGS_REAL)
