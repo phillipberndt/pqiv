@@ -22,6 +22,7 @@ BINARY_EXTENSION=
 CFLAGS=
 MANDIR=
 PKG_CONFIG=pkg-config
+BACKENDS=
 
 # Help and options
 help() {
@@ -33,6 +34,8 @@ options:
   --destdir=..          Set the destdir for installed files (for package maintainers)
   --gtk-version=2       Use GTK+-2.0 even if GTK+-3.0 is available
   --cross=..            Set a cross-compiler prefix (e.g. \`i686-pc-mingw32-')
+  --backends=..         Select which backends to include in pqiv
+                        Available: gdkpixbuf (Default), poppler
 
 EOF
 }
@@ -81,6 +84,14 @@ while [ $# -gt 0 ]; do
 			;;
 		--no-sorting | --no-compositing | --no-fading | --no-commands | --no-config-file | --no-inotify | --no-animations | --binary-name)
 			echo "obsolete 1.0 option ${PARAMETER} ignored" >&2
+			;;
+		--backends)
+			BACKENDS="${VALUE//,/ }"
+			for NAME in ${BACKENDS}; do
+				[ -e backends/${NAME}.c ] && continue
+				echo "Invalid argument to --backends: Backend ${NAME} was not found" >&2
+				exit 1
+			done
 			;;
 		*)
 			echo "Unknown option: $1" >&2
@@ -151,8 +162,8 @@ if [ -n "${CROSS}" ]; then
 fi
 
 echo -n "Checking if the prerequisites are installed.. "
-LIBS_GTK3="`make get_libs GTK_VERSION=3 EXECUTABLE_EXTENSION=$EXECUTABLE_EXTENSION`"
-LIBS_GTK2="`make get_libs GTK_VERSION=2 EXECUTABLE_EXTENSION=$EXECUTABLE_EXTENSION`"
+LIBS_GTK3="`make get_libs GTK_VERSION=3 EXECUTABLE_EXTENSION=$EXECUTABLE_EXTENSION ${BACKENDS:+BACKENDS="$BACKENDS"}`"
+LIBS_GTK2="`make get_libs GTK_VERSION=2 EXECUTABLE_EXTENSION=$EXECUTABLE_EXTENSION ${BACKENDS:+BACKENDS="$BACKENDS"}`"
 
 if $PKG_CONFIG --exists "$LIBS_GTK3"; then
 	echo "ok"
@@ -182,23 +193,18 @@ else
 fi
 
 echo "Writing config.make."
-(
-cat <<EOF
+cat > config.make <<EOF
 DESTDIR=$DESTDIR
 PREFIX=$PREFIX
 GTK_VERSION=$GTK_VERSION
 CROSS=$CROSS
 EXECUTABLE_EXTENSION=$EXECUTABLE_EXTENSION
 PKG_CONFIG=$PKG_CONFIG
+${CFLAGS:+CFLAGS+=$CFLAGS}
+${MANDIR:+MANDIR=$MANDIR}
+${BACKENDS:+BACKENDS=$BACKENDS}
+${CC:+CC+=$CC}
 EOF
-if [ -n "$CFLAGS" ]; then
-	echo "CFLAGS+=$CFLAGS"
-fi
-if [ -n "$MANDIR" ]; then
-	echo "MANDIR=$MANDIR"
-fi
-) > config.make
-[ -n "${CC}" ] && echo "CC=${CC}" >> config.make
 echo
 echo "Done. Run \`make install' to install pqiv."
 exit 0

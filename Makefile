@@ -12,6 +12,8 @@ PREFIX=/usr
 MANDIR=$(PREFIX)/share/man
 EXECUTABLE_EXTENSION=
 PKG_CONFIG=$(CROSS)pkg-config
+OBJECTS=pqiv.o lib/strnatcmp.o lib/bostree.o
+BACKENDS=gdkpixbuf
 
 # Load config.make (created by configure)
 ifeq ($(wildcard config.make),config.make)
@@ -19,7 +21,7 @@ ifeq ($(wildcard config.make),config.make)
 endif
 
 # Package lines for pkg-config
-LIBS_GENERAL=glib-2.0 >= 2.8 cairo >= 1.6 gio-2.0 gdk-pixbuf-2.0 >= 2.2 poppler-glib
+LIBS_GENERAL=glib-2.0 >= 2.8 cairo >= 1.6 gio-2.0
 LIBS_GTK3=gtk+-3.0 gdk-3.0
 LIBS_GTK2=gtk+-2.0 >= 2.6 gdk-2.0 >= 2.8
 
@@ -46,13 +48,28 @@ else
 	LIBS+=gio-unix-2.0
 endif
 
-# This might be required if you use mingw, and is required as of
-# Aug 2014 for mxe, but IMHO shouldn't be required / is a bug in
-# poppler (which does not specify this dependency):
-#
-# ifeq ($(EXECUTABLE_EXTENSION), .exe)
-#    LDLIBS+=-llcms2
-# endif
+# Add backend-specific libraries and objects
+# All backends must be explicitly listed here, or building will fail.
+BACKENDS_INITIALIZER:=backends/initializer
+ifneq ($(findstring gdkpixbuf, $(BACKENDS)),)
+	LIBS+=gdk-pixbuf-2.0 >= 2.2
+	OBJECTS+=backends/gdkpixbuf.o
+	BACKENDS_INITIALIZER:=$(BACKENDS_INITIALIZER)-gdkpixbuf
+endif
+ifneq ($(findstring poppler, $(BACKENDS)),)
+	LIBS+=poppler-glib
+	OBJECTS+=backends/poppler.o
+	BACKENDS_INITIALIZER:=$(BACKENDS_INITIALIZER)-poppler
+
+	# This might be required if you use mingw, and is required as of
+	# Aug 2014 for mxe, but IMHO shouldn't be required / is a bug in
+	# poppler (which does not specify this dependency):
+	#
+	# ifeq ($(EXECUTABLE_EXTENSION), .exe)
+	#    LDLIBS+=-llcms2
+	# endif
+endif
+OBJECTS+=$(BACKENDS_INITIALIZER).o
 
 CFLAGS_REAL=-std=gnu99 $(PQIV_WARNING_FLAGS) $(CFLAGS) $(shell $(PKG_CONFIG) --cflags "$(LIBS)")
 LDLIBS_REAL=$(LDLIBS) $(shell $(PKG_CONFIG) --libs "$(LIBS)")
@@ -62,15 +79,33 @@ LDFLAGS_REAL=$(LDFLAGS)
 all: pqiv$(EXECUTABLE_EXTENSION)
 .PHONY: get_libs _build_variables clean distclean install uninstall all
 
+pqiv$(EXECUTABLE_EXTENSION): $(OBJECTS)
+	$(CROSS)$(CC) $(CPPFLAGS) -o $@ $+ $(LDLIBS_REAL) $(LDFLAGS_REAL)
 
-pqiv$(EXECUTABLE_EXTENSION): pqiv.c lib/strnatcmp.o lib/bostree.o
-	$(CROSS)$(CC) $(CPPFLAGS) -o $@ $(CFLAGS_REAL) $+ $(LDLIBS_REAL) $(LDFLAGS_REAL)
+pqiv.o: pqiv.c
+	$(CROSS)$(CC) $(CPPFLAGS) -c -o $@ $(CFLAGS_REAL) $+
 
 lib/strnatcmp.o: lib/strnatcmp.c
-	$(CROSS)$(CC) $(CPPFLAGS) -c -o $@ $+ $(CFLAGS_REAL)
+	$(CROSS)$(CC) $(CPPFLAGS) -c -o $@ $+ $(CFLAGS)
 
 lib/bostree.o: lib/bostree.c
-	$(CROSS)$(CC) $(CPPFLAGS) -DNDEBUG -c -o $@ $+ $(CFLAGS_REAL)
+	$(CROSS)$(CC) $(CPPFLAGS) -DNDEBUG -c -o $@ $+ $(CFLAGS)
+
+backends/%.o: backends/%.c
+	$(CROSS)$(CC) $(CPPFLAGS) -c -o $@ $+ $(CFLAGS_REAL)
+
+$(BACKENDS_INITIALIZER).c:
+	@$(foreach BACKEND, $(sort $(BACKENDS)), [ -e backends/$(BACKEND).c ] || { echo; echo "Backend $(BACKEND) not found!" >&2; exit 1; };)
+	( \
+		echo '/* Auto-Generated file by Make. */'; \
+		echo '#include "../pqiv.h"'; \
+		$(foreach BACKEND, $(sort $(BACKENDS)), echo "void file_type_$(BACKEND)_initializer(file_type_handler_t *info);";) \
+		echo "void initialize_file_type_handlers() {"; \
+		echo "	int i = 0;"; \
+		echo "	file_type_handlers = g_new0(file_type_handler_t, $(words $(BACKENDS)) + 1);"; \
+		$(foreach BACKEND, $(sort $(BACKENDS)), echo "	file_type_$(BACKEND)_initializer(&file_type_handlers[i++]);";) \
+		echo "}" \
+	) > $@
 
 install: pqiv$(EXECUTABLE_EXTENSION)
 	mkdir -p $(DESTDIR)$(PREFIX)/bin
@@ -83,10 +118,10 @@ uninstall:
 	rm -f $(DESTDIR)$(MANDIR)/man1/pqiv.1
 
 clean:
-	rm -f pqiv$(EXECUTABLE_EXTENSION) lib/strnatcmp.o lib/bostree.o
+	rm -f pqiv$(EXECUTABLE_EXTENSION) $(OBJECTS) $(BACKENDS_INITIALIZER).c
 
 distclean: clean
-	rm -f config.make
+	rm -f config.make backends/initializer-*
 
 get_libs:
 	$(info $(LIBS))
