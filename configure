@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 #
 # Configure script, for most users only needed for backwards compatibility with
 # pqiv 1.0 (pre-gtk3). I still recommend to use it in automated builds to
@@ -101,6 +101,18 @@ while [ $# -gt 0 ]; do
 	shift
 done
 
+# The makefile is for GNU make
+if [ -z $MAKE ]; then
+	MAKE=make
+	if ! (${MAKE} -v 2>&1 | grep -q "GNU Make"); then
+		MAKE=gmake
+		if ! which $MAKE 2>&1 >/dev/null; then
+			echo "GNU make is required for building pqiv" >&2
+			exit 1
+		fi
+	fi
+fi
+
 # If cross-compiling, check if cc is present (usually it is not)
 if [ -n "$CROSS" -a -z "$CC" ]; then
 	echo -n "Checking for cross-compiler cc..              "
@@ -162,8 +174,16 @@ if [ -n "${CROSS}" ]; then
 fi
 
 echo -n "Checking if the prerequisites are installed.. "
-LIBS_GTK3="`make get_libs GTK_VERSION=3 EXECUTABLE_EXTENSION=$EXECUTABLE_EXTENSION ${BACKENDS:+BACKENDS="$BACKENDS"}`"
-LIBS_GTK2="`make get_libs GTK_VERSION=2 EXECUTABLE_EXTENSION=$EXECUTABLE_EXTENSION ${BACKENDS:+BACKENDS="$BACKENDS"}`"
+LIBS_GTK3="`$MAKE get_libs GTK_VERSION=3 EXECUTABLE_EXTENSION=$EXECUTABLE_EXTENSION ${BACKENDS:+BACKENDS="$BACKENDS"}`"
+LIBS_GTK2="`$MAKE get_libs GTK_VERSION=2 EXECUTABLE_EXTENSION=$EXECUTABLE_EXTENSION ${BACKENDS:+BACKENDS="$BACKENDS"}`"
+
+if [ $? != 0 ]; then
+	echo "failed."
+	echo
+	echo
+	echo "Failed to run make. Is your make command compatible to GNU make?" >&2
+	exit 1
+fi
 
 if $PKG_CONFIG --exists "$LIBS_GTK3"; then
 	echo "ok"
@@ -206,5 +226,5 @@ ${BACKENDS:+BACKENDS=$BACKENDS}
 ${CC:+CC+=$CC}
 EOF
 echo
-echo "Done. Run \`make install' to install pqiv."
+echo "Done. Run \`$MAKE install' to install pqiv."
 exit 0
