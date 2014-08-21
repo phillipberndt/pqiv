@@ -69,6 +69,11 @@ ifneq ($(findstring poppler, $(BACKENDS)),)
 	#    LDLIBS+=-llcms2
 	# endif
 endif
+ifneq ($(findstring spectre, $(BACKENDS)),)
+	LIBS+=libspectre
+	OBJECTS+=backends/spectre.o
+	BACKENDS_INITIALIZER:=$(BACKENDS_INITIALIZER)-spectre
+endif
 OBJECTS+=$(BACKENDS_INITIALIZER).o
 
 CFLAGS_REAL=-std=gnu99 $(PQIV_WARNING_FLAGS) $(CFLAGS) $(shell $(PKG_CONFIG) --cflags "$(LIBS)")

@@ -130,6 +130,9 @@ typedef void (*file_type_initializer_fn_t)(file_type_handler_t *info);
 // Global cancellable that should be used for every i/o operation
 extern GCancellable *image_loader_cancellable;
 
+// Current scale level. For backends that don't support cairo natively.
+extern gdouble current_scale_level;
+
 // Load a file from disc/memory/network
 GInputStream *image_loader_stream_file(file_t *file, GError **error_pointer);
 
