@@ -71,6 +71,13 @@ typedef struct {
 // }}}
 // Definition of the built-in file types {{{
 
+// If you want to implement your own file type, you'll have to implement the
+// following functions and a non-static initialization function named
+// file_type_NAME_initializer that fills a file_type_handler_t with pointers to
+// the functions. Store the file in backends/NAME.c and adjust the Makefile to
+// add the required libraries if your backend is listed in the $(BACKENDS)
+// variable.
+
 typedef enum { PARAMETER, RECURSION, INOTIFY, BROWSE_ORIGINAL_PARAMETER, FILTER_OUTPUT } load_images_state_t;
 // Allocation function: Allocate the ->private structure within a file and add the
 // image(s) to the list of available images via load_images_handle_parameter_add_file()
@@ -87,16 +94,25 @@ typedef void (*file_type_load_fn_t)(file_t *file, GInputStream *data, GError **e
 typedef void (*file_type_unload_fn_t)(file_t *file);
 
 // Animation support: Initialize memory for animations, return ms until first frame
+// Optional, you can also set the pointer to this function to NULL.
 typedef double (*file_type_animation_initialize_fn_t)(file_t *file);
 
 // Animation support: Advance to the next frame, return ms until next frame
+// Optional, you can also set the pointer to this function to NULL.
 typedef double (*file_type_animation_next_frame_fn_t)(file_t *file);
 
 // Draw the current view to a cairo context
 typedef void (*file_type_draw_fn_t)(file_t *file, cairo_t *cr);
 
 struct file_type_handler_struct_t {
+	// All files will be filtered with this filter. If it lets it pass,
+	// a handler is assigned to a file. If none do, the file is
+	// discarded if it was found during directory traversal or
+	// loaded using the first image backend if it was an explicit
+	// parameter.
 	GtkFileFilter *file_types_handled;
+
+	// Pointers to the functions defined above
 	file_type_alloc_fn_t alloc_fn;
 	file_type_free_fn_t free_fn;
 	file_type_load_fn_t load_fn;
@@ -118,9 +134,11 @@ extern GCancellable *image_loader_cancellable;
 GInputStream *image_loader_stream_file(file_t *file, GError **error_pointer);
 
 // Add a file to the list of loaded files
+// Should be called at least once in a file_type_alloc_fn_t, with the state being
+// forwarded unaltered.
 BOSNode *load_images_handle_parameter_add_file(load_images_state_t state, file_t *file);
 
-// Load all data from an input stream into memory
+// Load all data from an input stream into memory, conveinience function
 GBytes *g_input_stream_read_completely(GInputStream *input_stream, GCancellable *cancellable, GError **error_pointer);
 
 // }}}

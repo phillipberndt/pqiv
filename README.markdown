@@ -100,6 +100,13 @@ Known bugs
 Changelog
 ---------
 
+pqiv 2.3 (Work in progress)
+ * Refactored an abstraction layer around the image backend
+ * Added optional support for PDF-files through
+   [poppler](http://poppler.freedesktop.org/)
+ * Support for gtk+ 3.14
+ * configure/Makefile updated to support (Free-)BSD
+
 pqiv 2.2
  * Accept URLs as command line arguments
  * Revived -r for reading additional files from stdin (by J.P. Reed)
