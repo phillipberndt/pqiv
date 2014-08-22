@@ -942,18 +942,21 @@ void load_images_handle_parameter(char *param, load_images_state_t state, gint d
 int image_tree_float_compare(const float *a, const float *b) {/*{{{*/
 	return *a > *b;
 }/*}}}*/
+void file_free(file_t *file) {/*{{{*/
+	if(file->file_type->free_fn != NULL && file->private) {
+		file->file_type->free_fn(file);
+	}
+	g_free(file->display_name);
+	g_free(file->file_name);
+	if(file->file_data) {
+		g_bytes_unref(file->file_data);
+		file->file_data = NULL;
+	}
+	g_free(file);
+}/*}}}*/
 void file_tree_free_helper(BOSNode *node) {
 	unload_image(node);
-	if(FILE(node)->file_type->free_fn != NULL) {
-		FILE(node)->file_type->free_fn(FILE(node));
-	}
-	g_free(FILE(node)->display_name);
-	g_free(FILE(node)->file_name);
-	if(FILE(node)->file_data) {
-		g_bytes_unref(FILE(node)->file_data);
-		FILE(node)->file_data = NULL;
-	}
-	g_free(FILE(node));
+	file_free(FILE(node));
 }
 void directory_tree_free_helper(BOSNode *node) {
 	free(node->key);

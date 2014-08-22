@@ -81,10 +81,14 @@ typedef struct {
 typedef enum { PARAMETER, RECURSION, INOTIFY, BROWSE_ORIGINAL_PARAMETER, FILTER_OUTPUT } load_images_state_t;
 // Allocation function: Allocate the ->private structure within a file and add the
 // image(s) to the list of available images via load_images_handle_parameter_add_file()
+// If an image is not to be loaded for any reason, the file structure should be
+// deallocated using file_free()
 // Returns a pointer to the first added image
+// Optional, you can also set the pointer to this function to NULL.
 typedef BOSNode *(*file_type_alloc_fn_t)(load_images_state_t state, file_t *file);
 
-// Deallocation, if a file is removed from the images list. Free the ->private structure
+// Deallocation, if a file is removed from the images list. Free the ->private structure.
+// Only called if ->private is non-NULL.
 typedef void (*file_type_free_fn_t)(file_t *file);
 
 // Actually load a file into memory
@@ -143,6 +147,9 @@ BOSNode *load_images_handle_parameter_add_file(load_images_state_t state, file_t
 
 // Load all data from an input stream into memory, conveinience function
 GBytes *g_input_stream_read_completely(GInputStream *input_stream, GCancellable *cancellable, GError **error_pointer);
+
+// Free a file
+void file_free(file_t *file);
 
 // }}}
 

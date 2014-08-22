@@ -55,30 +55,30 @@ BOSNode *file_type_poppler_alloc(load_images_state_t state, file_t *file) {/*{{{
 			int n_pages = poppler_document_get_n_pages(poppler_document);
 			g_object_unref(poppler_document);
 
-			file_t *files_for_page = g_new0(file_t, n_pages);
-			file_private_data_poppler_t *private_data_for_page = g_new0(file_private_data_poppler_t, n_pages);
 			for(int n=0; n<n_pages; n++) {
-				files_for_page[n] = *file;
+				file_t *new_file = g_new(file_t, 1);
+				*new_file = *file;
+
 				if((file->file_flags & FILE_FLAGS_MEMORY_IMAGE)) {
-					g_bytes_ref(files_for_page[n].file_data);
+					g_bytes_ref(new_file->file_data);
 				}
 				else {
-					files_for_page[n].file_name = g_strdup(file->file_name);
+					new_file->file_name = g_strdup(file->file_name);
 				}
 				if(n == 0) {
-					files_for_page[n].display_name = g_strdup(file->display_name);
+					new_file->display_name = g_strdup(file->display_name);
 				}
 				else {
-					files_for_page[n].display_name = g_strdup_printf("%s[%d]", file->display_name, n + 1);
+					new_file->display_name = g_strdup_printf("%s[%d]", file->display_name, n + 1);
 				}
-				files_for_page[n].private = &private_data_for_page[n];
-				private_data_for_page[n].page_number = n;
+				new_file->private = g_new0(file_private_data_poppler_t, 1);
+				((file_private_data_poppler_t *)new_file->private)->page_number = n;
 
 				if(n == 0) {
-					first_node = load_images_handle_parameter_add_file(state, &files_for_page[0]);
+					first_node = load_images_handle_parameter_add_file(state, new_file);
 				}
 				else {
-					load_images_handle_parameter_add_file(state, &files_for_page[n]);
+					load_images_handle_parameter_add_file(state,  new_file);
 				}
 			}
 		}
@@ -93,7 +93,7 @@ BOSNode *file_type_poppler_alloc(load_images_state_t state, file_t *file) {/*{{{
 		g_printerr("Failed to load PDF %s: %s\n", file->display_name, error_pointer->message);
 	}
 
-	g_free(file);
+	file_free(file);
 
 	return first_node;
 }/*}}}*/

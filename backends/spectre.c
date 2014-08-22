@@ -41,44 +41,46 @@ BOSNode *file_type_spectre_alloc(load_images_state_t state, file_t *file) {/*{{{
 
 	if((file->file_flags & FILE_FLAGS_MEMORY_IMAGE)) {
 		g_printerr("The spectre backend cannot load memory files\n");
-		// TODO I should move this to pqiv.c
-		g_free(file->file_data);
-		g_free(file->display_name);
-		g_free(file);
+		file_free(file);
 		return NULL;
 	}
 
+	// Load the document to get the number of pages
 	struct SpectreDocument *document = spectre_document_new();
 	spectre_document_load(document, file->file_name);
+	if(spectre_document_status(document)) {
+		g_printerr("Failed to load image %s: %s\n", file->file_name, spectre_status_to_string(spectre_document_status(document)));
+		spectre_document_free(document);
+		file_free(file);
+		return NULL;
+	}
 	int n_pages = spectre_document_get_n_pages(document);
 	spectre_document_free(document);
 
-	file_t *files_for_page = g_new0(file_t, n_pages);
-	file_private_data_spectre_t *private_data_for_page = g_new0(file_private_data_spectre_t, n_pages);
 	for(int n=0; n<n_pages; n++) {
-		files_for_page[n] = *file;
-		files_for_page[n].file_name = g_strdup(file->file_name);
+		file_t *new_file = g_new(file_t, 1);
+		*new_file = *file;
+
+		new_file->file_name = g_strdup(file->file_name);
 		if(n == 0) {
-			files_for_page[n].display_name = g_strdup(file->display_name);
+			new_file->display_name = g_strdup(file->display_name);
 		}
 		else {
-			files_for_page[n].display_name = g_strdup_printf("%s[%d]", file->display_name, n + 1);
+			new_file->display_name = g_strdup_printf("%s[%d]", file->display_name, n + 1);
 		}
-		files_for_page[n].private = &private_data_for_page[n];
-		private_data_for_page[n].page_number = n;
+
+		new_file->private = g_new0(file_private_data_spectre_t, 1);
+		((file_private_data_spectre_t *)new_file->private)->page_number = n;
 
 		if(n == 0) {
-			first_node = load_images_handle_parameter_add_file(state, &files_for_page[0]);
+			first_node = load_images_handle_parameter_add_file(state, new_file);
 		}
 		else {
-			load_images_handle_parameter_add_file(state, &files_for_page[n]);
+			load_images_handle_parameter_add_file(state, new_file);
 		}
 	}
 
-	g_free(file->display_name);
-	g_free(file->file_name);
-	g_free(file);
-
+	file_free(file);
 	return first_node;
 }/*}}}*/
 void file_type_spectre_free(file_t *file) {/*{{{*/
@@ -86,8 +88,13 @@ void file_type_spectre_free(file_t *file) {/*{{{*/
 }/*}}}*/
 void file_type_spectre_load(file_t *file, GInputStream *data, GError **error_pointer) {/*{{{*/
 	file_private_data_spectre_t *private = file->private;
+
 	private->document = spectre_document_new();
 	spectre_document_load(private->document, file->file_name);
+	if(spectre_document_status(private->document)) {
+		*error_pointer = g_error_new(g_quark_from_static_string("pqiv-spectre-error"), 1, "Failed to load image %s: %s\n", file->file_name, spectre_status_to_string(spectre_document_status(private->document)));
+		return;
+	}
 	private->page = spectre_document_get_page(private->document, private->page_number);
 
 	int width, height;
