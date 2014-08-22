@@ -104,6 +104,8 @@ pqiv 2.3 (Work in progress)
  * Refactored an abstraction layer around the image backend
  * Added optional support for PDF-files through
    [poppler](http://poppler.freedesktop.org/)
+ * Added optional support for PS-files through
+   [libspectre](http://www.freedesktop.org/wiki/Software/libspectre/)
  * Support for gtk+ 3.14
  * configure/Makefile updated to support (Free-)BSD
 

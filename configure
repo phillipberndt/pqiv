@@ -35,7 +35,10 @@ options:
   --gtk-version=2       Use GTK+-2.0 even if GTK+-3.0 is available
   --cross=..            Set a cross-compiler prefix (e.g. \`i686-pc-mingw32-')
   --backends=..         Select which backends to include in pqiv
-                        Available: gdkpixbuf (Default), poppler
+                        Available:
+                          gdkpixbuf (Default, images),
+                          poppler (PDF),
+                          spectre (PS/EPS)
 
 EOF
 }
