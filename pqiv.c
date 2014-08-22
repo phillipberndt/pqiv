@@ -1887,10 +1887,11 @@ cairo_surface_t *get_scaled_image_surface_for_current_image() {/*{{{*/
 		return NULL;
 	}
 
-	cairo_surface_t *retval = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, current_scale_level * CURRENT_FILE->width, current_scale_level * CURRENT_FILE->height);
+	cairo_surface_t *retval = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, current_scale_level * CURRENT_FILE->width + .5, current_scale_level * CURRENT_FILE->height + .5);
 
 	cairo_t *cr = cairo_create(retval);
 	cairo_scale(cr, current_scale_level, current_scale_level);
+	cairo_set_operator(cr, CAIRO_OPERATOR_SOURCE);
 	draw_current_image_to_context(cr);
 	cairo_destroy(cr);
 
@@ -2257,34 +2258,38 @@ gboolean window_draw_callback(GtkWidget *widget, cairo_t *cr_arg, gpointer user_
 		cairo_paint(cr);
 		cairo_restore(cr);
 
-		// Draw background pattern
-		cairo_save(cr);
-		cairo_translate(cr, current_shift_x, current_shift_y);
-		cairo_translate(cr, x, y);
+		// From here on, draw at the target position
+		cairo_translate(cr, current_shift_x + x, current_shift_y + y);
 		cairo_transform(cr, &apply_transformation);
-		cairo_scale(cr, current_scale_level, current_scale_level);
+
+		// Draw background pattern
 		if(background_checkerboard_pattern != NULL && !option_transparent_background) {
 			cairo_save(cr);
+			cairo_scale(cr, current_scale_level, current_scale_level);
 			cairo_new_path(cr);
-			cairo_rectangle(cr, 0, 0, CURRENT_FILE->width, CURRENT_FILE->height);
+			// Cairo or gdkpixbuf, I don't know which, feather the border of images, leading
+			// to the background pattern overlaying images, which doesn't look nice at all.
+			// TODO The current workaround is to draw the background pattern 1px into the image
+			//      if in fullscreen mode, because that's where the pattern irretates most –
+			//      but I'd prefer a cleaner solution.
+			if(main_window_in_fullscreen) {
+				cairo_rectangle(cr, 1, 1, CURRENT_FILE->width - 2, CURRENT_FILE->height - 2);
+			}
+			else {
+				cairo_rectangle(cr, 0, 0, CURRENT_FILE->width, CURRENT_FILE->height);
+			}
 			cairo_close_path(cr);
 			cairo_clip(cr);
 			cairo_set_source(cr, background_checkerboard_pattern);
 			cairo_paint(cr);
 			cairo_restore(cr);
 		}
-		cairo_restore(cr);
-
-		// Apply any transformations
-		cairo_translate(cr, current_shift_x, current_shift_y);
-		cairo_translate(cr, x, y);
-		cairo_transform(cr, &apply_transformation);
 
 		// Draw the scaled image.
 		if(option_lowmem) {
 			// In low memory mode, we scale here and draw on the fly
-			cairo_scale(cr, current_scale_level, current_scale_level);
 			cairo_save(cr);
+			cairo_scale(cr, current_scale_level, current_scale_level);
 			cairo_rectangle(cr, 0, 0, image_transform_width, image_transform_height);
 			cairo_clip(cr);
 			draw_current_image_to_context(cr);
@@ -2444,6 +2449,7 @@ void set_scale_level_for_screen() {/*{{{*/
 				current_scale_level = screen_height * .8 / image_height;
 			}
 		}
+		current_scale_level = round(current_scale_level * 100.) / 100.;
 	}
 	else {
 		// In fullscreen, the screen size and window size match, so the
@@ -2645,6 +2651,7 @@ gboolean window_key_press_callback(GtkWidget *widget, GdkEventKey *event, gpoint
 			}
 
 			current_scale_level *= 1.1;
+			current_scale_level = round(current_scale_level * 100.) / 100.;
 			if((option_scale == 1 && current_scale_level > 1) || option_scale == 0) {
 				scale_override = TRUE;
 			}
@@ -2682,6 +2689,7 @@ gboolean window_key_press_callback(GtkWidget *widget, GdkEventKey *event, gpoint
 				break;
 			}
 			current_scale_level /= 1.1;
+			current_scale_level = round(current_scale_level * 100.) / 100.;
 			if((option_scale == 1 && current_scale_level > 1) || option_scale == 0) {
 				scale_override = TRUE;
 			}

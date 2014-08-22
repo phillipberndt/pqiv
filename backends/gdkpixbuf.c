@@ -147,11 +147,18 @@ void file_type_gdkpixbuf_load(file_t *file, GInputStream *data, GError **error_p
 		GdkPixbuf *new_pixbuf = gdk_pixbuf_apply_embedded_orientation(pixbuf);
 		pixbuf = new_pixbuf;
 
-		cairo_surface_t *surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, gdk_pixbuf_get_width(pixbuf), gdk_pixbuf_get_height(pixbuf));
-		cairo_t *sf_cr = cairo_create(surface);
-		gdk_cairo_set_source_pixbuf(sf_cr, pixbuf, 0, 0);
-		cairo_paint(sf_cr);
-		cairo_destroy(sf_cr);
+		file->width = gdk_pixbuf_get_width(pixbuf);
+		file->height = gdk_pixbuf_get_height(pixbuf);
+
+		#if (GDK_MAJOR_VERSION == 3 && GDK_MINOR_VERSION >= 10) || (GDK_MAJOR_VERSION > 3)
+			cairo_surface_t *surface = gdk_cairo_surface_create_from_pixbuf(pixbuf, 1., NULL);
+		#else
+			cairo_surface_t *surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, file->width, file->height);
+			cairo_t *sf_cr = cairo_create(surface);
+			gdk_cairo_set_source_pixbuf(sf_cr, pixbuf, 0, 0);
+			cairo_paint(sf_cr);
+			cairo_destroy(sf_cr);
+		#endif
 
 		//D_LOCK(file_tree);
 		cairo_surface_t *old_surface = private->image_surface;
@@ -162,8 +169,6 @@ void file_type_gdkpixbuf_load(file_t *file, GInputStream *data, GError **error_p
 		g_object_unref(pixbuf);
 		//D_UNLOCK(file_tree);
 
-		file->width = cairo_image_surface_get_width(private->image_surface);
-		file->height = cairo_image_surface_get_height(private->image_surface);
 		file->is_loaded = TRUE;
 	}
 	g_object_unref(pixbuf_animation);
