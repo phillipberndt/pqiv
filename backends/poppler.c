@@ -42,7 +42,11 @@ BOSNode *file_type_poppler_alloc(load_images_state_t state, file_t *file) {/*{{{
 	BOSNode *first_node = NULL;
 
 	if(data_stream) {
-		#if POPPLER_CHECK_VERSION(0, 22, 0)
+		#if 0
+			// TODO
+			// Unresolved poppler bug https://bugs.freedesktop.org/show_bug.cgi?id=82630
+			// As soon as a bugfix is present, update to this version using
+			// POPPLER_CHECK_VERSION(0, 22, 0)
 			PopplerDocument *poppler_document = poppler_document_new_from_stream(data_stream, -1, NULL, NULL, &error_pointer);
 		#else
 			GBytes *data_bytes = g_input_stream_read_completely(data_stream, image_loader_cancellable, &error_pointer);
@@ -83,7 +87,8 @@ BOSNode *file_type_poppler_alloc(load_images_state_t state, file_t *file) {/*{{{
 			}
 		}
 
-		#if !POPPLER_CHECK_VERSION(0, 22, 0)
+		#if 0
+			// TODO
 			g_bytes_unref(data_bytes);
 		#endif
 		g_object_unref(data_stream);
