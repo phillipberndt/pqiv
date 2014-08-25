@@ -22,6 +22,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <glib/gstdio.h>
 #include <string.h>
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -30,11 +31,59 @@
 #include <cairo/cairo.h>
 
 typedef struct {
+	char *temporary_local_file;
+
 	int page_number;
 
 	struct SpectreDocument *document;
 	struct SpectrePage *page;
 } file_private_data_spectre_t;
+
+char *spectre_ensure_local_file(file_t *file) {/*{{{*/
+	file_private_data_spectre_t *private = file->private;
+
+	if(private->temporary_local_file) {
+		// Already went through this: Simply return the stored filename
+		return g_strdup(private->temporary_local_file);
+	}
+
+	GFile *input_file = g_file_new_for_commandline_arg(file->file_name);
+	gchar *path = g_file_get_path(input_file);
+	g_object_unref(input_file);
+
+	if(path) {
+		// Local file, just return the name
+		return path;
+	}
+
+	GInputStream *data = image_loader_stream_file(file, NULL);
+	if(!data) {
+		return NULL;
+	}
+
+	GFile *temporary_file;
+	GFileIOStream *iostream = NULL;
+	gchar *extension = strrchr(file->file_name, '.');
+	if(extension) {
+		gchar *name_template = g_strdup_printf("pqiv-XXXXXX%s", extension);
+		temporary_file = g_file_new_tmp(name_template, &iostream, NULL);
+		g_free(name_template);
+	}
+	else {
+		temporary_file = g_file_new_tmp("pqiv-XXXXXX.ps", &iostream, NULL);
+	}
+	if(!temporary_file) {
+		return NULL;
+	}
+
+	g_output_stream_splice(g_io_stream_get_output_stream(G_IO_STREAM(iostream)), data, G_OUTPUT_STREAM_SPLICE_CLOSE_SOURCE | G_OUTPUT_STREAM_SPLICE_CLOSE_TARGET, image_loader_cancellable, NULL);
+	private->temporary_local_file = g_file_get_path(temporary_file);
+
+	g_object_unref(iostream);
+	g_object_unref(temporary_file);
+
+	return g_strdup(private->temporary_local_file);
+}/*}}}*/
 
 BOSNode *file_type_spectre_alloc(load_images_state_t state, file_t *file) {/*{{{*/
 	BOSNode *first_node = NULL;
@@ -47,10 +96,19 @@ BOSNode *file_type_spectre_alloc(load_images_state_t state, file_t *file) {/*{{{
 
 	// Load the document to get the number of pages
 	struct SpectreDocument *document = spectre_document_new();
-	spectre_document_load(document, file->file_name);
+	file_private_data_spectre_t private;
+	private.temporary_local_file = NULL;
+	file->private = &private;
+	char *file_name = spectre_ensure_local_file(file);
+	spectre_document_load(document, file_name);
+	g_free(file_name);
 	if(spectre_document_status(document)) {
 		g_printerr("Failed to load image %s: %s\n", file->file_name, spectre_status_to_string(spectre_document_status(document)));
 		spectre_document_free(document);
+		if(private.temporary_local_file) {
+			g_unlink(private.temporary_local_file);
+			g_free(private.temporary_local_file);
+		}
 		file_free(file);
 		return NULL;
 	}
@@ -80,6 +138,11 @@ BOSNode *file_type_spectre_alloc(load_images_state_t state, file_t *file) {/*{{{
 		}
 	}
 
+	if(private.temporary_local_file) {
+		g_unlink(private.temporary_local_file);
+		g_free(private.temporary_local_file);
+	}
+	file->private = NULL;
 	file_free(file);
 	return first_node;
 }/*}}}*/
@@ -90,7 +153,9 @@ void file_type_spectre_load(file_t *file, GInputStream *data, GError **error_poi
 	file_private_data_spectre_t *private = file->private;
 
 	private->document = spectre_document_new();
-	spectre_document_load(private->document, file->file_name);
+	gchar *file_name = spectre_ensure_local_file(file);
+	spectre_document_load(private->document, file_name);
+	g_free(file_name);
 	if(spectre_document_status(private->document)) {
 		*error_pointer = g_error_new(g_quark_from_static_string("pqiv-spectre-error"), 1, "Failed to load image %s: %s\n", file->file_name, spectre_status_to_string(spectre_document_status(private->document)));
 		return;
@@ -114,6 +179,11 @@ void file_type_spectre_unload(file_t *file) {/*{{{*/
 	if(private->document) {
 		spectre_document_free(private->document);
 		private->document = NULL;
+	}
+	if(private->temporary_local_file) {
+		g_unlink(private->temporary_local_file);
+		g_free(private->temporary_local_file);
+		private->temporary_local_file = NULL;
 	}
 }/*}}}*/
 void file_type_spectre_draw(file_t *file, cairo_t *cr) {/*{{{*/
