@@ -1163,14 +1163,20 @@ void main_window_adjust_for_image() {/*{{{*/
 		queue_draw();
 	}
 }/*}}}*/
-gboolean image_loaded_handler(gconstpointer info_text) {/*{{{*/
+gboolean image_loaded_handler(gconstpointer node) {/*{{{*/
+	D_LOCK(file_tree);
+
 	// Remove any old timeouts etc.
 	if(current_image_animation_timeout_id > 0) {
 		g_source_remove(current_image_animation_timeout_id);
 		current_image_animation_timeout_id = 0;
 	}
 
-	D_LOCK(file_tree);
+	// Only react if the loaded node is still current
+	if(node && node != current_file_node) {
+		D_UNLOCK(file_tree);
+		return FALSE;
+	}
 
 	// Sometimes when a user is hitting the next image button really fast this
 	// function's execution can be delayed until CURRENT_FILE is again not loaded.
@@ -1215,7 +1221,7 @@ gboolean image_loaded_handler(gconstpointer info_text) {/*{{{*/
 	}
 
 	// Reset the info text
-	update_info_text(info_text);
+	update_info_text(NULL);
 
 	return FALSE;
 }/*}}}*/
@@ -1363,7 +1369,7 @@ gpointer image_loader_thread(gpointer user_data) {/*{{{*/
 		}
 		if(node == current_file_node && FILE(node)->is_loaded) {
 			current_image_drawn = FALSE;
-			g_idle_add((GSourceFunc)image_loaded_handler, NULL);
+			g_idle_add((GSourceFunc)image_loaded_handler, node);
 		}
 		bostree_node_weak_unref(file_tree, node);
 	}
@@ -1430,6 +1436,9 @@ void queue_image_load(BOSNode *node) {/*{{{*/
 	g_async_queue_push(image_loader_queue, bostree_node_weak_ref(node));
 }/*}}}*/
 void unload_image(BOSNode *node) {/*{{{*/
+	if(!node) {
+		return;
+	}
 	file_t *file = FILE(node);
 	if(file->file_type->unload_fn != NULL) {
 		file->file_type->unload_fn(file);
@@ -1627,13 +1636,6 @@ gpointer apply_external_image_filter_image_writer_thread(gpointer data) {/*{{{*/
 	close(*(gint *)data);
 	cairo_surface_destroy(surface);
 	return NULL;
-}/*}}}*/
-gboolean apply_external_image_filter_success_callback(gpointer user_data) {/*{{{*/
-	invalidate_current_scaled_image_surface();
-	set_scale_level_to_fit();
-	image_loaded_handler("External command succeeded.");
-	gtk_widget_queue_draw(GTK_WIDGET(main_window));
-	return FALSE;
 }/*}}}*/
 void apply_external_image_filter(gchar *external_filter) {/*{{{*/
 	gchar *argv[4];
