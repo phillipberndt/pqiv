@@ -3389,6 +3389,10 @@ int main(int argc, char *argv[]) {
 
 	gtk_main();
 
+	unload_image(current_file_node);
+	unload_image(previous_file());
+	unload_image(next_file());
+
 	return 0;
 }
 
