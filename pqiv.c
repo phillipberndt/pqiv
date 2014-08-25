@@ -220,6 +220,7 @@ gint main_window_width = 10;
 gint main_window_height = 10;
 gboolean main_window_in_fullscreen = FALSE;
 GdkRectangle screen_geometry = { 0, 0, 0, 0 };
+gboolean screen_supports_fullscreen = TRUE;
 
 cairo_pattern_t *background_checkerboard_pattern = NULL;
 
@@ -388,6 +389,8 @@ void fullscreen_show_cursor();
 void window_center_mouse();
 void calculate_current_image_transformed_size(int *image_width, int *image_height);
 cairo_surface_t *get_scaled_image_surface_for_current_image();
+void window_state_into_fullscreen_actions();
+void window_state_out_of_fullscreen_actions();
 // }}}
 /* Command line handling, creation of the image list {{{ */
 gboolean options_keyboard_alias_set_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error) {/*{{{*/
@@ -2102,7 +2105,30 @@ void window_fullscreen() {
 	// Bugfix for Awesome WM: If hints are active, windows are fullscreen'ed honoring the aspect ratio
 	gtk_window_set_geometry_hints(main_window, NULL, NULL, 0);
 
+	#ifndef _WIN32
+		if(!screen_supports_fullscreen) {
+			// WM does not support _NET_WM_ACTION_FULLSCREEN or no WM present
+			main_window_in_fullscreen = TRUE;
+			gtk_window_move(main_window, screen_geometry.x, screen_geometry.y);
+			gtk_window_resize(main_window, screen_geometry.width, screen_geometry.height);
+			window_state_into_fullscreen_actions();
+			return;
+		}
+	#endif
+
 	gtk_window_fullscreen(main_window);
+}
+void window_unfullscreen() {
+	#ifndef _WIN32
+		if(!screen_supports_fullscreen) {
+			// WM does not support _NET_WM_ACTION_FULLSCREEN or no WM present
+			main_window_in_fullscreen = FALSE;
+			window_state_out_of_fullscreen_actions();
+			return;
+		}
+	#endif
+
+	gtk_window_unfullscreen(main_window);
 }
 inline void queue_draw() {/*{{{*/
 	if(!current_image_drawn) {
@@ -2754,7 +2780,7 @@ gboolean window_key_press_callback(GtkWidget *widget, GdkEventKey *event, gpoint
 				window_fullscreen();
 			}
 			else {
-				gtk_window_unfullscreen(main_window);
+				window_unfullscreen();
 			}
 			break;
 
@@ -3052,6 +3078,9 @@ void fullscreen_show_cursor() {/*{{{*/
 	gdk_window_set_cursor(window, NULL);
 }/*}}}*/
 void window_state_into_fullscreen_actions() {/*{{{*/
+	current_shift_x = 0;
+	current_shift_y = 0;
+
 	fullscreen_hide_cursor();
 
 	main_window_width = screen_geometry.width;
@@ -3064,6 +3093,17 @@ void window_state_into_fullscreen_actions() {/*{{{*/
 	#if GTK_MAJOR_VERSION < 3
 		gtk_widget_queue_draw(GTK_WIDGET(main_window));
 	#endif
+}/*}}}*/
+void window_state_out_of_fullscreen_actions() {/*{{{*/
+	current_shift_x = 0;
+	current_shift_y = 0;
+
+	// If the fullscreen state is left, readjust image placement/size/..
+	scale_override = FALSE;
+	set_scale_level_for_screen();
+	main_window_adjust_for_image();
+	invalidate_current_scaled_image_surface();
+	fullscreen_show_cursor();
 }/*}}}*/
 gboolean window_state_callback(GtkWidget *widget, GdkEventWindowState *event, gpointer user_data) {/*{{{*/
 	/*
@@ -3082,52 +3122,11 @@ gboolean window_state_callback(GtkWidget *widget, GdkEventWindowState *event, gp
 		}
 		main_window_in_fullscreen = new_in_fs_state;
 
-		// Reset shift for all switches between fs/non-fs
-		current_shift_x = 0;
-		current_shift_y = 0;
-
 		if(main_window_in_fullscreen) {
 			window_state_into_fullscreen_actions();
 		}
 		else {
-			// If the fullscreen state is left, readjust image placement/size/..
-			scale_override = FALSE;
-			set_scale_level_for_screen();
-			main_window_adjust_for_image();
-			invalidate_current_scaled_image_surface();
-			fullscreen_show_cursor();
-
-			/*
-			// Move the window back to the center of the screen.  We must do
-			// this manually, at least Mutter ignores the position hint at this
-			// point.
-			D_LOCK(file_tree);
-			if(CURRENT_FILE->is_loaded) {
-				int image_width, image_height;
-				calculate_current_image_transformed_size(&image_width, &image_height);
-
-				gtk_window_move(main_window,
-					screen_geometry.x + (screen_geometry.width - image_width * current_scale_level) / 2,
-					screen_geometry.y + (screen_geometry.height - image_height * current_scale_level) / 2
-				);
-			}
-			D_UNLOCK(file_tree);
-			gtk_window_set_position(main_window, GTK_WIN_POS_CENTER_ALWAYS);
-
-			fullscreen_show_cursor();
-
-			current_image_drawn = FALSE;
-			invalidate_current_scaled_image_surface();
-
-			// Rescale the image and remove shift when leaving fullscreen
-			current_shift_x = 0;
-			current_shift_y = 0;
-			gtk_window_get_size(main_window, &main_window_width, &main_window_height);
-			if(option_initial_scale_used) {
-				g_idle_add(set_scale_level_to_fit_callback, NULL);
-			}
-			g_idle_add((GSourceFunc)image_loaded_handler, NULL);
-			*/
+			window_state_out_of_fullscreen_actions();
 		}
 
 		update_info_text(NULL);
@@ -3156,10 +3155,24 @@ void window_screen_activate_rgba() {/*{{{*/
 	#endif
 	return;
 }/*}}}*/
+void window_screen_window_manager_changed_callback(gpointer user_data) {/*{{{*/
+	// TODO Correct signature?!
+
+	GdkScreen *screen = GDK_SCREEN(user_data);
+
+	#ifndef _WIN32
+	if(GDK_IS_X11_SCREEN(screen)) {
+		screen_supports_fullscreen = gdk_x11_screen_supports_net_wm_hint(screen, gdk_x11_xatom_to_atom(gdk_x11_get_xatom_by_name("_NET_WM_STATE_FULLSCREEN")));
+	}
+	#endif
+}/*}}}*/
 void window_screen_changed_callback(GtkWidget *widget, GdkScreen *previous_screen, gpointer user_data) {/*{{{*/
 	GdkScreen *screen = gtk_widget_get_screen(GTK_WIDGET(main_window));
 	GdkWindow *window = gtk_widget_get_window(GTK_WIDGET(main_window));
 	guint monitor = gdk_screen_get_monitor_at_window(screen, window);
+
+	g_signal_connect(screen, "window-manager-changed", G_CALLBACK(window_screen_window_manager_changed_callback), screen);
+	window_screen_window_manager_changed_callback(screen);
 
 	static guint old_monitor = 9999;
 	if(old_monitor != 9999 && option_transparent_background) {
@@ -3171,20 +3184,13 @@ void window_screen_changed_callback(GtkWidget *widget, GdkScreen *previous_scree
 }/*}}}*/
 void window_realize_callback(GtkWidget *widget, gpointer user_data) {/*{{{*/
 	if(option_start_fullscreen) {
-		#ifndef _WIN32
-			GdkScreen *screen = gdk_screen_get_default();
-			if(strcmp("unknown", gdk_x11_screen_get_window_manager_name(screen)) == 0) {
-				// No window manager present. We need some oher means to fullscreen.
-				// (Not all WMs implement _NET_WM_ACTION_FULLSCREEN, so we can not rely on that)
-				main_window_in_fullscreen = TRUE;
-				gtk_window_move(main_window, screen_geometry.x, screen_geometry.y);
-				gtk_window_resize(main_window, screen_geometry.width, screen_geometry.height);
-				window_state_into_fullscreen_actions();
-			}
-		#endif
-
 		window_fullscreen();
 	}
+
+	// Execute the screen-changed callback, to assign the correct screen
+	// to the window (if it's not the primary one, which we assigned in
+	// create_window)
+	window_screen_changed_callback(NULL, NULL, NULL);
 
 	// This would be the correct time to reset the option_initial_scale_used,
 	// but compositing window managers (at least mutter) first map the
@@ -3254,16 +3260,11 @@ void create_window() { /*{{{*/
 	GdkScreen *screen = gdk_screen_get_default();
 	guint monitor = gdk_screen_get_primary_monitor(screen);
 	gdk_screen_get_monitor_geometry(screen, monitor, &screen_geometry);
+	window_screen_window_manager_changed_callback(screen);
 
 	if(option_start_fullscreen) {
 		// If no WM is present, move the window to the screen origin and
 		// assume fullscreen right from the start
-		#ifndef _WIN32
-			if(strcmp("unknown", gdk_x11_screen_get_window_manager_name(screen)) == 0) {
-				main_window_in_fullscreen = TRUE;
-				gtk_window_move(main_window, screen_geometry.x, screen_geometry.y);
-			}
-		#endif
 		window_fullscreen();
 	}
 	else if(option_window_position.x >= 0) {
