@@ -19,13 +19,10 @@
  */
 
 #include "../pqiv.h"
+#include "../lib/filebuffer.h"
 #include <poppler.h>
 
 typedef struct {
-	// The byte data from the document; must apparently be kept in memory
-	// for poppler to work properly
-	GBytes *data;
-
 	// The page to be displayed
 	PopplerDocument *document;
 	PopplerPage *page;
@@ -38,68 +35,56 @@ BOSNode *file_type_poppler_alloc(load_images_state_t state, file_t *file) {/*{{{
 	// We have to load the file now to get the number of pages
 	GError *error_pointer = NULL;
 
-	GInputStream *data_stream = image_loader_stream_file(file, &error_pointer);
+	// TODO We cannot use poppler_document_new_from_stream due to bug
+	//      https://bugs.freedesktop.org/show_bug.cgi?id=82630
+	//
+	//      Change this ASAP.
+
+	GBytes *data_bytes = buffered_file_as_bytes(file, NULL);
+	if(!data_bytes) {
+		g_printerr("Failed to load PDF %s.\n", file->display_name);
+		file_free(file);
+		return NULL;
+	}
+	gsize data_size;
+	char *data_ptr = (char *)g_bytes_get_data(data_bytes, &data_size);
+	PopplerDocument *poppler_document = poppler_document_new_from_data(data_ptr, (int)data_size, NULL, &error_pointer);
+
 	BOSNode *first_node = NULL;
 
-	if(data_stream) {
-		#if 0
-			// TODO
-			// Unresolved poppler bug https://bugs.freedesktop.org/show_bug.cgi?id=82630
-			// As soon as a bugfix is present, update to this version using
-			// POPPLER_CHECK_VERSION(0, 22, 0)
-			PopplerDocument *poppler_document = poppler_document_new_from_stream(data_stream, -1, NULL, NULL, &error_pointer);
-		#else
-			GBytes *data_bytes = g_input_stream_read_completely(data_stream, image_loader_cancellable, &error_pointer);
-			gsize data_size;
-			char *data_ptr = (char *)g_bytes_get_data(data_bytes, &data_size);
-			PopplerDocument *poppler_document = poppler_document_new_from_data(data_ptr, (int)data_size, NULL, &error_pointer);
-		#endif
+	if(poppler_document) {
+		int n_pages = poppler_document_get_n_pages(poppler_document);
+		g_object_unref(poppler_document);
 
-		if(poppler_document) {
-			int n_pages = poppler_document_get_n_pages(poppler_document);
-			g_object_unref(poppler_document);
+		for(int n=0; n<n_pages; n++) {
+			file_t *new_file = g_new(file_t, 1);
+			*new_file = *file;
 
-			for(int n=0; n<n_pages; n++) {
-				file_t *new_file = g_new(file_t, 1);
-				*new_file = *file;
+			if((file->file_flags & FILE_FLAGS_MEMORY_IMAGE)) {
+				g_bytes_ref(new_file->file_data);
+			}
+			new_file->file_name = g_strdup(file->file_name);
+			if(n == 0) {
+				new_file->display_name = g_strdup(file->display_name);
+			}
+			else {
+				new_file->display_name = g_strdup_printf("%s[%d]", file->display_name, n + 1);
+			}
+			new_file->private = g_new0(file_private_data_poppler_t, 1);
+			((file_private_data_poppler_t *)new_file->private)->page_number = n;
 
-				if((file->file_flags & FILE_FLAGS_MEMORY_IMAGE)) {
-					g_bytes_ref(new_file->file_data);
-				}
-				else {
-					new_file->file_name = g_strdup(file->file_name);
-				}
-				if(n == 0) {
-					new_file->display_name = g_strdup(file->display_name);
-				}
-				else {
-					new_file->display_name = g_strdup_printf("%s[%d]", file->display_name, n + 1);
-				}
-				new_file->private = g_new0(file_private_data_poppler_t, 1);
-				((file_private_data_poppler_t *)new_file->private)->page_number = n;
-
-				if(n == 0) {
-					first_node = load_images_handle_parameter_add_file(state, new_file);
-				}
-				else {
-					load_images_handle_parameter_add_file(state,  new_file);
-				}
+			if(n == 0) {
+				first_node = load_images_handle_parameter_add_file(state, new_file);
+			}
+			else {
+				load_images_handle_parameter_add_file(state,  new_file);
 			}
 		}
-
-		#if 0
-			// TODO
-			g_bytes_unref(data_bytes);
-		#endif
-		g_object_unref(data_stream);
 	}
 
-	if(error_pointer) {
-		g_printerr("Failed to load PDF %s: %s\n", file->display_name, error_pointer->message);
-	}
+	buffered_file_unref(file);
 
 	file_free(file);
-
 	return first_node;
 }/*}}}*/
 void file_type_poppler_free(file_t *file) {/*{{{*/
@@ -108,10 +93,10 @@ void file_type_poppler_free(file_t *file) {/*{{{*/
 void file_type_poppler_load(file_t *file, GInputStream *data, GError **error_pointer) {/*{{{*/
 	file_private_data_poppler_t *private = file->private;
 
-	// We need to load the data into memory, because poppler has problems with serving from streams
-	private->data = g_input_stream_read_completely(data, image_loader_cancellable, error_pointer);
+	// We need to load the data into memory, because poppler has problems with serving from streams; see above
+	GBytes *data_bytes = buffered_file_as_bytes(file, data);
 	gsize data_size;
-	char *data_ptr = (char *)g_bytes_get_data(private->data, &data_size);
+	char *data_ptr = (char *)g_bytes_get_data(data_bytes, &data_size);
 	private->document = poppler_document_new_from_data(data_ptr, (int)data_size, NULL, error_pointer);
 	private->page = poppler_document_get_page(private->document, private->page_number);
 
@@ -121,6 +106,9 @@ void file_type_poppler_load(file_t *file, GInputStream *data, GError **error_poi
 		file->width = width;
 		file->height = height;
 		file->is_loaded = TRUE;
+	}
+	else {
+		buffered_file_unref(file);
 	}
 }/*}}}*/
 void file_type_poppler_unload(file_t *file) {/*{{{*/
@@ -132,10 +120,8 @@ void file_type_poppler_unload(file_t *file) {/*{{{*/
 	if(private->document) {
 		g_object_unref(private->document);
 		private->document = NULL;
-	}
-	if(private->data) {
-		g_bytes_unref(private->data);
-		private->data = NULL;
+
+		buffered_file_unref(file);
 	}
 }/*}}}*/
 void file_type_poppler_draw(file_t *file, cairo_t *cr) {/*{{{*/

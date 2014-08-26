@@ -20,6 +20,9 @@
 // the plugin infrastructure. It should be included in file type
 // handlers.
 
+#ifndef _PQIV_H_INCLUDED
+#define _PQIV_H_INCLUDED
+
 #include <glib.h>
 #include <gtk/gtk.h>
 #include <gio/gio.h>
@@ -157,3 +160,5 @@ void file_free(file_t *file);
 extern file_type_handler_t *file_type_handlers;
 
 /* }}} */
+
+#endif

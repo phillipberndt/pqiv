@@ -12,7 +12,7 @@ PREFIX=/usr
 MANDIR=$(PREFIX)/share/man
 EXECUTABLE_EXTENSION=
 PKG_CONFIG=$(CROSS)pkg-config
-OBJECTS=pqiv.o lib/strnatcmp.o lib/bostree.o
+OBJECTS=pqiv.o lib/strnatcmp.o lib/bostree.o lib/filebuffer.o
 BACKENDS=gdkpixbuf
 
 # Load config.make (created by configure)
@@ -95,6 +95,9 @@ lib/strnatcmp.o: lib/strnatcmp.c
 
 lib/bostree.o: lib/bostree.c
 	$(CROSS)$(CC) $(CPPFLAGS) -DNDEBUG -c -o $@ $+ $(CFLAGS)
+
+lib/filebuffer.o: lib/filebuffer.c
+	$(CROSS)$(CC) $(CPPFLAGS) -c -o $@ $(CFLAGS_REAL) $+
 
 backends/%.o: backends/%.c
 	$(CROSS)$(CC) $(CPPFLAGS) -c -o $@ $+ $(CFLAGS_REAL)

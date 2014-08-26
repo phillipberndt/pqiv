@@ -766,6 +766,7 @@ void load_images_handle_parameter(char *param, load_images_state_t state, gint d
 		// TODO Guess the file type instead of using the default one
 		file->file_type = &file_type_handlers[0];
 		file->display_name = g_strdup("-");
+		file->file_name = g_strdup("-");
 
 		GError *error_ptr = NULL;
 		#ifdef _WIN32
