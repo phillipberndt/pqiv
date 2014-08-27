@@ -20,6 +20,7 @@
 
 #include "../pqiv.h"
 #include "../lib/filebuffer.h"
+#include <stdint.h>
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -36,6 +37,21 @@ typedef struct {
 	struct SpectreDocument *document;
 	struct SpectrePage *page;
 } file_private_data_spectre_t;
+
+void cmsPluginTHR(void *context, void *plugin) {
+	// This symbol is required to prevent gs from registering its own memory handler,
+	// causing a crash if poppler is also used
+	//
+	// See http://lists.freedesktop.org/archives/poppler/2014-January/010779.html
+	//
+	// Plugin is a structure with a member uint32_t type with offsetof(type) == 4*2,
+	// which has value 0x6D656D48 == "memH". To verify that no other plugins interfere,
+	// we check that.
+	//
+	if(*((uint32_t*)plugin + 2) != 0x6D656D48) {
+		g_printerr("Warning: cmsPluginTHR call was redirected because of a poppler/gs interaction bug, but was called in an unexpected manner.\n");
+	}
+}
 
 BOSNode *file_type_spectre_alloc(load_images_state_t state, file_t *file) {/*{{{*/
 	BOSNode *first_node = NULL;
@@ -107,6 +123,22 @@ void file_type_spectre_load(file_t *file, GInputStream *data, GError **error_poi
 		return;
 	}
 	private->page = spectre_document_get_page(private->document, private->page_number);
+	if(!private->page) {
+		*error_pointer = g_error_new(g_quark_from_static_string("pqiv-spectre-error"), 1, "Failed to load image %s: Failed to load page %d\n", file->file_name, private->page_number);
+		spectre_document_free(private->document);
+		private->document = NULL;
+		buffered_file_unref(file);
+		return;
+	}
+	if(spectre_page_status(private->page)) {
+		*error_pointer = g_error_new(g_quark_from_static_string("pqiv-spectre-error"), 1, "Failed to load image %s / page %d: %s\n", file->file_name, private->page_number, spectre_status_to_string(spectre_page_status(private->page)));
+		spectre_page_free(private->page);
+		private->page = NULL;
+		spectre_document_free(private->document);
+		private->document = NULL;
+		buffered_file_unref(file);
+		return;
+	}
 
 	int width, height;
 	spectre_page_get_size(private->page, &width, &height);
