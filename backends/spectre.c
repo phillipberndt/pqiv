@@ -43,6 +43,10 @@ BOSNode *file_type_spectre_alloc(load_images_state_t state, file_t *file) {/*{{{
 	// Load the document to get the number of pages
 	struct SpectreDocument *document = spectre_document_new();
 	char *file_name = buffered_file_as_local_file(file, NULL);
+	if(!file_name) {
+		g_printerr("Failed to load PS file %s: Error while reading file\n", file->file_name);
+		return NULL;
+	}
 	spectre_document_load(document, file_name);
 	if(spectre_document_status(document)) {
 		g_printerr("Failed to load image %s: %s\n", file->file_name, spectre_status_to_string(spectre_document_status(document)));
@@ -90,8 +94,12 @@ void file_type_spectre_free(file_t *file) {/*{{{*/
 void file_type_spectre_load(file_t *file, GInputStream *data, GError **error_pointer) {/*{{{*/
 	file_private_data_spectre_t *private = file->private;
 
-	private->document = spectre_document_new();
 	gchar *file_name = buffered_file_as_local_file(file, data);
+	if(!file_name) {
+		*error_pointer = g_error_new(g_quark_from_static_string("pqiv-spectre-error"), 1, "Failed to load image %s: Error while reading file\n", file->file_name);
+		return;
+	}
+	private->document = spectre_document_new();
 	spectre_document_load(private->document, file_name);
 	if(spectre_document_status(private->document)) {
 		*error_pointer = g_error_new(g_quark_from_static_string("pqiv-spectre-error"), 1, "Failed to load image %s: %s\n", file->file_name, spectre_status_to_string(spectre_document_status(private->document)));

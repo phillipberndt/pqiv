@@ -106,6 +106,7 @@ char *buffered_file_as_local_file(file_t *file, GInputStream *data) {
 			temporary_file = g_file_new_tmp("pqiv-XXXXXX.ps", &iostream, NULL);
 		}
 		if(!temporary_file) {
+			g_printerr("Failed to buffer %s: Could not create a temporary file in %s\n", file->file_name, g_get_tmp_dir());
 			if(local_data) {
 				g_object_unref(data);
 			}
