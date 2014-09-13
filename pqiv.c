@@ -1895,6 +1895,10 @@ cairo_surface_t *get_scaled_image_surface_for_current_image() {/*{{{*/
 	}
 
 	cairo_surface_t *retval = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, current_scale_level * CURRENT_FILE->width + .5, current_scale_level * CURRENT_FILE->height + .5);
+	if(cairo_surface_status(retval) != CAIRO_STATUS_SUCCESS) {
+		cairo_surface_destroy(retval);
+		return NULL;
+	}
 
 	cairo_t *cr = cairo_create(retval);
 	cairo_scale(cr, current_scale_level, current_scale_level);
@@ -2285,7 +2289,15 @@ gboolean window_draw_callback(GtkWidget *widget, cairo_t *cr_arg, gpointer user_
 		#else
 			cairo_surface_t *temporary_image_surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, main_window_width, main_window_height);
 		#endif
-		cairo_t *cr = cairo_create(temporary_image_surface);
+		cairo_t *cr = NULL;
+		if(cairo_surface_status(temporary_image_surface) != CAIRO_STATUS_SUCCESS) {
+			// This image is too large to be rendered into a temorary image surface
+			// As a best effort solution, render directly to the window instead
+			cr = cr_arg;
+		}
+		else {
+			cr = cairo_create(temporary_image_surface);
+		}
 
 		// Draw black background
 		cairo_save(cr);
@@ -2322,8 +2334,11 @@ gboolean window_draw_callback(GtkWidget *widget, cairo_t *cr_arg, gpointer user_
 		}
 
 		// Draw the scaled image.
-		if(option_lowmem) {
+		if(option_lowmem || cr == cr_arg) {
 			// In low memory mode, we scale here and draw on the fly
+			// The other situation where we do this is if creating the temporary
+			// image surface failed, because if this failed creating the temporary
+			// image surface will likely also fail.
 			cairo_save(cr);
 			cairo_scale(cr, current_scale_level, current_scale_level);
 			cairo_rectangle(cr, 0, 0, image_transform_width, image_transform_height);
@@ -2340,41 +2355,50 @@ gboolean window_draw_callback(GtkWidget *widget, cairo_t *cr_arg, gpointer user_
 			cairo_surface_destroy(temporary_scaled_image_surface);
 		}
 
-		// The temporary image surface is now complete.
-		cairo_destroy(cr);
+		// If we drew to an off-screen buffer before, render to the window now
+		if(cr != cr_arg) {
+			// The temporary image surface is now complete.
+			cairo_destroy(cr);
 
-		// If currently fading, draw the surface along with the old image
-		if(option_fading && fading_current_alpha_stage < 1. && fading_current_alpha_stage > 0. && last_visible_image_surface != NULL) {
-			cairo_set_source_surface(cr_arg, last_visible_image_surface, 0, 0);
-			cairo_set_operator(cr_arg, CAIRO_OPERATOR_SOURCE);
-			cairo_paint(cr_arg);
+			// If currently fading, draw the surface along with the old image
+			if(option_fading && fading_current_alpha_stage < 1. && fading_current_alpha_stage > 0. && last_visible_image_surface != NULL) {
+				cairo_set_source_surface(cr_arg, last_visible_image_surface, 0, 0);
+				cairo_set_operator(cr_arg, CAIRO_OPERATOR_SOURCE);
+				cairo_paint(cr_arg);
 
-			cairo_set_source_surface(cr_arg, temporary_image_surface, 0, 0);
-			cairo_paint_with_alpha(cr_arg, fading_current_alpha_stage);
+				cairo_set_source_surface(cr_arg, temporary_image_surface, 0, 0);
+				cairo_paint_with_alpha(cr_arg, fading_current_alpha_stage);
 
-			cairo_surface_destroy(temporary_image_surface);
+				cairo_surface_destroy(temporary_image_surface);
 
-			// If this was the first draw, start the fading clock
-			if(fading_initial_time < 0) {
-				fading_initial_time = g_get_monotonic_time();
+				// If this was the first draw, start the fading clock
+				if(fading_initial_time < 0) {
+					fading_initial_time = g_get_monotonic_time();
+				}
+			}
+			else {
+				// Draw the temporary surface to the screen
+				cairo_set_source_surface(cr_arg, temporary_image_surface, 0, 0);
+				cairo_set_operator(cr_arg, CAIRO_OPERATOR_SOURCE);
+				cairo_paint(cr_arg);
+
+				// Store the surface, for fading and to have something to display if no
+				// image is loaded (see below)
+				if(last_visible_image_surface != NULL) {
+					cairo_surface_destroy(last_visible_image_surface);
+				}
+				if(!option_lowmem || option_fading) {
+					last_visible_image_surface = temporary_image_surface;
+				}
+				else {
+					cairo_surface_destroy(temporary_image_surface);
+					last_visible_image_surface = NULL;
+				}
 			}
 		}
 		else {
-			// Draw the temporary surface to the screen
-			cairo_set_source_surface(cr_arg, temporary_image_surface, 0, 0);
-			cairo_set_operator(cr_arg, CAIRO_OPERATOR_SOURCE);
-			cairo_paint(cr_arg);
-
-			// Store the surface, for fading and to have something to display if no
-			// image is loaded (see below)
-			if(last_visible_image_surface != NULL) {
+			if(last_visible_image_surface) {
 				cairo_surface_destroy(last_visible_image_surface);
-			}
-			if(!option_lowmem || option_fading) {
-				last_visible_image_surface = temporary_image_surface;
-			}
-			else {
-				cairo_surface_destroy(temporary_image_surface);
 				last_visible_image_surface = NULL;
 			}
 		}
