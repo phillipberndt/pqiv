@@ -147,6 +147,13 @@ void file_type_gdkpixbuf_load(file_t *file, GInputStream *data, GError **error_p
 		GdkPixbuf *new_pixbuf = gdk_pixbuf_apply_embedded_orientation(pixbuf);
 		pixbuf = new_pixbuf;
 
+		// This should never happen and is only here as a security measure
+		// (glib will abort() if malloc() fails and nothing else can happen here)
+		if(pixbuf == NULL) {
+			g_object_unref(pixbuf_animation);
+			return;
+		}
+
 		file->width = gdk_pixbuf_get_width(pixbuf);
 		file->height = gdk_pixbuf_get_height(pixbuf);
 
