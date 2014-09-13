@@ -35,20 +35,29 @@ BOSNode *file_type_poppler_alloc(load_images_state_t state, file_t *file) {/*{{{
 	// We have to load the file now to get the number of pages
 	GError *error_pointer = NULL;
 
-	// TODO We cannot use poppler_document_new_from_stream due to bug
-	//      https://bugs.freedesktop.org/show_bug.cgi?id=82630
-	//
-	//      Change this ASAP.
-
-	GBytes *data_bytes = buffered_file_as_bytes(file, NULL);
-	if(!data_bytes) {
-		g_printerr("Failed to load PDF %s: Error while reading file\n", file->display_name);
-		file_free(file);
-		return NULL;
-	}
-	gsize data_size;
-	char *data_ptr = (char *)g_bytes_get_data(data_bytes, &data_size);
-	PopplerDocument *poppler_document = poppler_document_new_from_data(data_ptr, (int)data_size, NULL, &error_pointer);
+	#if POPPLER_CHECK_VERSION(0, 26, 5)
+		// The stream loading problem (bug #82630 upstream) was fixed upstream in
+		// http://cgit.freedesktop.org/poppler/poppler/commit/?h=poppler-0.26&id=f94ba85a736b4c90c05e7782939f32506472658e
+		// and the fix will appear in 0.26.5
+		//
+		GInputStream *data = image_loader_stream_file(file, NULL);
+		if(!data) {
+			g_printerr("Failed to load PDF %s: Error while reading file\n", file->display_name);
+			file_free(file);
+			return NULL;
+		}
+		PopplerDocument *poppler_document = poppler_document_new_from_stream(data, -1, NULL, &error_pointer);
+	#else
+		GBytes *data_bytes = buffered_file_as_bytes(file, NULL);
+		if(!data_bytes) {
+			g_printerr("Failed to load PDF %s: Error while reading file\n", file->display_name);
+			file_free(file);
+			return NULL;
+		}
+		gsize data_size;
+		char *data_ptr = (char *)g_bytes_get_data(data_bytes, &data_size);
+		PopplerDocument *poppler_document = poppler_document_new_from_data(data_ptr, (int)data_size, NULL, &error_pointer);
+	#endif
 
 	BOSNode *first_node = NULL;
 
@@ -82,7 +91,11 @@ BOSNode *file_type_poppler_alloc(load_images_state_t state, file_t *file) {/*{{{
 		}
 	}
 
-	buffered_file_unref(file);
+	#if POPPLER_CHECK_VERSION(0, 26, 5)
+		g_object_unref(data);
+	#else
+		buffered_file_unref(file);
+	#endif
 
 	file_free(file);
 	return first_node;
@@ -94,14 +107,19 @@ void file_type_poppler_load(file_t *file, GInputStream *data, GError **error_poi
 	file_private_data_poppler_t *private = file->private;
 
 	// We need to load the data into memory, because poppler has problems with serving from streams; see above
-	GBytes *data_bytes = buffered_file_as_bytes(file, data);
-	if(!data_bytes) {
-		*error_pointer = g_error_new(g_quark_from_static_string("pqiv-spectre-error"), 1, "Failed to load PDF %s: Error while reading file\n", file->file_name);
-		return;
-	}
-	gsize data_size;
-	char *data_ptr = (char *)g_bytes_get_data(data_bytes, &data_size);
-	private->document = poppler_document_new_from_data(data_ptr, (int)data_size, NULL, error_pointer);
+	#if POPPLER_CHECK_VERSION(0, 26, 5)
+		private->document = poppler_document_new_from_stream(data, -1, NULL, image_loader_cancellable, error_pointer);
+	#else
+		GBytes *data_bytes = buffered_file_as_bytes(file, data);
+		if(!data_bytes) {
+			*error_pointer = g_error_new(g_quark_from_static_string("pqiv-spectre-error"), 1, "Failed to load PDF %s: Error while reading file\n", file->file_name);
+			return;
+		}
+		gsize data_size;
+		char *data_ptr = (char *)g_bytes_get_data(data_bytes, &data_size);
+		private->document = poppler_document_new_from_data(data_ptr, (int)data_size, NULL, error_pointer);
+	#endif
+
 	private->page = poppler_document_get_page(private->document, private->page_number);
 
 	if(private->page) {
@@ -125,7 +143,9 @@ void file_type_poppler_unload(file_t *file) {/*{{{*/
 		g_object_unref(private->document);
 		private->document = NULL;
 
-		buffered_file_unref(file);
+		#if !POPPLER_CHECK_VERSION(0, 26, 5)
+			buffered_file_unref(file);
+		#endif
 	}
 }/*}}}*/
 void file_type_poppler_draw(file_t *file, cairo_t *cr) {/*{{{*/
