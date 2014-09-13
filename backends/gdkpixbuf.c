@@ -157,10 +157,19 @@ void file_type_gdkpixbuf_load(file_t *file, GInputStream *data, GError **error_p
 		file->width = gdk_pixbuf_get_width(pixbuf);
 		file->height = gdk_pixbuf_get_height(pixbuf);
 
-		#if (GDK_MAJOR_VERSION == 3 && GDK_MINOR_VERSION >= 10) || (GDK_MAJOR_VERSION > 3)
+		#if 0 && (GDK_MAJOR_VERSION == 3 && GDK_MINOR_VERSION >= 10) || (GDK_MAJOR_VERSION > 3)
+			// This function has a bug, see
+			// https://bugzilla.gnome.org/show_bug.cgi?id=736624
+			// We therefore have to use the below version even if this function is available.
 			cairo_surface_t *surface = gdk_cairo_surface_create_from_pixbuf(pixbuf, 1., NULL);
 		#else
 			cairo_surface_t *surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, file->width, file->height);
+			if(cairo_surface_status(surface) != CAIRO_STATUS_SUCCESS) {
+				g_object_unref(pixbuf);
+				g_object_unref(pixbuf_animation);
+				*error_pointer = g_error_new(g_quark_from_static_string("pqiv-pixbuf-error"), 1, "Failed to create a cairo image surface for the loaded image (cairo status %d)\n", cairo_surface_status(surface));
+				return;
+			}
 			cairo_t *sf_cr = cairo_create(surface);
 			gdk_cairo_set_source_pixbuf(sf_cr, pixbuf, 0, 0);
 			cairo_paint(sf_cr);
