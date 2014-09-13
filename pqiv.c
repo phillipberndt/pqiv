@@ -48,6 +48,7 @@
 	#include <sys/wait.h>
 	#include <gdk/gdkx.h>
 	#include <gio/gunixinputstream.h>
+	#include <X11/Xlib.h>
 
 	#if GTK_MAJOR_VERSION < 3
 		#include <X11/Xatom.h>
@@ -3353,6 +3354,9 @@ gpointer load_images_thread(gpointer user_data) {/*{{{*/
 }/*}}}*/
 
 int main(int argc, char *argv[]) {
+	#ifndef _WIN32
+		XInitThreads();
+	#endif
 	#if (!GLIB_CHECK_VERSION(2, 32, 0))
 		g_thread_init(NULL);
 		gdk_threads_init();
