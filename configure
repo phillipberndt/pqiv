@@ -226,7 +226,7 @@ PKG_CONFIG=$PKG_CONFIG
 ${CFLAGS:+CFLAGS+=$CFLAGS}
 ${MANDIR:+MANDIR=$MANDIR}
 ${BACKENDS:+BACKENDS=$BACKENDS}
-${CC:+CC+=$CC}
+${CC:+CC=$CC}
 EOF
 echo
 echo "Done. Run \`$MAKE install' to install pqiv."
