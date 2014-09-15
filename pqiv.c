@@ -721,7 +721,7 @@ BOSNode *load_images_handle_parameter_add_file(load_images_state_t state, file_t
 		// When the first image has been processed, we can show the window
 		// Check if it successfully loads though:
 		if(initialize_image_loader()) {
-			g_idle_add(initialize_gui_callback, NULL);
+			gdk_threads_add_idle(initialize_gui_callback, NULL);
 			gui_initialized = TRUE;
 		}
 	}
@@ -1052,7 +1052,7 @@ gboolean image_animation_timeout_callback(gpointer user_data) {/*{{{*/
 	double delay = CURRENT_FILE->file_type->animation_next_frame_fn(CURRENT_FILE);
 	D_UNLOCK(file_tree);
 
-	current_image_animation_timeout_id = g_timeout_add(
+	current_image_animation_timeout_id = gdk_threads_add_timeout(
 		delay,
 		image_animation_timeout_callback,
 		user_data);
@@ -1129,7 +1129,7 @@ void main_window_adjust_for_image() {/*{{{*/
 			// directly to the startup position, this won't work. WMs don't
 			// like being told what to do.. ;-) Wait till the window is visible,
 			// then move it away.
-			g_idle_add(window_move_helper_callback, NULL);
+			gdk_threads_add_idle(window_move_helper_callback, NULL);
 		}
 		else if(option_window_position.x != -1) {
 			// Tell the WM to center the window
@@ -1145,7 +1145,7 @@ void main_window_adjust_for_image() {/*{{{*/
 			// They resize, as requested above, and afterwards apply their idea of
 			// window size. To conquer that, we check for the window size again once
 			// all events are handled.
-			g_idle_add(main_window_resize_callback, NULL);
+			gdk_threads_add_idle(main_window_resize_callback, NULL);
 		}
 		else {
 			gtk_window_set_geometry_hints(main_window, NULL, &hints, GDK_HINT_ASPECT);
@@ -1190,7 +1190,7 @@ gboolean image_loaded_handler(gconstpointer node) {/*{{{*/
 
 	// Initialize animation timer if the image is animated
 	if((CURRENT_FILE->file_flags & FILE_FLAGS_ANIMATION) != 0 && CURRENT_FILE->file_type->animation_initialize_fn != NULL) {
-		current_image_animation_timeout_id = g_timeout_add(
+		current_image_animation_timeout_id = gdk_threads_add_timeout(
 			CURRENT_FILE->file_type->animation_initialize_fn(CURRENT_FILE),
 			image_animation_timeout_callback,
 			(gpointer)current_file_node);
@@ -1371,7 +1371,7 @@ gpointer image_loader_thread(gpointer user_data) {/*{{{*/
 		}
 		if(node == current_file_node && FILE(node)->is_loaded) {
 			current_image_drawn = FALSE;
-			g_idle_add((GSourceFunc)image_loaded_handler, node);
+			gdk_threads_add_idle((GSourceFunc)image_loaded_handler, node);
 		}
 		bostree_node_weak_unref(file_tree, node);
 	}
@@ -1520,7 +1520,7 @@ gboolean absolute_image_movement(BOSNode *ref) {/*{{{*/
 		// We start the clock after the first draw, because it could take some
 		// time to calculate the resized version of the image
 		fading_initial_time = -1;
-		g_idle_add(fading_timeout_callback, NULL);
+		gdk_threads_add_idle(fading_timeout_callback, NULL);
 	}
 
 	// If there is an active slideshow, interrupt it until the image has been
@@ -1660,7 +1660,7 @@ void apply_external_image_filter(gchar *external_filter) {/*{{{*/
 			g_print("%s", child_stderr);
 			g_free(child_stderr);
 
-			g_idle_add(apply_external_image_filter_show_output_window, child_stdout);
+			gdk_threads_add_idle(apply_external_image_filter_show_output_window, child_stdout);
 		}
 		// Reminder: Do not free the others, they are string constants
 		g_free(argv[2]);
@@ -1983,7 +1983,7 @@ void jump_dialog_open_image_callback(GtkTreeModel *model, GtkTreePath *path, Gtk
 	BOSNode *jump_to = (BOSNode *)g_value_get_pointer(&col_data);
 	g_value_unset(&col_data);
 
-	g_timeout_add(200, (GSourceFunc)absolute_image_movement, bostree_node_weak_ref(jump_to));
+	gdk_threads_add_timeout(200, (GSourceFunc)absolute_image_movement, bostree_node_weak_ref(jump_to));
 } /* }}} */
 void do_jump_dialog() { /* {{{ */
 	/**
@@ -2405,7 +2405,7 @@ gboolean window_draw_callback(GtkWidget *widget, cairo_t *cr_arg, gpointer user_
 
 		// If we have an active slideshow, resume now.
 		if(slideshow_timeout_id == 0) {
-			slideshow_timeout_id = g_timeout_add(option_slideshow_interval * 1000, slideshow_timeout_callback, NULL);
+			slideshow_timeout_id = gdk_threads_add_timeout(option_slideshow_interval * 1000, slideshow_timeout_callback, NULL);
 		}
 
 		current_image_drawn = TRUE;
@@ -2701,7 +2701,7 @@ gboolean window_key_press_callback(GtkWidget *widget, GdkEventKey *event, gpoint
 				option_slideshow_interval = (double)((int)option_slideshow_interval + 1);
 				if(slideshow_timeout_id > 0) {
 					g_source_remove(slideshow_timeout_id);
-					slideshow_timeout_id = g_timeout_add(option_slideshow_interval * 1000, slideshow_timeout_callback, NULL);
+					slideshow_timeout_id = gdk_threads_add_timeout(option_slideshow_interval * 1000, slideshow_timeout_callback, NULL);
 				}
 				gchar *info_text = g_strdup_printf("Slideshow interval set to %d seconds", (int)option_slideshow_interval);
 				update_info_text(info_text);
@@ -2736,7 +2736,7 @@ gboolean window_key_press_callback(GtkWidget *widget, GdkEventKey *event, gpoint
 				}
 				if(slideshow_timeout_id > 0) {
 					g_source_remove(slideshow_timeout_id);
-					slideshow_timeout_id = g_timeout_add(option_slideshow_interval * 1000, slideshow_timeout_callback, NULL);
+					slideshow_timeout_id = gdk_threads_add_timeout(option_slideshow_interval * 1000, slideshow_timeout_callback, NULL);
 				}
 				gchar *info_text = g_strdup_printf("Slideshow interval set to %d seconds", (int)option_slideshow_interval);
 				update_info_text(info_text);
@@ -2882,7 +2882,7 @@ gboolean window_key_press_callback(GtkWidget *widget, GdkEventKey *event, gpoint
 				update_info_text("Slideshow disabled");
 			}
 			else {
-				slideshow_timeout_id = g_timeout_add(option_slideshow_interval * 1000, slideshow_timeout_callback, NULL);
+				slideshow_timeout_id = gdk_threads_add_timeout(option_slideshow_interval * 1000, slideshow_timeout_callback, NULL);
 				update_info_text("Slideshow enabled");
 			}
 			gtk_widget_queue_draw(GTK_WIDGET(main_window));
@@ -3239,10 +3239,10 @@ void window_realize_callback(GtkWidget *widget, gpointer user_data) {/*{{{*/
 	// which I'd both like to avoid)
 	if(!option_initial_scale_used) {
 		if(!option_start_fullscreen || main_window_in_fullscreen) {
-			g_idle_add(set_option_initial_scale_used_callback, NULL);
+			gdk_threads_add_idle(set_option_initial_scale_used_callback, NULL);
 		}
 		else {
-			g_timeout_add(300, set_option_initial_scale_used_callback, NULL);
+			gdk_threads_add_timeout(300, set_option_initial_scale_used_callback, NULL);
 		}
 	}
 
@@ -3326,7 +3326,7 @@ gboolean initialize_gui() {/*{{{*/
 		image_loaded_handler(NULL);
 
 		if(option_start_with_slideshow_mode) {
-			slideshow_timeout_id = g_timeout_add(option_slideshow_interval * 1000, slideshow_timeout_callback, NULL);
+			slideshow_timeout_id = gdk_threads_add_timeout(option_slideshow_interval * 1000, slideshow_timeout_callback, NULL);
 		}
 		return TRUE;
 	}
@@ -3361,7 +3361,7 @@ gpointer load_images_thread(gpointer user_data) {/*{{{*/
 	if(user_data != NULL) {
 		// Use the info text updater only if this function was called in a separate
 		// thread (--lazy-load option)
-		event_source = g_timeout_add(1000, load_images_thread_update_info_text, NULL);
+		event_source = gdk_threads_add_timeout(1000, load_images_thread_update_info_text, NULL);
 	}
 
 	load_images(&global_argc, global_argv);
