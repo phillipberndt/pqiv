@@ -183,6 +183,10 @@ BOSNode *image_loader_thread_currently_loading = NULL;
 GAsyncQueue *image_loader_queue = NULL;
 GCancellable *image_loader_cancellable = NULL;
 
+// Unloading of files is also handled by that thread, in a GC fashion
+// For that, we keep a list of loaded files
+GList *loaded_files_list = NULL;
+
 // Filter for path traversing upon building the file list
 GHashTable *load_images_file_filter_hash_table;
 GtkFileFilterInfo *load_images_file_filter_info;
@@ -676,13 +680,7 @@ BOSNode *load_images_handle_parameter_add_file(load_images_state_t state, file_t
 	// We need to check if the previous/next images have changed, because they
 	// might have been preloaded and need unloading if so.
 	D_LOCK(file_tree);
-	BOSNode *old_prev = NULL;
-	BOSNode *old_next = NULL;
 	BOSNode *new_node = NULL;
-	if((option_lazy_load || state == INOTIFY) && current_file_node != NULL) {
-		old_prev = previous_file();
-		old_next = next_file();
-	}
 	if(!option_sort) {
 		float *index = (float *)g_malloc(sizeof(float));
 		if(state == FILTER_OUTPUT) {
@@ -706,15 +704,6 @@ BOSNode *load_images_handle_parameter_add_file(load_images_state_t state, file_t
 	}
 	if(state == BROWSE_ORIGINAL_PARAMETER && browse_startup_node == NULL) {
 		browse_startup_node = bostree_node_weak_ref(new_node);
-	}
-	if((option_lazy_load || state == INOTIFY) && current_file_node != NULL) {
-		// If the previous/next images have shifted, unload the old ones to save memory
-		if(previous_file() != old_prev && current_file_node != old_prev && old_prev != NULL) {
-			unload_image(old_prev);
-		}
-		if(next_file() != old_next && current_file_node != old_next && old_next != NULL) {
-			unload_image(old_next);
-		}
 	}
 	D_UNLOCK(file_tree);
 	if(option_lazy_load && !gui_initialized) {
@@ -960,7 +949,14 @@ void file_free(file_t *file) {/*{{{*/
 	g_free(file);
 }/*}}}*/
 void file_tree_free_helper(BOSNode *node) {
+	// This helper function is only called once a node is eventually freed,
+	// which happens only after the last weak reference to it is dropped,
+	// which happens only if an image is not in the list of loaded images
+	// anymore, which happens only if it never was loaded or was just
+	// unloaded. So the call to unload_image should have no side effects,
+	// and is only there for redundancy to be absolutely sure..
 	unload_image(node);
+
 	file_free(FILE(node));
 }
 void directory_tree_free_helper(BOSNode *node) {
@@ -1308,6 +1304,9 @@ gboolean image_loader_load_single(BOSNode *node, gboolean called_from_main) {/*{
 			}
 		}
 
+		// Mark the image as loaded for the GC
+		loaded_files_list = g_list_prepend(loaded_files_list, bostree_node_weak_ref(node));
+
 		return TRUE;
 	}
 	else {
@@ -1358,11 +1357,38 @@ gboolean image_loader_load_single(BOSNode *node, gboolean called_from_main) {/*{
 }/*}}}*/
 gpointer image_loader_thread(gpointer user_data) {/*{{{*/
 	while(TRUE) {
+		// Handle new queued image load
 		BOSNode *node = g_async_queue_pop(image_loader_queue);
 		if(bostree_node_weak_unref(file_tree, bostree_node_weak_ref(node)) == NULL) {
 			bostree_node_weak_unref(file_tree, node);
 			continue;
 		}
+
+		// Before trying to load the image, unload the old ones to free
+		// up memory.
+		// We do that here to avoid a race condition with the image loaders
+		for(GList *node_list = loaded_files_list; node_list; ) {
+			GList *next = g_list_next(node_list);
+
+			BOSNode *loaded_node = bostree_node_weak_unref(file_tree, bostree_node_weak_ref((BOSNode *)node_list->data));
+			if(!loaded_node) {
+				bostree_node_weak_unref(file_tree, (BOSNode *)node_list->data);
+				loaded_files_list = g_list_delete_link(loaded_files_list, node_list);
+			}
+			else {
+				if(loaded_node != current_file_node && (option_lowmem || (loaded_node != previous_file() && loaded_node != next_file()))) {
+					unload_image(loaded_node);
+					// It is important to unref after unloading, because the image data structure
+					// might be reduced to zero if it has been deleted before!
+					bostree_node_weak_unref(file_tree, (BOSNode *)node_list->data);
+					loaded_files_list = g_list_delete_link(loaded_files_list, node_list);
+				}
+			}
+
+			node_list = next;
+		}
+
+		// Now take take of the queued image
 		if(!FILE(node)->is_loaded) {
 			// Load image
 			image_loader_thread_currently_loading = node;
@@ -1465,10 +1491,6 @@ gboolean absolute_image_movement(BOSNode *ref) {/*{{{*/
 	// No need to continue the other pending loads
 	abort_pending_image_loads(node);
 
-	// Check which images have to be unloaded
-	BOSNode *old_prev = previous_file();
-	BOSNode *old_next = next_file();
-
 	BOSNode *new_prev = bostree_previous_node(node);
 	if(!new_prev) {
 		new_prev = bostree_select(file_tree, bostree_node_count(file_tree) - 1);
@@ -1476,16 +1498,6 @@ gboolean absolute_image_movement(BOSNode *ref) {/*{{{*/
 	BOSNode *new_next = bostree_next_node(node);
 	if(!new_next) {
 		new_next = bostree_select(file_tree, 0);
-	}
-
-	if((old_prev != new_next && old_prev != new_prev && old_prev != node) || (old_prev != node && option_lowmem)) {
-		unload_image(old_prev);
-	}
-	if((old_next != new_next && old_next != new_prev && old_next != node) || (old_next != node && option_lowmem)) {
-		unload_image(old_next);
-	}
-	if((current_file_node != new_next && current_file_node != new_prev && current_file_node != node) || !(CURRENT_FILE->is_loaded) || (current_file_node != node && option_lowmem)) {
-		unload_image(current_file_node);
 	}
 
 	// Check which images have to be loaded
@@ -3422,6 +3434,8 @@ int main(int argc, char *argv[]) {
 
 	gtk_main();
 
+	// We are outside of the main thread again, so we can unload the remaining images
+	abort_pending_image_loads(NULL);
 	unload_image(current_file_node);
 	unload_image(previous_file());
 	unload_image(next_file());
