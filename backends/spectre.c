@@ -115,27 +115,24 @@ void file_type_spectre_load(file_t *file, GInputStream *data, GError **error_poi
 		*error_pointer = g_error_new(g_quark_from_static_string("pqiv-spectre-error"), 1, "Failed to load image %s: Error while reading file\n", file->file_name);
 		return;
 	}
-	private->document = spectre_document_new();
-	spectre_document_load(private->document, file_name);
-	if(spectre_document_status(private->document)) {
+	struct SpectreDocument *document = spectre_document_new();
+	spectre_document_load(document, file_name);
+	if(spectre_document_status(document)) {
 		*error_pointer = g_error_new(g_quark_from_static_string("pqiv-spectre-error"), 1, "Failed to load image %s: %s\n", file->file_name, spectre_status_to_string(spectre_document_status(private->document)));
 		buffered_file_unref(file);
 		return;
 	}
-	private->page = spectre_document_get_page(private->document, private->page_number);
-	if(!private->page) {
+	struct SpectrePage *page = spectre_document_get_page(document, private->page_number);
+	if(!page) {
 		*error_pointer = g_error_new(g_quark_from_static_string("pqiv-spectre-error"), 1, "Failed to load image %s: Failed to load page %d\n", file->file_name, private->page_number);
-		spectre_document_free(private->document);
-		private->document = NULL;
+		spectre_document_free(document);
 		buffered_file_unref(file);
 		return;
 	}
-	if(spectre_page_status(private->page)) {
+	if(spectre_page_status(page)) {
 		*error_pointer = g_error_new(g_quark_from_static_string("pqiv-spectre-error"), 1, "Failed to load image %s / page %d: %s\n", file->file_name, private->page_number, spectre_status_to_string(spectre_page_status(private->page)));
-		spectre_page_free(private->page);
-		private->page = NULL;
-		spectre_document_free(private->document);
-		private->document = NULL;
+		spectre_page_free(page);
+		spectre_document_free(document);
 		buffered_file_unref(file);
 		return;
 	}
@@ -144,8 +141,9 @@ void file_type_spectre_load(file_t *file, GInputStream *data, GError **error_poi
 	spectre_page_get_size(private->page, &width, &height);
 	file->width = width;
 	file->height = height;
-
 	file->is_loaded = TRUE;
+	private->page = page;
+	private->document = document;
 }/*}}}*/
 void file_type_spectre_unload(file_t *file) {/*{{{*/
 	file_private_data_spectre_t *private = file->private;

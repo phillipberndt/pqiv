@@ -108,7 +108,7 @@ void file_type_poppler_load(file_t *file, GInputStream *data, GError **error_poi
 
 	// We need to load the data into memory, because poppler has problems with serving from streams; see above
 	#if POPPLER_CHECK_VERSION(0, 26, 5)
-		private->document = poppler_document_new_from_stream(data, -1, NULL, image_loader_cancellable, error_pointer);
+		PopplerDocument *document = poppler_document_new_from_stream(data, -1, NULL, image_loader_cancellable, error_pointer);
 	#else
 		GBytes *data_bytes = buffered_file_as_bytes(file, data);
 		if(!data_bytes) {
@@ -117,29 +117,30 @@ void file_type_poppler_load(file_t *file, GInputStream *data, GError **error_poi
 		}
 		gsize data_size;
 		char *data_ptr = (char *)g_bytes_get_data(data_bytes, &data_size);
-		private->document = poppler_document_new_from_data(data_ptr, (int)data_size, NULL, error_pointer);
+		PopplerDocument *document = poppler_document_new_from_data(data_ptr, (int)data_size, NULL, error_pointer);
 	#endif
 
-	if(private->document) {
-		private->page = poppler_document_get_page(private->document, private->page_number);
+	if(document) {
+		PopplerPage *page = poppler_document_get_page(document, private->page_number);
+
+		if(page) {
+			double width, height;
+			poppler_page_get_size(page, &width, &height);
+
+			file->width = width;
+			file->height = height;
+			file->is_loaded = TRUE;
+			private->page = page;
+			private->document = document;
+			return;
+		}
+
+		g_object_unref(document);
 	}
 
-	if(private->page) {
-		double width, height;
-		poppler_page_get_size(private->page, &width, &height);
-		file->width = width;
-		file->height = height;
-		file->is_loaded = TRUE;
-	}
-	else {
-		if(private->document) {
-			g_object_unref(private->document);
-			private->document = NULL;
-		}
-		#if !POPPLER_CHECK_VERSION(0, 26, 5)
-			buffered_file_unref(file);
-		#endif
-	}
+	#if !POPPLER_CHECK_VERSION(0, 26, 5)
+		buffered_file_unref(file);
+	#endif
 }/*}}}*/
 void file_type_poppler_unload(file_t *file) {/*{{{*/
 	file_private_data_poppler_t *private = file->private;

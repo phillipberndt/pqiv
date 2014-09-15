@@ -176,14 +176,12 @@ void file_type_gdkpixbuf_load(file_t *file, GInputStream *data, GError **error_p
 			cairo_destroy(sf_cr);
 		#endif
 
-		//D_LOCK(file_tree);
 		cairo_surface_t *old_surface = private->image_surface;
 		private->image_surface = surface;
 		if(old_surface != NULL) {
 			g_idle_add(file_type_gdkpixbuf_load_destroy_old_image_callback, old_surface);
 		}
 		g_object_unref(pixbuf);
-		//D_UNLOCK(file_tree);
 
 		file->is_loaded = TRUE;
 	}
