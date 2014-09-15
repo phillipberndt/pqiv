@@ -120,7 +120,9 @@ void file_type_poppler_load(file_t *file, GInputStream *data, GError **error_poi
 		private->document = poppler_document_new_from_data(data_ptr, (int)data_size, NULL, error_pointer);
 	#endif
 
-	private->page = poppler_document_get_page(private->document, private->page_number);
+	if(private->document) {
+		private->page = poppler_document_get_page(private->document, private->page_number);
+	}
 
 	if(private->page) {
 		double width, height;
@@ -130,7 +132,13 @@ void file_type_poppler_load(file_t *file, GInputStream *data, GError **error_poi
 		file->is_loaded = TRUE;
 	}
 	else {
-		buffered_file_unref(file);
+		if(private->document) {
+			g_object_unref(private->document);
+			private->document = NULL;
+		}
+		#if !POPPLER_CHECK_VERSION(0, 26, 5)
+			buffered_file_unref(file);
+		#endif
 	}
 }/*}}}*/
 void file_type_poppler_unload(file_t *file) {/*{{{*/
