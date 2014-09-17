@@ -34,9 +34,9 @@ options:
   --destdir=..          Set the destdir for installed files (for package maintainers)
   --gtk-version=2       Use GTK+-2.0 even if GTK+-3.0 is available
   --cross=..            Set a cross-compiler prefix (e.g. \`i686-pc-mingw32-')
-  --backends=..         Select which backends to include in pqiv
+  --backends=..         Select which backends to include in pqiv (defaults to auto)
                         Available:
-                          gdkpixbuf (Default, images),
+                          gdkpixbuf (images),
                           poppler (PDF),
                           spectre (PS/EPS)
 
@@ -173,6 +173,16 @@ if [ -n "${CROSS}" ]; then
 		PKG_CONFIG=pkg-config
 	else
 		echo "${PKG_CONFIG}"
+	fi
+fi
+
+# Auto-determine available backends
+if [ -z "$BACKENDS" ]; then
+	echo -n "Checking for supported backends..             "
+	BACKENDS=`$MAKE get_available_backends`
+	echo "${BACKENDS:-(none)}"
+	if [ -z "$BACKENDS" ]; then
+		echo "WARNING: Building without backends! You won't be able to see _any_ images." >&2
 	fi
 fi
 

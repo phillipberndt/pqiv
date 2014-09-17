@@ -20,10 +20,23 @@ ifeq ($(wildcard config.make),config.make)
 	include config.make
 endif
 
-# Package lines for pkg-config
+# pkg-config lines for the main program
 LIBS_GENERAL=glib-2.0 >= 2.8 cairo >= 1.6 gio-2.0
 LIBS_GTK3=gtk+-3.0 gdk-3.0
 LIBS_GTK2=gtk+-2.0 >= 2.6 gdk-2.0 >= 2.8
+
+# pkg-config libraries for the backends
+LIBS_gdkpixbuf=gdk-pixbuf-2.0 >= 2.2
+LIBS_poppler=poppler-glib
+LIBS_spectre=libspectre
+
+# This might be required if you use mingw, and is required as of
+# Aug 2014 for mxe, but IMHO shouldn't be required / is a bug in
+# poppler (which does not specify this dependency):
+#
+# ifeq ($(EXECUTABLE_EXTENSION), .exe)
+#    LDLIBS_poppler+=-llcms2 -lstdc++
+# endif
 
 # If no GTK_VERSION is set, try to auto-determine, with GTK 3 preferred
 ifeq ($(GTK_VERSION), 0)
@@ -51,31 +64,19 @@ else
 endif
 
 # Add backend-specific libraries and objects
-# All backends must be explicitly listed here, or building will fail.
 BACKENDS_INITIALIZER:=backends/initializer
-ifneq ($(findstring gdkpixbuf, $(BACKENDS)),)
-	LIBS+=gdk-pixbuf-2.0 >= 2.2
-	OBJECTS+=backends/gdkpixbuf.o
-	BACKENDS_INITIALIZER:=$(BACKENDS_INITIALIZER)-gdkpixbuf
+define handle-backend
+ifneq ($(origin LIBS_$(1)),undefined)
+	ifneq ($(findstring $(1), $(BACKENDS)),)
+		LIBS+=$(LIBS_$(1))
+		OBJECTS+=backends/$(1).o
+		LDLIBS+=$(LDLIBS_$(1))
+		BACKENDS_INITIALIZER:=$(BACKENDS_INITIALIZER)-$(1)
+	endif
 endif
-ifneq ($(findstring poppler, $(BACKENDS)),)
-	LIBS+=poppler-glib
-	OBJECTS+=backends/poppler.o
-	BACKENDS_INITIALIZER:=$(BACKENDS_INITIALIZER)-poppler
+endef
+$(foreach BACKEND_C, $(wildcard backends/*.c), $(eval $(call handle-backend,$(basename $(notdir $(BACKEND_C))))))
 
-	# This might be required if you use mingw, and is required as of
-	# Aug 2014 for mxe, but IMHO shouldn't be required / is a bug in
-	# poppler (which does not specify this dependency):
-	#
-	# ifeq ($(EXECUTABLE_EXTENSION), .exe)
-	#    LDLIBS+=-llcms2
-	# endif
-endif
-ifneq ($(findstring spectre, $(BACKENDS)),)
-	LIBS+=libspectre
-	OBJECTS+=backends/spectre.o
-	BACKENDS_INITIALIZER:=$(BACKENDS_INITIALIZER)-spectre
-endif
 OBJECTS+=$(BACKENDS_INITIALIZER).o
 
 CFLAGS_REAL=-std=gnu99 $(PQIV_WARNING_FLAGS) $(CFLAGS) $(shell $(PKG_CONFIG) --cflags "$(LIBS)")
@@ -84,7 +85,7 @@ LDFLAGS_REAL=$(LDFLAGS)
 
 
 all: pqiv$(EXECUTABLE_EXTENSION)
-.PHONY: get_libs _build_variables clean distclean install uninstall all
+.PHONY: get_libs get_available_backends _build_variables clean distclean install uninstall all
 
 pqiv$(EXECUTABLE_EXTENSION): $(OBJECTS)
 	$(CROSS)$(CC) $(CPPFLAGS) -o $@ $+ $(LDLIBS_REAL) $(LDFLAGS_REAL)
@@ -135,4 +136,8 @@ distclean: clean
 
 get_libs:
 	$(info $(LIBS))
+	@true
+
+get_available_backends:
+	@$(foreach BACKEND_C, $(wildcard backends/*.c), [ -n "$(LIBS_$(basename $(notdir $(BACKEND_C))))" ] && pkg-config --exists "$(LIBS_$(basename $(notdir $(BACKEND_C))))" && echo -n "$(basename $(notdir $(BACKEND_C))) ";) echo
 	@true
