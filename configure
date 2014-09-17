@@ -179,7 +179,7 @@ fi
 # Auto-determine available backends
 if [ -z "$BACKENDS" ]; then
 	echo -n "Checking for supported backends..             "
-	BACKENDS=`$MAKE get_available_backends`
+	BACKENDS=`$MAKE get_available_backends PKG_CONFIG=$PKG_CONFIG`
 	echo "${BACKENDS:-(none)}"
 	if [ -z "$BACKENDS" ]; then
 		echo "WARNING: Building without backends! You won't be able to see _any_ images." >&2

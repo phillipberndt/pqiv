@@ -32,11 +32,12 @@ LIBS_spectre=libspectre
 
 # This might be required if you use mingw, and is required as of
 # Aug 2014 for mxe, but IMHO shouldn't be required / is a bug in
-# poppler (which does not specify this dependency):
+# poppler (which does not specify this dependency). If it isn't
+# or throws an error for you, please report this as a bug:
 #
-# ifeq ($(EXECUTABLE_EXTENSION), .exe)
-#    LDLIBS_poppler+=-llcms2 -lstdc++
-# endif
+ifeq ($(EXECUTABLE_EXTENSION),.exe)
+   LDLIBS_poppler+=-llcms2 -lstdc++
+endif
 
 # If no GTK_VERSION is set, try to auto-determine, with GTK 3 preferred
 ifeq ($(GTK_VERSION), 0)
@@ -80,9 +81,8 @@ $(foreach BACKEND_C, $(wildcard backends/*.c), $(eval $(call handle-backend,$(ba
 OBJECTS+=$(BACKENDS_INITIALIZER).o
 
 CFLAGS_REAL=-std=gnu99 $(PQIV_WARNING_FLAGS) $(CFLAGS) $(shell $(PKG_CONFIG) --cflags "$(LIBS)")
-LDLIBS_REAL=$(LDLIBS) $(shell $(PKG_CONFIG) --libs "$(LIBS)")
+LDLIBS_REAL=$(shell $(PKG_CONFIG) --libs "$(LIBS)") $(LDLIBS) 
 LDFLAGS_REAL=$(LDFLAGS)
-
 
 all: pqiv$(EXECUTABLE_EXTENSION)
 .PHONY: get_libs get_available_backends _build_variables clean distclean install uninstall all
@@ -139,5 +139,5 @@ get_libs:
 	@true
 
 get_available_backends:
-	@$(foreach BACKEND_C, $(wildcard backends/*.c), [ -n "$(LIBS_$(basename $(notdir $(BACKEND_C))))" ] && pkg-config --exists "$(LIBS_$(basename $(notdir $(BACKEND_C))))" && echo -n "$(basename $(notdir $(BACKEND_C))) ";) echo
+	@$(foreach BACKEND_C, $(wildcard backends/*.c), [ -n "$(LIBS_$(basename $(notdir $(BACKEND_C))))" ] && $(PKG_CONFIG) --exists "$(LIBS_$(basename $(notdir $(BACKEND_C))))" && echo -n "$(basename $(notdir $(BACKEND_C))) ";) echo
 	@true
