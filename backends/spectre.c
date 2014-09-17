@@ -138,12 +138,12 @@ void file_type_spectre_load(file_t *file, GInputStream *data, GError **error_poi
 	}
 
 	int width, height;
-	spectre_page_get_size(private->page, &width, &height);
+	spectre_page_get_size(page, &width, &height);
 	file->width = width;
 	file->height = height;
-	file->is_loaded = TRUE;
 	private->page = page;
 	private->document = document;
+	file->is_loaded = TRUE;
 }/*}}}*/
 void file_type_spectre_unload(file_t *file) {/*{{{*/
 	file_private_data_spectre_t *private = file->private;
