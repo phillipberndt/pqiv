@@ -3196,8 +3196,6 @@ void window_screen_activate_rgba() {/*{{{*/
 	return;
 }/*}}}*/
 void window_screen_window_manager_changed_callback(gpointer user_data) {/*{{{*/
-	// TODO Correct signature?!
-
 	#ifndef _WIN32
 		GdkScreen *screen = GDK_SCREEN(user_data);
 
@@ -3215,7 +3213,9 @@ void window_screen_changed_callback(GtkWidget *widget, GdkScreen *previous_scree
 	GdkWindow *window = gtk_widget_get_window(GTK_WIDGET(main_window));
 	guint monitor = gdk_screen_get_monitor_at_window(screen, window);
 
+	#ifndef _WIN32
 	g_signal_connect(screen, "window-manager-changed", G_CALLBACK(window_screen_window_manager_changed_callback), screen);
+	#endif
 	window_screen_window_manager_changed_callback(screen);
 
 	static guint old_monitor = 9999;
