@@ -81,7 +81,7 @@ $(foreach BACKEND_C, $(wildcard backends/*.c), $(eval $(call handle-backend,$(ba
 OBJECTS+=$(BACKENDS_INITIALIZER).o
 
 CFLAGS_REAL=-std=gnu99 $(PQIV_WARNING_FLAGS) $(CFLAGS) $(shell $(PKG_CONFIG) --cflags "$(LIBS)")
-LDLIBS_REAL=$(shell $(PKG_CONFIG) --libs "$(LIBS)") $(LDLIBS) 
+LDLIBS_REAL=$(shell $(PKG_CONFIG) --libs "$(LIBS)") $(LDLIBS)
 LDFLAGS_REAL=$(LDFLAGS)
 
 all: pqiv$(EXECUTABLE_EXTENSION)
@@ -90,20 +90,8 @@ all: pqiv$(EXECUTABLE_EXTENSION)
 pqiv$(EXECUTABLE_EXTENSION): $(OBJECTS)
 	$(CROSS)$(CC) $(CPPFLAGS) -o $@ $+ $(LDLIBS_REAL) $(LDFLAGS_REAL)
 
-pqiv.o: pqiv.c
+%.o: %.c
 	$(CROSS)$(CC) $(CPPFLAGS) -c -o $@ $(CFLAGS_REAL) $+
-
-lib/strnatcmp.o: lib/strnatcmp.c
-	$(CROSS)$(CC) $(CPPFLAGS) -c -o $@ $+ $(CFLAGS)
-
-lib/bostree.o: lib/bostree.c
-	$(CROSS)$(CC) $(CPPFLAGS) -DNDEBUG -c -o $@ $+ $(CFLAGS)
-
-lib/filebuffer.o: lib/filebuffer.c
-	$(CROSS)$(CC) $(CPPFLAGS) -c -o $@ $(CFLAGS_REAL) $+
-
-backends/%.o: backends/%.c
-	$(CROSS)$(CC) $(CPPFLAGS) -c -o $@ $+ $(CFLAGS_REAL)
 
 $(BACKENDS_INITIALIZER).c:
 	@$(foreach BACKEND, $(sort $(BACKENDS)), [ -e backends/$(BACKEND).c ] || { echo; echo "Backend $(BACKEND) not found!" >&2; exit 1; };)
