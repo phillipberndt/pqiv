@@ -39,13 +39,15 @@ Features
  * Supports external image filters (e.g. `convert`)
  * Preloads the next image in the background
  * Fade between images
+ * Optional PDF/eps/ps support (useful e.g. for scientific plots)
 
 
 Installation
 ------------
 
-Usual stuff. `./configure && make && make install`. Actually, the configure
-script is optional for now.
+Usual stuff. `./configure && make && make install`. The configure script is
+optional if you only want gdk-pixbuf support and will autodetermine which
+backends to build if invoked without parameters.
 
 You'll need
  * gtk+ 3.0 *or* gtk+ 2.6
@@ -54,6 +56,13 @@ You'll need
  * cairo 1.6
  * gio 2.0
  * gdk 2.8
+ * libspectre (any version, optional, for ps/eps support)
+ * poppler (any version, optional, for pdf support)
+
+The backends are currently statically linked into the code, so all backend
+related build-time dependencies are also run-time dependencies. If you need
+a shared version of the backends, for example for separate packaging of
+the binaries, let me know. It's quite easy to implement that.
 
 Thanks
 ------

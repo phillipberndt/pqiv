@@ -28,7 +28,9 @@
 #include <gio/gio.h>
 #include "lib/bostree.h"
 
+#ifndef PQIV_VERSION
 #define PQIV_VERSION "2.2"
+#endif
 
 #define FILE_FLAGS_ANIMATION      (guint)(1)
 #define FILE_FLAGS_MEMORY_IMAGE   (guint)(1<<1)
