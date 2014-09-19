@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 #
 # Configure script, for most users only needed for backwards compatibility with
 # pqiv 1.0 (pre-gtk3). I still recommend to use it in automated builds to
@@ -22,6 +22,7 @@ BINARY_EXTENSION=
 CFLAGS=
 MANDIR=
 PKG_CONFIG=pkg-config
+BACKENDS=
 
 # Help and options
 help() {
@@ -33,6 +34,11 @@ options:
   --destdir=..          Set the destdir for installed files (for package maintainers)
   --gtk-version=2       Use GTK+-2.0 even if GTK+-3.0 is available
   --cross=..            Set a cross-compiler prefix (e.g. \`i686-pc-mingw32-')
+  --backends=..         Select which backends to include in pqiv (defaults to auto)
+                        Available:
+                          gdkpixbuf (images),
+                          poppler (PDF),
+                          spectre (PS/EPS)
 
 EOF
 }
@@ -71,8 +77,8 @@ while [ $# -gt 0 ]; do
 			;;
 		--mandir)
 			MANDIR=${VALUE}
-			MANDIR="${MANDIR//{/(}"
-			MANDIR="${MANDIR//\}/)}"
+			MANDIR="${MANDIR//\{/\(}"
+			MANDIR="${MANDIR//\}/\)}"
 			MANDIR="${MANDIR//prefix/PREFIX}"
 			echo "Use of autoconf option --mandir is discouraged, because support is incomplete. Rewrote \`$VALUE' to \`$MANDIR' and used that as the MANDIR Make variable." >&2
 			;;
@@ -82,6 +88,14 @@ while [ $# -gt 0 ]; do
 		--no-sorting | --no-compositing | --no-fading | --no-commands | --no-config-file | --no-inotify | --no-animations | --binary-name)
 			echo "obsolete 1.0 option ${PARAMETER} ignored" >&2
 			;;
+		--backends)
+			BACKENDS="${VALUE//,/ }"
+			for NAME in ${BACKENDS}; do
+				[ -e backends/${NAME}.c ] && continue
+				echo "Invalid argument to --backends: Backend ${NAME} was not found" >&2
+				exit 1
+			done
+			;;
 		*)
 			echo "Unknown option: $1" >&2
 			help
@@ -90,9 +104,21 @@ while [ $# -gt 0 ]; do
 	shift
 done
 
-# If cross-compiling, check if cc is present (usually it's not)
+# The makefile is for GNU make
+if [ -z $MAKE ]; then
+	MAKE=make
+	if ! (${MAKE} -v 2>&1 | grep -q "GNU Make"); then
+		MAKE=gmake
+		if ! which $MAKE 2>&1 >/dev/null; then
+			echo "GNU make is required for building pqiv" >&2
+			exit 1
+		fi
+	fi
+fi
+
+# If cross-compiling, check if cc is present (usually it is not)
 if [ -n "$CROSS" -a -z "$CC" ]; then
-	echo -n "Checking for cross-compiler cc.. "
+	echo -n "Checking for cross-compiler cc..              "
 	if ! which ${CROSS}cc >/dev/null 2>&1; then
 		if which ${CROSS}clang >/dev/null 2>&1; then
 			export CC=clang
@@ -111,7 +137,7 @@ if [ -n "$CROSS" -a -z "$CC" ]; then
 fi
 
 # Determine binary extension (for Windows)
-echo -n "Determining executable extension.. "
+echo -n "Determining executable extension..            "
 DIR=`tempdir`
 cd $DIR
 echo 'int main(int argc, char *argv[]) { return 0; }' > test.c
@@ -123,8 +149,9 @@ rm -f $EXECUTABLE
 cd ..
 rmdir $DIR
 if [ "$RV" != 0 ]; then
-	echo "The compiler can't compile executables!?" >&2
 	echo
+	echo
+	echo "The compiler can't compile executables!?" >&2
 	exit 1
 fi
 EXECUTABLE_EXTENSION=${EXECUTABLE#a}
@@ -134,18 +161,11 @@ fi
 echo ${EXECUTABLE_EXTENSION:-(none)}
 
 # Do a rudimental prerequisites check to have user-friendlier error messages
-while read -r LINE; do
-	for VAR in LIBS_GTK3 LIBS_GTK2; do
-		if [ "${LINE#$VAR=}" != "${LINE}" ]; then
-			eval ${VAR}=\"${LINE#$VAR=}\"
-		fi
-	done
-done < Makefile
-
 if [ -n "${CROSS}" ]; then
-	echo -n "Checking for pkg-config.. "
+	echo -n "Checking for pkg-config..                     "
 	PKG_CONFIG=${CROSS}pkg-config
 	if ! which ${PKG_CONFIG} >/dev/null 2>&1; then
+		echo
 		echo
 		echo "Did not find a specialized tool ${CROSS}pkg-config, defaulting to pkg-config" >&2
 		echo "If you really ARE cross-compiling, the build might therefore fail!" >&2
@@ -156,13 +176,35 @@ if [ -n "${CROSS}" ]; then
 	fi
 fi
 
-echo -n "Checking if GTK, cairo and glib are installed.. "
+# Auto-determine available backends
+if [ -z "$BACKENDS" ]; then
+	echo -n "Checking for supported backends..             "
+	BACKENDS=`$MAKE get_available_backends PKG_CONFIG=$PKG_CONFIG`
+	echo "${BACKENDS:-(none)}"
+	if [ -z "$BACKENDS" ]; then
+		echo "WARNING: Building without backends! You won't be able to see _any_ images." >&2
+	fi
+fi
+
+echo -n "Checking if the prerequisites are installed.. "
+LIBS_GTK3="`$MAKE get_libs GTK_VERSION=3 EXECUTABLE_EXTENSION=$EXECUTABLE_EXTENSION ${BACKENDS:+BACKENDS="$BACKENDS"}`"
+LIBS_GTK2="`$MAKE get_libs GTK_VERSION=2 EXECUTABLE_EXTENSION=$EXECUTABLE_EXTENSION ${BACKENDS:+BACKENDS="$BACKENDS"}`"
+
+if [ $? != 0 ]; then
+	echo "failed."
+	echo
+	echo
+	echo "Failed to run make. Is your make command compatible to GNU make?" >&2
+	exit 1
+fi
+
 if $PKG_CONFIG --exists "$LIBS_GTK3"; then
 	echo "ok"
 else
 	if $PKG_CONFIG --exists "$LIBS_GTK2"; then
 		if [ "$GTK_VERSION" = 3 ]; then
 			echo "failed."
+			echo
 			echo
 			echo "GTK 2 was found, but you manually specified --gtk-version=3, which was not found." >&2
 			echo "If you want GTK3, install the development packages for" >&2
@@ -174,6 +216,7 @@ else
 	else
 		echo "failed."
 		echo
+		echo
 		echo "Please install either the development packages for " >&2
 		echo " ${LIBS_GTK3}" >&2
 		echo "or for" >&2
@@ -183,23 +226,18 @@ else
 fi
 
 echo "Writing config.make."
-(
-cat <<EOF
+cat > config.make <<EOF
 DESTDIR=$DESTDIR
 PREFIX=$PREFIX
 GTK_VERSION=$GTK_VERSION
 CROSS=$CROSS
 EXECUTABLE_EXTENSION=$EXECUTABLE_EXTENSION
 PKG_CONFIG=$PKG_CONFIG
+${CFLAGS:+CFLAGS+=$CFLAGS}
+${MANDIR:+MANDIR=$MANDIR}
+${BACKENDS:+BACKENDS=$BACKENDS}
+${CC:+CC=$CC}
 EOF
-if [ -n "$CFLAGS" ]; then
-	echo "CFLAGS+=$CFLAGS"
-fi
-if [ -n "$MANDIR" ]; then
-	echo "MANDIR=$MANDIR"
-fi
-) > config.make
-[ -n "${CC}" ] && echo "CC=${CC}" >> config.make
 echo
-echo "Done. Run \`make install' to install pqiv."
+echo "Done. Run \`$MAKE install' to install pqiv."
 exit 0

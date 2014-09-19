@@ -18,6 +18,10 @@
   2. Altered source versions must be plainly marked as such, and must not be
      misrepresented as being the original software.
   3. This notice may not be removed or altered from any source distribution.
+
+
+  This version _is_ altered, namely two returns have been removed from the end
+  of two functions to make the code compile warning-free with -Wunreachable-code.
 */
 
 
@@ -88,7 +92,7 @@ compare_right(nat_char const *a, nat_char const *b)
 	       return bias;
      }
 
-     return 0;
+     /* never reached: return 0; */
 }
 
 
@@ -110,7 +114,7 @@ compare_left(nat_char const *a, nat_char const *b)
 	       return +1;
      }
 	  
-     return 0;
+     /* never reached: return 0; */
 }
 
 
