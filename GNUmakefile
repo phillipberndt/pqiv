@@ -104,10 +104,10 @@ $(BACKENDS_INITIALIZER).c:
 	( \
 		echo '/* Auto-Generated file by Make. */'; \
 		echo '#include "../pqiv.h"'; \
+		echo "file_type_handler_t file_type_handlers[$(words $(BACKENDS)) + 1];"; \
 		$(foreach BACKEND, $(sort $(BACKENDS)), echo "void file_type_$(BACKEND)_initializer(file_type_handler_t *info);";) \
 		echo "void initialize_file_type_handlers() {"; \
 		echo "	int i = 0;"; \
-		echo "	file_type_handlers = g_new0(file_type_handler_t, $(words $(BACKENDS)) + 1);"; \
 		$(foreach BACKEND, $(sort $(BACKENDS)), echo "	file_type_$(BACKEND)_initializer(&file_type_handlers[i++]);";) \
 		echo "}" \
 	) > $@
@@ -126,7 +126,7 @@ clean:
 	rm -f pqiv$(EXECUTABLE_EXTENSION) $(OBJECTS) $(BACKENDS_INITIALIZER).c
 
 distclean: clean
-	rm -f config.make backends/initializer-*
+	rm -f config.make backends/initializer*
 
 get_libs:
 	$(info $(LIBS))

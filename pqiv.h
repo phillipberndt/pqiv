@@ -159,7 +159,7 @@ void file_free(file_t *file);
 // }}}
 
 // File type handlers, used in the initializer and file type guessing
-extern file_type_handler_t *file_type_handlers;
+extern file_type_handler_t file_type_handlers[];
 
 /* }}} */
 

@@ -150,7 +150,6 @@
 // Global variables and function signatures {{{
 
 // The list of file type handlers and file type initializer function
-file_type_handler_t *file_type_handlers = NULL;
 void initialize_file_type_handlers();
 
 // Storage of the file list
