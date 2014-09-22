@@ -77,10 +77,16 @@ ifneq ($(origin LIBS_$(1)),undefined)
 endif
 endef
 $(foreach BACKEND_C, $(wildcard backends/*.c), $(eval $(call handle-backend,$(basename $(notdir $(BACKEND_C))))))
-
 OBJECTS+=$(BACKENDS_INITIALIZER).o
 
-CFLAGS_REAL=-std=gnu99 $(PQIV_WARNING_FLAGS) $(CFLAGS) $(shell $(PKG_CONFIG) --cflags "$(LIBS)")
+# Add version information to builds from git
+PQIV_VERSION_STRING=$(shell [ -d .git ] && (which git 2>&1 >/dev/null) && git describe --dirty --tags)
+ifneq ($(PQIV_VERSION_STRING),)
+	PQIV_VERSION_FLAG=-DPQIV_VERSION=\"$(PQIV_VERSION_STRING)\"
+endif
+
+# Assemble final compiler flags
+CFLAGS_REAL=-std=gnu99 $(PQIV_WARNING_FLAGS) $(PQIV_VERSION_FLAG) $(CFLAGS) $(shell $(PKG_CONFIG) --cflags "$(LIBS)")
 LDLIBS_REAL=$(shell $(PKG_CONFIG) --libs "$(LIBS)") $(LDLIBS)
 LDFLAGS_REAL=$(LDFLAGS)
 
