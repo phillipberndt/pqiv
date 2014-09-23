@@ -34,7 +34,7 @@ options:
   --destdir=..          Set the destdir for installed files (for package maintainers)
   --gtk-version=2       Use GTK+-2.0 even if GTK+-3.0 is available
   --cross=..            Set a cross-compiler prefix (e.g. \`i686-pc-mingw32-')
-  --backends=..         Select which backends to include in pqiv (defaults to auto)
+  --backends=..         Select which backends to include in pqiv (autodetermined by default)
                         Available:
                           gdkpixbuf (images),
                           poppler (PDF),
@@ -179,7 +179,7 @@ fi
 # Auto-determine available backends
 if [ -z "$BACKENDS" ]; then
 	echo -n "Checking for supported backends..             "
-	BACKENDS=`$MAKE get_available_backends PKG_CONFIG=$PKG_CONFIG`
+	BACKENDS=`$MAKE get_available_backends PKG_CONFIG=$PKG_CONFIG | sed -nre 's#^BACKENDS: ?(.+)#\1#p'`
 	echo "${BACKENDS:-(none)}"
 	if [ -z "$BACKENDS" ]; then
 		echo "WARNING: Building without backends! You won't be able to see _any_ images." >&2
@@ -187,8 +187,8 @@ if [ -z "$BACKENDS" ]; then
 fi
 
 echo -n "Checking if the prerequisites are installed.. "
-LIBS_GTK3="`$MAKE get_libs GTK_VERSION=3 EXECUTABLE_EXTENSION=$EXECUTABLE_EXTENSION ${BACKENDS:+BACKENDS="$BACKENDS"}`"
-LIBS_GTK2="`$MAKE get_libs GTK_VERSION=2 EXECUTABLE_EXTENSION=$EXECUTABLE_EXTENSION ${BACKENDS:+BACKENDS="$BACKENDS"}`"
+LIBS_GTK3="`$MAKE get_libs GTK_VERSION=3 EXECUTABLE_EXTENSION=$EXECUTABLE_EXTENSION ${BACKENDS:+BACKENDS="$BACKENDS"} | sed -nre 's#^LIBS: ?(.+)#\1#p'`"
+LIBS_GTK2="`$MAKE get_libs GTK_VERSION=2 EXECUTABLE_EXTENSION=$EXECUTABLE_EXTENSION ${BACKENDS:+BACKENDS="$BACKENDS"} | sed -nre 's#^LIBS: ?(.+)#\1#p'`"
 
 if [ $? != 0 ]; then
 	echo "failed."
