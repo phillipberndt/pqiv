@@ -117,6 +117,7 @@ pqiv 2.3 (Work in progress)
    [libspectre](http://www.freedesktop.org/wiki/Software/libspectre/)
  * Support for gtk+ 3.14
  * configure/Makefile updated to support (Free-)BSD
+ * Added ctrl + space/backspace hotkey for jumping to the next/previous directory
 
 pqiv 2.2
  * Accept URLs as command line arguments
