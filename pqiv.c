@@ -356,8 +356,9 @@ const char *long_description_text = ("Keyboard & Mouse bindings:\n"
 "  Backspace, Button 3, Scroll        Previous image\n"
 "  PgUp/PgDown                        Jump 10 images forwards/backwards\n"
 "  Escape, q, Button 2                Quit\n"
-"  Cursor keys, Drag & Drop           Move\n"
+"  Cursor keys, Drag & Drop           Move (CTRL to move faster)\n"
 "  Space, Button 1, Scroll            Next image\n"
+"  CTRL Space/Backspace               Move to first image in next/previous directory\n"
 "  f                                  Toggle fullscreen\n"
 "  j                                  Jump to an image (Shows a selection box)\n"
 "  r                                  Reload image\n"
@@ -367,7 +368,7 @@ const char *long_description_text = ("Keyboard & Mouse bindings:\n"
 "  h/v                                Flip horizontally/vertically\n"
 "  i                                  Toggle info box\n"
 "  s                                  Toggle slideshow mode\n"
-"  ctrl +/-                           Change slideshow interval\n"
+"  CTRL +/-                           Change slideshow interval\n"
 "  a                                  Hardlink current image to ./.pqiv-select\n"
 );
 
@@ -1555,6 +1556,103 @@ void relative_image_movement(ptrdiff_t movement) {/*{{{*/
 	BOSNode *target = bostree_node_weak_ref(bostree_select(file_tree, pos));
 	D_UNLOCK(file_tree);
 
+	absolute_image_movement(target);
+}/*}}}*/
+BOSNode *directory_image_movement_find_different_directory(BOSNode *current, int direction) {/*{{{*/
+	// Return a reference to the first image with a different directory than current
+	// when searching in direction direction (-1 or 1)
+	//
+	// This function does not perform any locking!
+	BOSNode *target = current;
+
+	if(FILE(current)->file_flags & FILE_FLAGS_MEMORY_IMAGE) {
+		target = direction > 0 ? bostree_next_node(target) : bostree_previous_node(target);
+		if(!target) {
+			target = direction > 0 ? bostree_select(file_tree, 0) : bostree_select(file_tree, bostree_node_count(file_tree) - 1);
+		}
+	}
+	else {
+		while(TRUE) {
+			// Select next image
+			target = direction > 0 ? bostree_next_node(target) : bostree_previous_node(target);
+			if(!target) {
+				target = direction > 0 ? bostree_select(file_tree, 0) : bostree_select(file_tree, bostree_node_count(file_tree) - 1);
+			}
+
+			// Check for special abort conditions: Again at first image (no different directory found),
+			// or memory image
+			if(target == current || (FILE(target)->file_flags & FILE_FLAGS_MEMORY_IMAGE)) {
+				break;
+			}
+
+			// Check if the directory changed. If it did, abort the search.
+			// Search for the first byte where the file names differ
+			unsigned int pos = 0;
+			while(FILE(target)->file_name[pos] && FILE(current)->file_name[pos] && FILE(target)->file_name[pos] == FILE(current)->file_name[pos]) {
+				pos++;
+			}
+
+			// The path changed if either
+			//  * the target file name contains a slash at or after pos
+			//    (e.g. current -> ./foo/bar.png, target -> ./foo2/baz.png)
+			//  * the current file name contains a slash at or after pos
+			//    (e.g. current -> ./foo/bar.png, target -> ./baz.png
+			gboolean directory_changed = FALSE;
+			for(unsigned int i=pos; FILE(target)->file_name[i]; i++) {
+				if(FILE(target)->file_name[i] == G_DIR_SEPARATOR) {
+					// Gotcha.
+					directory_changed = TRUE;
+					break;
+				}
+			}
+			if(!directory_changed) {
+				for(unsigned int i=pos; FILE(current)->file_name[i]; i++) {
+					if(FILE(current)->file_name[i] == G_DIR_SEPARATOR) {
+						directory_changed = TRUE;
+						break;
+					}
+				}
+			}
+			if(directory_changed) {
+				break;
+			}
+		}
+	}
+
+	return target;
+}/*}}}*/
+void directory_image_movement(int direction) {/*{{{*/
+	// Directory movement
+	//
+	// This should be consistent, i.e. movements in different directions should
+	// be inverse operations of each other. This makes this function slightly
+	// complex.
+
+	D_LOCK(file_tree);
+	BOSNode *target = current_file_node;
+	BOSNode *current = current_file_node;
+
+	if(direction == 1) {
+		// Forward searches are trivial
+		target = directory_image_movement_find_different_directory(current, 1);
+	}
+	else {
+		// Bardward searches are more involved, because we want to end up at the first image
+		// of the previous directory, not at the last one. The trick is to
+		// search backwards twice and then again go forward by one image.
+		target = directory_image_movement_find_different_directory(current, -1);
+		target = directory_image_movement_find_different_directory(target, -1);
+
+		if(target != current) {
+			target = bostree_next_node(target);
+			if(!target) {
+				target = bostree_select(file_tree, 0);
+			}
+		}
+	}
+
+	target = bostree_node_weak_ref(target);
+	D_UNLOCK(file_tree);
 	absolute_image_movement(target);
 }/*}}}*/
 void transform_current_image(cairo_matrix_t *transformation) {/*{{{*/
@@ -2906,11 +3004,21 @@ gboolean window_key_press_callback(GtkWidget *widget, GdkEventKey *event, gpoint
 			break;
 
 		case GDK_KEY_BackSpace:
-			relative_image_movement(-1);
+			if(event->state & GDK_CONTROL_MASK) {
+				directory_image_movement(-1);
+			}
+			else {
+				relative_image_movement(-1);
+			}
 			break;
 
 		case GDK_KEY_space:
-			relative_image_movement(1);
+			if(event->state & GDK_CONTROL_MASK) {
+				directory_image_movement(1);
+			}
+			else {
+				relative_image_movement(1);
+			}
 			break;
 
 		case GDK_KEY_Page_Up:
