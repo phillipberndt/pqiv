@@ -46,7 +46,7 @@ BOSNode *file_type_poppler_alloc(load_images_state_t state, file_t *file) {/*{{{
 			file_free(file);
 			return NULL;
 		}
-		PopplerDocument *poppler_document = poppler_document_new_from_stream(data, -1, NULL, &error_pointer);
+		PopplerDocument *poppler_document = poppler_document_new_from_stream(data, -1, NULL, NULL, &error_pointer);
 	#else
 		GBytes *data_bytes = buffered_file_as_bytes(file, NULL);
 		if(!data_bytes) {
