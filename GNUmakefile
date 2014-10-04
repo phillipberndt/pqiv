@@ -85,6 +85,13 @@ ifneq ($(PQIV_VERSION_STRING),)
 	PQIV_VERSION_FLAG=-DPQIV_VERSION=\"$(PQIV_VERSION_STRING)\"
 endif
 
+# Less verbose output
+ifndef VERBOSE
+	SILENT_CC=@echo   " CC  " $@;
+	SILENT_CCLD=@echo " CCLD" $@;
+	SILENT_GEN=@echo  " GEN " $@;
+endif
+
 # Assemble final compiler flags
 CFLAGS_REAL=-std=gnu99 $(PQIV_WARNING_FLAGS) $(PQIV_VERSION_FLAG) $(CFLAGS) $(shell $(PKG_CONFIG) --cflags "$(LIBS)")
 LDLIBS_REAL=$(shell $(PKG_CONFIG) --libs "$(LIBS)") $(LDLIBS)
@@ -94,14 +101,14 @@ all: pqiv$(EXECUTABLE_EXTENSION)
 .PHONY: get_libs get_available_backends _build_variables clean distclean install uninstall all
 
 pqiv$(EXECUTABLE_EXTENSION): $(OBJECTS)
-	$(CROSS)$(CC) $(CPPFLAGS) -o $@ $+ $(LDLIBS_REAL) $(LDFLAGS_REAL)
+	$(SILENT_CCLD) $(CROSS)$(CC) $(CPPFLAGS) -o $@ $+ $(LDLIBS_REAL) $(LDFLAGS_REAL)
 
 %.o: %.c
-	$(CROSS)$(CC) $(CPPFLAGS) -c -o $@ $(CFLAGS_REAL) $+
+	$(SILENT_CC) $(CROSS)$(CC) $(CPPFLAGS) -c -o $@ $(CFLAGS_REAL) $+
 
 $(BACKENDS_INITIALIZER).c:
 	@$(foreach BACKEND, $(sort $(BACKENDS)), [ -e backends/$(BACKEND).c ] || { echo; echo "Backend $(BACKEND) not found!" >&2; exit 1; };)
-	( \
+	$(SILENT_GEN) ( \
 		echo '/* Auto-Generated file by Make. */'; \
 		echo '#include "../pqiv.h"'; \
 		echo "file_type_handler_t file_type_handlers[$(words $(BACKENDS)) + 1];"; \
