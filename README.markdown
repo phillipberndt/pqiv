@@ -64,7 +64,7 @@ related build-time dependencies are also run-time dependencies. If you need
 a shared version of the backends, for example for separate packaging of
 the binaries, let me know. It's quite easy to implement that.
 
-There are experimental, nightly [static builds available for download](http://page.mi.fu-berlin.de/pberndt/pqiv-builds/) for Windows and Linux: ![Build status](http://page.mi.fu-berlin.de/pberndt/pqiv-builds/ci.gif)
+There are experimental, nightly [static builds available for download](http://page.mi.fu-berlin.de/pberndt/pqiv-builds/) for Windows and Linux: ![Build status](http://page.mi.fu-berlin.de/pberndt/pqiv-builds/ci.php)
 
 Thanks
 ------
