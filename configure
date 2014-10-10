@@ -78,8 +78,8 @@ while [ $# -gt 0 ]; do
 			;;
 		--mandir)
 			MANDIR=${VALUE}
-			MANDIR="${MANDIR//\{/\(}"
-			MANDIR="${MANDIR//\}/\)}"
+			MANDIR="${MANDIR//\{/(}"
+			MANDIR="${MANDIR//\}/)}"
 			MANDIR="${MANDIR//prefix/PREFIX}"
 			echo "Use of autoconf option --mandir is discouraged, because support is incomplete. Rewrote \`$VALUE' to \`$MANDIR' and used that as the MANDIR Make variable." >&2
 			;;
