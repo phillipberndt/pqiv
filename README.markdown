@@ -58,6 +58,7 @@ You'll need
  * gdk 2.8
  * libspectre (any version, optional, for ps/eps support)
  * poppler (any version, optional, for pdf support)
+ * MagickWand (any version, optional, for additional image formats)
 
 The backends are currently statically linked into the code, so all backend
 related build-time dependencies are also run-time dependencies. If you need
@@ -119,6 +120,8 @@ pqiv 2.3 (Work in progress)
    [poppler](http://poppler.freedesktop.org/)
  * Added optional support for PS-files through
    [libspectre](http://www.freedesktop.org/wiki/Software/libspectre/)
+ * Added optional support for more image formats through
+   [ImageMagick's MagickWand](http://www.imagemagick.org/script/magick-wand.php)
  * Support for gtk+ 3.14
  * configure/Makefile updated to support (Free-)BSD
  * Added ctrl + space/backspace hotkey for jumping to the next/previous directory
