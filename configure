@@ -38,7 +38,8 @@ options:
                         Available:
                           gdkpixbuf (images),
                           poppler (PDF),
-                          spectre (PS/EPS)
+                          spectre (PS/EPS),
+                          wand (ImageMagick, various formats)
 
 EOF
 }
