@@ -146,7 +146,9 @@ void file_type_wand_initializer(file_type_handler_t *info) {/*{{{*/
 	char **formats = MagickQueryFormats("*", &count);
 	for(i=0; i<count; i++) {
 		// Skip some broken formats
-		if(!strcmp(formats[i], "DJVU")) continue; // DJVU crashes my development PC
+		if(!strcmp(formats[i], "DJVU")) continue;              // DJVU crashes my development PC
+		if(formats[i][0] != 0 && formats[i][1] == 0) continue; // One letter extensions are too random to be sure it's an image,
+		                                                       // and hence they are raw format's would always succeed to load
 
 		gchar *ext = g_ascii_strdown(formats[i], -1);
 		gchar *format = g_strdup_printf("*.%s", ext);
