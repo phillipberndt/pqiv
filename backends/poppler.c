@@ -169,6 +169,7 @@ void file_type_poppler_initializer(file_type_handler_t *info) {/*{{{*/
 	// Fill the file filter pattern
 	info->file_types_handled = gtk_file_filter_new();
 	gtk_file_filter_add_pattern(info->file_types_handled, "*.pdf");
+	gtk_file_filter_add_mime_type(info->file_types_handled, "application/pdf");
 
 	// Assign the handlers
 	info->alloc_fn                 =  file_type_poppler_alloc;

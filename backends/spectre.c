@@ -198,6 +198,8 @@ void file_type_spectre_initializer(file_type_handler_t *info) {/*{{{*/
 	info->file_types_handled = gtk_file_filter_new();
 	gtk_file_filter_add_pattern(info->file_types_handled, "*.ps");
 	gtk_file_filter_add_pattern(info->file_types_handled, "*.eps");
+	gtk_file_filter_add_mime_type(info->file_types_handled, "application/postscript");
+	gtk_file_filter_add_mime_type(info->file_types_handled, "image/x-eps");
 
 	// Assign the handlers
 	info->alloc_fn                 =  file_type_spectre_alloc;

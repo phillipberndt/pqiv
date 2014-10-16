@@ -746,6 +746,41 @@ GBytes *g_input_stream_read_completely(GInputStream *input_stream, GCancellable 
 	}
 	return g_bytes_new_take((guint8*)data, data_length);
 }/*}}}*/
+GFile *gfile_for_commandline_arg(const char *parameter) {/*{{{*/
+		// Support for URIs is an extra feature. To prevent breaking compatibility,
+		// always prefer existing files over URI interpretation.
+		// For example, all files containing a colon cannot be read using the
+		// g_file_new_for_commandline_arg command, because they are interpreted
+		// as an URI with an unsupported scheme.
+		if(g_file_test(parameter, G_FILE_TEST_EXISTS)) {
+			return g_file_new_for_path(parameter);
+		}
+		else {
+			return g_file_new_for_commandline_arg(parameter);
+		}
+}/*}}}*/
+gboolean load_images_handle_parameter_find_handler(const char *param, load_images_state_t state, file_t *file, GtkFileFilterInfo *file_filter_info) {/*{{{*/
+	// Check if one of the file type handlers can handle this file
+	file_type_handler_t *file_type_handler = &file_type_handlers[0];
+	while(file_type_handler->file_types_handled) {
+		if(gtk_file_filter_filter(file_type_handler->file_types_handled, file_filter_info) == TRUE) {
+			file->file_type = file_type_handler;
+
+			// Handle using this handler
+			if(file_type_handler->alloc_fn != NULL) {
+				file_type_handler->alloc_fn(state, file);
+			}
+			else {
+				load_images_handle_parameter_add_file(state, file);
+			}
+			return TRUE;
+		}
+
+		file_type_handler++;
+	}
+
+	return FALSE;
+}/*}}}*/
 void load_images_handle_parameter(char *param, load_images_state_t state, gint depth) {/*{{{*/
 	file_t *file;
 
@@ -753,8 +788,6 @@ void load_images_handle_parameter(char *param, load_images_state_t state, gint d
 	if(state == PARAMETER && g_strcmp0(param, "-") == 0) {
 		file = g_new0(file_t, 1);
 		file->file_flags = FILE_FLAGS_MEMORY_IMAGE;
-		// TODO Guess the file type instead of using the default one
-		file->file_type = &file_type_handlers[0];
 		file->display_name = g_strdup("-");
 		file->file_name = g_strdup("-");
 
@@ -774,9 +807,25 @@ void load_images_handle_parameter(char *param, load_images_state_t state, gint d
 		}
 		g_object_unref(stdin_stream);
 
-		// Add assuming default file type
-		// TODO Guess
-		file->file_type->alloc_fn(state, file);
+		// Based on the file data, make a guess on the mime type
+		gsize file_content_size;
+		gconstpointer file_content = g_bytes_get_data(file->file_data, &file_content_size);
+		gchar *file_content_type = g_content_type_guess(NULL, file_content, file_content_size, NULL);
+		gchar *file_mime_type = g_content_type_get_mime_type(file_content_type);
+		g_free(file_content_type);
+
+		GtkFileFilterInfo mime_guesser;
+		mime_guesser.contains = GTK_FILE_FILTER_MIME_TYPE;
+		mime_guesser.mime_type = file_mime_type;
+
+		if(!load_images_handle_parameter_find_handler(param, state, file, &mime_guesser)) {
+			// As a last resort, use the default file type handler
+			g_printerr("Didn't recognize memory file: Its MIME-type `%s' is unknown. Fall-back to default file handler.\n", file_mime_type);
+			file->file_type = &file_type_handlers[0];
+			file->file_type->alloc_fn(state, file);
+		}
+
+		g_free(file_mime_type);
 	}
 	else {
 		// If the browse option is enabled, add the containing directory's images instead of the parameter itself
@@ -884,33 +933,19 @@ void load_images_handle_parameter(char *param, load_images_state_t state, gint d
 			return;
 		}
 
+		// Prepare file structure
+		file = g_new0(file_t, 1);
+		file->file_name = g_strdup(param);
+		file->display_name = g_filename_display_name(file->file_name);
+
 		// Filter based on formats supported by the different handlers
 		gchar *param_lowerc = g_utf8_strdown(param, -1);
 		load_images_file_filter_info->filename = load_images_file_filter_info->display_name = param_lowerc;
 
 		// Check if one of the file type handlers can handle this file
-		size_t n = 0;
-		file_type_handler_t *file_type_handler = &file_type_handlers[0];
-		while(file_type_handler->file_types_handled) {
-			if(gtk_file_filter_filter(file_type_handler->file_types_handled, load_images_file_filter_info) == TRUE) {
-				// Prepare file structure
-				file = g_new0(file_t, 1);
-				file->file_name = g_strdup(param);
-				file->file_type = file_type_handler;
-				file->display_name = g_filename_display_name(param);
-
-				// Handle using this handler
-				if(file_type_handler->alloc_fn != NULL) {
-					file_type_handler->alloc_fn(state, file);
-				}
-				else {
-					load_images_handle_parameter_add_file(state, file);
-				}
-				return;
-			}
-
-			n++;
-			file_type_handler++;
+		if(load_images_handle_parameter_find_handler(param, state, file, load_images_file_filter_info)) {
+			g_free(param_lowerc);
+			return;
 		}
 		g_free(param_lowerc);
 
@@ -920,16 +955,38 @@ void load_images_handle_parameter(char *param, load_images_state_t state, gint d
 			return;
 		}
 
-		// Assume that this file is handled by the default handler
-		// TODO Guess file type?!
+		// Make a final attempt to guess the file type by mime type
+		GFile *param_file = gfile_for_commandline_arg(param);
+		if(!param_file) {
+			return;
+		}
+
+		GFileInfo *file_info = g_file_query_info(param_file, G_FILE_ATTRIBUTE_STANDARD_CONTENT_TYPE, G_FILE_QUERY_INFO_NONE, NULL, NULL);
+		if(file_info) {
+			gchar *param_file_mime_type = g_content_type_get_mime_type(g_file_info_get_content_type(file_info));
+
+			GtkFileFilterInfo mime_guesser;
+			mime_guesser.contains = GTK_FILE_FILTER_MIME_TYPE;
+			mime_guesser.mime_type = param_file_mime_type;
+
+			if(load_images_handle_parameter_find_handler(param, state, file, &mime_guesser)) {
+				g_free(param_file_mime_type);
+				g_object_unref(param_file);
+				g_object_unref(file_info);
+				return;
+			}
+			else {
+				g_free(param_file_mime_type);
+				g_object_unref(param_file);
+				g_object_unref(file_info);
+				g_printerr("Didn't recognize file `%s': Both its extension and MIME-type `%s' are unknown. Fall-back to default file handler.\n", param, param_file_mime_type);
+			}
+		}
+
+		// If nothing else worked, assume that this file is handled by the default handler
 
 		// Prepare file structure
-		file = g_new0(file_t, 1);
-		file->file_name = g_strdup(param);
 		file->file_type = &file_type_handlers[0];
-		file->display_name = g_filename_display_name(file->file_name);
-
-		// TODO If we guess the file type, do not assume there is an alloc_fn!
 		file_type_handlers[0].alloc_fn(state, file);
 	}
 }/*}}}*/
@@ -1239,22 +1296,11 @@ GInputStream *image_loader_stream_file(file_t *file, GError **error_pointer) {/*
 	else {
 		// Classical file or URI
 
-		GFile *input_file = NULL;
 		if(image_loader_cancellable) {
 			g_cancellable_reset(image_loader_cancellable);
 		}
 
-		// Support for URIs is an extra feature. To prevent breaking compatibility,
-		// always prefer existing files over URI interpretation.
-		// For example, all files containing a colon cannot be read using the
-		// g_file_new_for_commandline_arg command, because they are interpreted
-		// as an URI with an unsupported scheme.
-		if(g_file_test(file->file_name, G_FILE_TEST_EXISTS)) {
-			input_file = g_file_new_for_path(file->file_name);
-		}
-		else {
-			input_file = g_file_new_for_commandline_arg(file->file_name);
-		}
+		GFile *input_file = gfile_for_commandline_arg(file->file_name);
 
 		if(!input_file) {
 			return NULL;

@@ -158,6 +158,9 @@ void file_type_wand_initializer(file_type_handler_t *info) {/*{{{*/
 	}
 	MagickRelinquishMemory(formats);
 
+	// Magick Wand does not give us MIME types. Manually add the most interesting one:
+	gtk_file_filter_add_mime_type(info->file_types_handled, "image/vnd.adobe.photoshop");
+
 	// Assign the handlers
 	info->alloc_fn                 =  file_type_wand_alloc;
 	info->free_fn                  =  file_type_wand_free;
