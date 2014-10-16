@@ -50,15 +50,19 @@ optional if you only want gdk-pixbuf support and will autodetermine which
 backends to build if invoked without parameters.
 
 You'll need
+
  * gtk+ 3.0 *or* gtk+ 2.6
  * gdk-pixbuf 2.2 (included in gtk+)
  * glib 2.6
  * cairo 1.6
  * gio 2.0
  * gdk 2.8
- * libspectre (any version, optional, for ps/eps support)
- * poppler (any version, optional, for pdf support)
- * MagickWand (any version, optional, for additional image formats)
+
+and optionally also
+
+ * libspectre (any version, for ps/eps support)
+ * poppler (any version, for pdf support)
+ * MagickWand (any version, for additional image formats like psd)
 
 The backends are currently statically linked into the code, so all backend
 related build-time dependencies are also run-time dependencies. If you need
