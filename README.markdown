@@ -129,6 +129,7 @@ pqiv 2.3 (Work in progress)
  * Support for gtk+ 3.14
  * configure/Makefile updated to support (Free-)BSD
  * Added ctrl + space/backspace hotkey for jumping to the next/previous directory
+ * Improved pqiv's reaction if a file is removed
 
 pqiv 2.2
  * Accept URLs as command line arguments

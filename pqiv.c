@@ -700,7 +700,7 @@ BOSNode *load_images_handle_parameter_add_file(load_images_state_t state, file_t
 		new_node = bostree_insert(file_tree, (void *)index, file);
 	}
 	else {
-		new_node = bostree_insert(file_tree, file->display_name, file);
+		new_node = bostree_insert(file_tree, file->file_name, file);
 	}
 	if(state == BROWSE_ORIGINAL_PARAMETER && browse_startup_node == NULL) {
 		browse_startup_node = bostree_node_weak_ref(new_node);
@@ -935,8 +935,28 @@ void load_images_handle_parameter(char *param, load_images_state_t state, gint d
 
 		// Prepare file structure
 		file = g_new0(file_t, 1);
-		file->file_name = g_strdup(param);
-		file->display_name = g_filename_display_name(file->file_name);
+		file->display_name = g_filename_display_name(param);
+
+		// In sorting/watch-directories mode, we store the full path to the file in file_name, to be able
+		// to identify the file if it is deleted
+		if(option_watch_directories && option_sort) {
+			char abs_path[PATH_MAX];
+			if(
+				#ifdef _WIN32
+					GetFullPathNameA(param, PATH_MAX, abs_path, NULL) != 0
+				#else
+					realpath(param, abs_path) != NULL
+				#endif
+			) {
+				file->file_name = g_strdup(abs_path);
+			}
+			else {
+				file->file_name = g_strdup(param);
+			}
+		}
+		else {
+			file->file_name = g_strdup(param);
+		}
 
 		// Filter based on formats supported by the different handlers
 		gchar *param_lowerc = g_utf8_strdown(param, -1);
@@ -1119,8 +1139,27 @@ void image_file_updated_callback(GFileMonitor *monitor, GFile *file, GFile *othe
 	BOSNode *node = (BOSNode *)user_data;
 
 	if(event_type == G_FILE_MONITOR_EVENT_CHANGES_DONE_HINT) {
-		((file_t *)node->data)->is_loaded = FALSE;
+		unload_image(node);
 		queue_image_load(node);
+	}
+	if(event_type == G_FILE_MONITOR_EVENT_DELETED) {
+		// It is a difficult decision what to do here. We could either unload the deleted
+		// image and jump to the next one, or ignore this event. I see use-cases for both.
+		// Ultimatively, it feels more consistent to unload it: The same reasons why a user
+		// wouldn't want pqiv to unload an image if it was deleted would also apply to
+		// reloading upon changes. The one exception I see to this rule is when the current
+		// image is the last in the directory: Unloading it would cause pqiv to leave.
+		// A typical use case for pqiv is a picture frame on an Raspberry Pi, where users
+		// periodically exchange images using scp. There might be a race condition if a user
+		// is not aware that he should first move the new images to a folder and then remove
+		// the old ones. Therefore, if there is only one image remaining, pqiv does nothing.
+		//
+		// If anyone ever complains about this it would be best to add an option to entirely
+		// disable this functionality.
+		if(bostree_node_count(file_tree) > 1) {
+			unload_image(node);
+			queue_image_load(node);
+		}
 	}
 }/*}}}*/
 gboolean window_move_helper_callback(gpointer user_data) {/*{{{*/
