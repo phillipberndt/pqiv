@@ -985,21 +985,23 @@ void load_images_handle_parameter(char *param, load_images_state_t state, gint d
 		if(file_info) {
 			gchar *param_file_mime_type = g_content_type_get_mime_type(g_file_info_get_content_type(file_info));
 
-			GtkFileFilterInfo mime_guesser;
-			mime_guesser.contains = GTK_FILE_FILTER_MIME_TYPE;
-			mime_guesser.mime_type = param_file_mime_type;
+			if(param_file_mime_type) {
+				GtkFileFilterInfo mime_guesser;
+				mime_guesser.contains = GTK_FILE_FILTER_MIME_TYPE;
+				mime_guesser.mime_type = param_file_mime_type;
 
-			if(load_images_handle_parameter_find_handler(param, state, file, &mime_guesser)) {
-				g_free(param_file_mime_type);
-				g_object_unref(param_file);
-				g_object_unref(file_info);
-				return;
-			}
-			else {
-				g_free(param_file_mime_type);
-				g_object_unref(param_file);
-				g_object_unref(file_info);
-				g_printerr("Didn't recognize file `%s': Both its extension and MIME-type `%s' are unknown. Fall-back to default file handler.\n", param, param_file_mime_type);
+				if(load_images_handle_parameter_find_handler(param, state, file, &mime_guesser)) {
+					g_free(param_file_mime_type);
+					g_object_unref(param_file);
+					g_object_unref(file_info);
+					return;
+				}
+				else {
+					g_printerr("Didn't recognize file `%s': Both its extension and MIME-type `%s' are unknown. Fall-back to default file handler.\n", param, param_file_mime_type);
+					g_free(param_file_mime_type);
+					g_object_unref(param_file);
+					g_object_unref(file_info);
+				}
 			}
 		}
 
