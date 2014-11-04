@@ -657,23 +657,14 @@ void load_images_directory_watch_callback(GFileMonitor *monitor, GFile *file, GF
 			g_free(name);
 		}
 	}
-	else if(option_sort && event_type == G_FILE_MONITOR_EVENT_DELETED) {
-		// We can react on delete events only if the file tree is sorted. If it is not,
-		// the effort to search the node to delete would be too high. The node will be
-		// deleted once the user tries to access it.
-		D_LOCK(file_tree);
-		gchar *name = g_file_get_path(file);
-		BOSNode *node = bostree_lookup(file_tree, name);
-		if(node != NULL && node != current_file_node) {
-			bostree_remove(file_tree, node);
-		}
-		g_free(name);
-		D_UNLOCK(file_tree);
-
-		// Update the info text
-		update_info_text(NULL);
-		info_text_queue_redraw();
-	}
+	// We cannot reliably react on G_FILE_MONITOR_EVENT_DELETED here, because either the tree
+	// is unsorted, in which case it is indexed by numbers, or it is sorted by the display
+	// name (important for multi-page documents!), which can be a relative name that is not
+	// lookupable as well.
+	//
+	// Therefore we do not remove files here, but instead rely on nodes being deleted once the
+	// user tries to access then. For already loaded files (i.e. also the next/previous one),
+	// the file watch is used to remove the files.
 }/*}}}*/
 BOSNode *load_images_handle_parameter_add_file(load_images_state_t state, file_t *file) {/*{{{*/
 	// Add image to images list/tree
@@ -700,7 +691,7 @@ BOSNode *load_images_handle_parameter_add_file(load_images_state_t state, file_t
 		new_node = bostree_insert(file_tree, (void *)index, file);
 	}
 	else {
-		new_node = bostree_insert(file_tree, file->file_name, file);
+		new_node = bostree_insert(file_tree, file->display_name, file);
 	}
 	if(state == BROWSE_ORIGINAL_PARAMETER && browse_startup_node == NULL) {
 		browse_startup_node = bostree_node_weak_ref(new_node);
