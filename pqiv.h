@@ -70,6 +70,13 @@ typedef struct {
 	guint width;
 	guint height;
 
+	// Whether this image has been seen by the user yet
+	// This is used for shuffle mode, to make sure that even if a user
+	// toggled between shuffle/sequential mode, shuffle displays new images
+	// before ones that a user already saw before. Once all images have been
+	// seen, this flag is reset to FALSE for all images.
+	gboolean has_been_seen;
+
 	// File-type specific data, allocated and freed by the file type handlers
 	void *private;
 } file_t;

@@ -256,6 +256,17 @@ guint current_image_animation_timeout_id = 0;
 // source set, anything bigger than that actually is a slideshow id.
 gint slideshow_timeout_id = -1;
 
+// PRNG for shuffle mode
+// We use a linear congruential generator because it is easy to invert its
+// operation, garantuee full cycles, and its randomness is sufficient for
+// shuffling some images around.
+struct {
+	size_t m;     // Modulus
+	size_t a;     // Multiplier
+	size_t a_inv; // Multiplicative inverse of a mod m
+	size_t c;     // Constant that is added each time
+} prng_options;
+
 // User options
 gchar *external_image_filter_commands[] = {
 	NULL,
@@ -362,6 +373,7 @@ const char *long_description_text = ("Keyboard & Mouse bindings:\n"
 "  f                                  Toggle fullscreen\n"
 "  j                                  Jump to an image (Shows a selection box)\n"
 "  r                                  Reload image\n"
+"  CTRL r                             Toggle shuffle mode\n"
 "  +/-/0, Button 3 & Drag             Zoom in/out/reset zoom\n"
 "  t                                  Toggle autoscale\n"
 "  l/k                                Rotate left/right\n"
@@ -385,6 +397,7 @@ gboolean main_window_center();
 void window_screen_changed_callback(GtkWidget *widget, GdkScreen *previous_screen, gpointer user_data);
 gboolean image_loader_load_single(BOSNode *node, gboolean called_from_main);
 gboolean fading_timeout_callback(gpointer user_data);
+BOSNode *relative_image_movement_ptr(ptrdiff_t movement);
 void queue_image_load(BOSNode *);
 void unload_image(BOSNode *);
 gboolean initialize_gui_callback(gpointer);
@@ -686,7 +699,7 @@ BOSNode *load_images_handle_parameter_add_file(load_images_state_t state, file_t
 			}
 		}
 		else {
-			*index = (float)(option_shuffle ? g_random_int() : bostree_node_count(file_tree));
+			*index = (float)bostree_node_count(file_tree);
 		}
 		new_node = bostree_insert(file_tree, (void *)index, file);
 	}
@@ -1569,20 +1582,19 @@ gboolean absolute_image_movement(BOSNode *ref) {/*{{{*/
 	// No need to continue the other pending loads
 	abort_pending_image_loads(node);
 
-	BOSNode *new_prev = bostree_previous_node(node);
-	if(!new_prev) {
-		new_prev = bostree_select(file_tree, bostree_node_count(file_tree) - 1);
-	}
-	BOSNode *new_next = bostree_next_node(node);
-	if(!new_next) {
-		new_next = bostree_select(file_tree, 0);
-	}
-
 	// Check which images have to be loaded
 	if(current_file_node != NULL) {
 		bostree_node_weak_unref(file_tree, current_file_node);
 	}
 	current_file_node = bostree_node_weak_ref(node);
+	CURRENT_FILE->has_been_seen = TRUE;
+
+	// Next and previous image to preload
+	// We use these helper functions because "next" and "previous" don't need to
+	// be sequential but can be shuffled
+	BOSNode *new_prev = relative_image_movement_ptr(-1);
+	BOSNode *new_next = relative_image_movement_ptr(1);
+
 	D_UNLOCK(file_tree);
 
 	// If the new image has not been loaded yet, display an information message
@@ -1622,17 +1634,130 @@ gboolean absolute_image_movement(BOSNode *ref) {/*{{{*/
 
 	return FALSE;
 }/*}}}*/
+void relative_image_movement_prng_init(size_t modulus) {/*{{{*/
+	prng_options.m = modulus;
+
+	// (a-1) must share m's prime factors
+	prng_options.a = 1;
+	for(size_t n=2; n<prng_options.m; n++) {
+		// Does this divide m?
+		if(prng_options.m % n != 0) {
+			continue;
+		}
+
+		// Check if n is prime
+		gboolean is_prime = TRUE;
+		size_t sqrt_n = (size_t)(sqrt(n) + 1.);
+		for(size_t m=2; m<sqrt_n; m++) {
+			if(n % m == 0) {
+				is_prime = FALSE;
+				break;
+			}
+		}
+		if(!is_prime) {
+			continue;
+		}
+
+		// If it is, multiply the (a-1) candidate by n
+		prng_options.a *= n;
+	}
+	// We are free to multiply a by more random integers, as long as
+	// a stays below m
+	size_t upper_end = prng_options.m / prng_options.a;
+	if(upper_end > 1 && upper_end < (size_t)(2<<30) /* gint32 */) {
+		prng_options.a *= g_random_int_range(1, (gint32)upper_end);
+	}
+	prng_options.a += 1;
+
+	// Find a_inv using the extended euclid algorithm
+	ptrdiff_t s0 = 1, s1 = 0, a = prng_options.a, b = prng_options.m;
+	while(b != 0) {
+		ptrdiff_t q = a / b;
+		ptrdiff_t res = a - q * b;
+		a = b;
+		b = res;
+		res = s0 - q * s1;
+		s0 = s1;
+		s1 = res;
+	}
+	// Reminder: a%m is NOT modulo, but remainder!
+	while(s0 < 0) {
+		s0 += prng_options.m;
+	}
+	prng_options.a_inv = (size_t)(s0 % prng_options.m);
+
+	// Choose a suitable c
+	// c can be any random integer from 0..m-1, but must be relatively prime
+	// to m
+	do {
+		prng_options.c = g_random_int_range(1, (prng_options.m > (size_t)(2<<30)) ? (gint32)(2<<30) : (gint32)prng_options.m);
+		a = prng_options.c;
+		b = prng_options.m;
+		while(b != 0) {
+			size_t res = a % b;
+			a = b;
+			b = res;
+		}
+	} while(a != 1);
+}/*}}}*/
+BOSNode *relative_image_movement_ptr(ptrdiff_t movement) {/*{{{*/
+	// Return a pointer to the node that is "movement" far away from the
+	// current file node, taking random movement into account
+	//
+	// Only run this with the file tree mutex locked!
+	//
+	size_t count = bostree_node_count(file_tree);
+	BOSNode *target = NULL;
+
+	if(option_shuffle) {
+		// In shuffle mode, we do all the randomness magic here:
+		if(prng_options.m != count) {
+			relative_image_movement_prng_init(count);
+		}
+		size_t index = bostree_rank(current_file_node);
+		size_t pos = index;
+		do {
+			if(movement > 0) {
+				pos = (pos * prng_options.a + prng_options.c) % prng_options.m;
+			}
+			else {
+				pos = (((pos - prng_options.c + (prng_options.c > pos ? prng_options.m : 0)) % prng_options.m) * prng_options.a_inv) % prng_options.m;
+			}
+
+			if(pos == index) {
+				// Special situation: If we arrived at the original image
+				// again, all images have been seen (because our PRNG has a
+				// full cycle)
+				for(BOSNode *node = bostree_select(file_tree, 0); node; node = bostree_next_node(node)) {
+					FILE(node)->has_been_seen = FALSE;
+				}
+			}
+		} while(pos > count || (movement > 0 && FILE(bostree_select(file_tree, pos))->has_been_seen));
+		target = bostree_node_weak_ref(bostree_select(file_tree, pos));
+	}
+	else {
+		ptrdiff_t pos = bostree_rank(current_file_node) + movement;
+		while(pos < 0) {
+			pos += count;
+		}
+		pos %= count;
+		target = bostree_node_weak_ref(bostree_select(file_tree, pos));
+	}
+
+	return target;
+}/*}}}*/
 void relative_image_movement(ptrdiff_t movement) {/*{{{*/
 	// Calculate new position
 	D_LOCK(file_tree);
-	size_t count = bostree_node_count(file_tree);
-	ptrdiff_t pos = bostree_rank(current_file_node) + movement;
-	while(pos < 0) {
-		pos += count;
+	BOSNode *target = relative_image_movement_ptr(movement);
+	if(!target) {
+		return;
 	}
-	pos %= count;
-	BOSNode *target = bostree_node_weak_ref(bostree_select(file_tree, pos));
+	target = bostree_node_weak_ref(target);
 	D_UNLOCK(file_tree);
+
+	// TODO Is this a good solution? If going backward, mark the current image as not seen, such that moving forward will again display it
+	CURRENT_FILE->has_been_seen = FALSE;
 
 	absolute_image_movement(target);
 }/*}}}*/
@@ -2974,6 +3099,13 @@ gboolean window_key_press_callback(GtkWidget *widget, GdkEventKey *event, gpoint
 
 		case GDK_KEY_r:
 		case GDK_KEY_R:
+			if(event->state & GDK_CONTROL_MASK) {
+				option_shuffle = !option_shuffle;
+				update_info_text(option_shuffle ? "Shuffle mode enabled" : "Shuffle mode disabled");
+				gtk_widget_queue_draw(GTK_WIDGET(main_window));
+				break;
+			}
+
 			CURRENT_FILE->is_loaded = FALSE;
 			update_info_text("Reloading image..");
 			queue_image_load(current_file_node);
@@ -3588,10 +3720,6 @@ int main(int argc, char *argv[]) {
 
 	parse_configuration_file(&argc, &argv);
 	parse_command_line(&argc, argv);
-	if(option_sort && option_shuffle) {
-		g_printerr("--shuffle conflicts with --sort.\n");
-		exit(1);
-	}
 	if(fabs(option_initial_scale - 1.0) < 2 * FLT_MIN) {
 		option_initial_scale_used = TRUE;
 	}
