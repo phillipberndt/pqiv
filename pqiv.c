@@ -1637,6 +1637,9 @@ gboolean absolute_image_movement(BOSNode *ref) {/*{{{*/
 void relative_image_movement_prng_init(size_t modulus) {/*{{{*/
 	prng_options.m = modulus;
 
+	// We use Knuth's theorem to choose the parameters:
+	// see Donald E. Knuth, The Art of Computer Programming, Volume 2, 3rd Edition, pp. 17–19 (via Wikipedia on Linear congurential generators)
+
 	// (a-1) must share m's prime factors
 	prng_options.a = 1;
 	for(size_t n=2; n<prng_options.m; n++) {
@@ -1661,6 +1664,11 @@ void relative_image_movement_prng_init(size_t modulus) {/*{{{*/
 		// If it is, multiply the (a-1) candidate by n
 		prng_options.a *= n;
 	}
+	if(prng_options.a == 1 && modulus > 2) {
+		// m is prime. Use (m+1) as modulus instead of m, such that this construction still holds
+		relative_image_movement_prng_init(modulus + 1);
+		return;
+	}
 	// We are free to multiply a by more random integers, as long as
 	// a stays below m
 	size_t upper_end = prng_options.m / prng_options.a;
@@ -1680,7 +1688,7 @@ void relative_image_movement_prng_init(size_t modulus) {/*{{{*/
 		s0 = s1;
 		s1 = res;
 	}
-	// Reminder: a%m is NOT modulo, but remainder!
+	// a%m is *not* modulo, but the remainder! Therefore we need to add m until s0 is positive
 	while(s0 < 0) {
 		s0 += prng_options.m;
 	}
@@ -1711,7 +1719,7 @@ BOSNode *relative_image_movement_ptr(ptrdiff_t movement) {/*{{{*/
 
 	if(option_shuffle) {
 		// In shuffle mode, we do all the randomness magic here:
-		if(prng_options.m != count) {
+		if(prng_options.m < count || prng_options.m > 10 * count) {
 			relative_image_movement_prng_init(count);
 		}
 		size_t index = bostree_rank(current_file_node);
@@ -1721,7 +1729,11 @@ BOSNode *relative_image_movement_ptr(ptrdiff_t movement) {/*{{{*/
 				pos = (pos * prng_options.a + prng_options.c) % prng_options.m;
 			}
 			else {
-				pos = (((pos - prng_options.c + (prng_options.c > pos ? prng_options.m : 0)) % prng_options.m) * prng_options.a_inv) % prng_options.m;
+				// The backwards formula looks this complicated because a%b is
+				// not a mod b, but the remainder function, and backwards
+				// movement can yield negative positions
+				ptrdiff_t signed_pos = ((((ptrdiff_t)pos - prng_options.c + (prng_options.c > pos ? prng_options.m : 0)) % prng_options.m) * prng_options.a_inv);
+				pos = (signed_pos + (signed_pos < 0 ? count : 0)) % prng_options.m;
 			}
 
 			if(pos == index) {
@@ -1731,6 +1743,7 @@ BOSNode *relative_image_movement_ptr(ptrdiff_t movement) {/*{{{*/
 				for(BOSNode *node = bostree_select(file_tree, 0); node; node = bostree_next_node(node)) {
 					FILE(node)->has_been_seen = FALSE;
 				}
+				relative_image_movement_prng_init(count);
 			}
 		} while(pos > count || (movement > 0 && FILE(bostree_select(file_tree, pos))->has_been_seen));
 		target = bostree_node_weak_ref(bostree_select(file_tree, pos));
