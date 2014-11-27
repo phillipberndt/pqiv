@@ -2961,6 +2961,8 @@ gboolean window_key_press_callback(GtkWidget *widget, GdkEventKey *event, gpoint
 				option_scale = 0;
 			}
 			current_image_drawn = FALSE;
+			current_shift_x = 0;
+			current_shift_y = 0;
 			set_scale_level_for_screen();
 			main_window_adjust_for_image();
 			invalidate_current_scaled_image_surface();
