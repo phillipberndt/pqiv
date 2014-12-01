@@ -90,7 +90,9 @@ void file_type_wand_load(file_t *file, GInputStream *data, GError **error_pointe
 		file->file_flags |= FILE_FLAGS_ANIMATION;
 	}
 	else {
-		MagickMergeImageLayers(private->wand, MergeLayer);
+		MagickWand *wand = MagickMergeImageLayers(private->wand, FlattenLayer);
+		DestroyMagickWand(private->wand);
+		private->wand = wand;
 		MagickResetIterator(private->wand);
 	}
 	MagickNextImage(private->wand);
