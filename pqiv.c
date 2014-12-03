@@ -195,14 +195,8 @@ GTimer *load_images_timer;
 // Remember to always lock file_tree!
 #define FILE(x) ((file_t *)(x)->data)
 #define CURRENT_FILE FILE(current_file_node)
-BOSNode *next_file() {
-	BOSNode *ret = bostree_next_node(current_file_node);
-	return ret ? ret : bostree_select(file_tree, 0);
-}
-BOSNode *previous_file() {
-	BOSNode *ret = bostree_previous_node(current_file_node);
-	return ret ? ret : bostree_select(file_tree, bostree_node_count(file_tree) - 1);
-}
+#define next_file() relative_image_pointer(1)
+#define previous_file() relative_image_pointer(-1)
 
 // The node to be displayed first, used in conjunction with --browse
 BOSNode *browse_startup_node = NULL;
@@ -255,6 +249,9 @@ guint current_image_animation_timeout_id = 0;
 // -1 means no slideshow, 0 means active slideshow but no current timeout
 // source set, anything bigger than that actually is a slideshow id.
 gint slideshow_timeout_id = -1;
+
+// A list containing references to the images in shuffled order
+GList *shuffled_images_list = NULL;
 
 // User options
 gchar *external_image_filter_commands[] = {
@@ -362,6 +359,7 @@ const char *long_description_text = ("Keyboard & Mouse bindings:\n"
 "  f                                  Toggle fullscreen\n"
 "  j                                  Jump to an image (Shows a selection box)\n"
 "  r                                  Reload image\n"
+"  CTRL r                             Toggle shuffle mode\n"
 "  +/-/0, Button 3 & Drag             Zoom in/out/reset zoom\n"
 "  t                                  Toggle autoscale\n"
 "  l/k                                Rotate left/right\n"
@@ -396,6 +394,7 @@ void calculate_current_image_transformed_size(int *image_width, int *image_heigh
 cairo_surface_t *get_scaled_image_surface_for_current_image();
 void window_state_into_fullscreen_actions();
 void window_state_out_of_fullscreen_actions();
+BOSNode *relative_image_pointer(ptrdiff_t movement);
 // }}}
 /* Command line handling, creation of the image list {{{ */
 gboolean options_keyboard_alias_set_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error) {/*{{{*/
@@ -686,7 +685,7 @@ BOSNode *load_images_handle_parameter_add_file(load_images_state_t state, file_t
 			}
 		}
 		else {
-			*index = (float)(option_shuffle ? g_random_int() : bostree_node_count(file_tree));
+			*index = (float)bostree_node_count(file_tree);
 		}
 		new_node = bostree_insert(file_tree, (void *)index, file);
 	}
@@ -1505,11 +1504,11 @@ gboolean initialize_image_loader() {/*{{{*/
 		current_file_node = bostree_node_weak_unref(file_tree, browse_startup_node);
 		browse_startup_node = NULL;
 		if(!current_file_node) {
-			current_file_node = bostree_select(file_tree, 0);
+			current_file_node = relative_image_pointer(0);
 		}
 	}
 	else {
-		current_file_node = bostree_select(file_tree, 0);
+		current_file_node = relative_image_pointer(0);
 	}
 	if(!current_file_node) {
 		D_UNLOCK(file_tree);
@@ -1634,16 +1633,150 @@ gboolean absolute_image_movement(BOSNode *ref) {/*{{{*/
 
 	return FALSE;
 }/*}}}*/
+void relative_image_pointer_shuffle_list_unref_fn(BOSNode *node) {
+	bostree_node_weak_unref(file_tree, node);
+}
+BOSNode *relative_image_pointer(ptrdiff_t movement) {/*{{{*/
+	// Obtain a pointer to the image that is +movement away from the current image
+	// This function behaves differently depending on whether shuffle mode is
+	// enabled. It implements the actual shuffling.
+	// It does not lock the file tree. This should be done before calling this
+	// function. Also, it does not return a weak reference to the found node.
+	//
+	size_t count = bostree_node_count(file_tree);
+
+	if(option_shuffle) {
+#if 0
+		// Output some debug info
+		GList *aa = g_list_find(shuffled_images_list, current_file_node);
+		g_print("Current shuffle list: ");
+		for(GList *e = g_list_first(shuffled_images_list); e; e = e->next) {
+			BOSNode *n = bostree_node_weak_unref(file_tree, bostree_node_weak_ref(e->data));
+			if(n) {
+				if(e == aa) {
+					g_print("*%02d* ", bostree_rank(n)+1);
+				}
+				else {
+					g_print(" %02d  ", bostree_rank(n)+1);
+				}
+			}
+			else {
+				g_print(" ??  ");
+			}
+		}
+		g_print("\n");
+#endif
+
+		// First, check if the relative movement is already possible within the existing list
+		GList *current_shuffled_image = g_list_find(shuffled_images_list, current_file_node);
+		if(!current_shuffled_image) {
+			current_shuffled_image = g_list_last(shuffled_images_list);
+		}
+		while(((int)movement > 0) && g_list_next(current_shuffled_image)) {
+			current_shuffled_image = g_list_next(current_shuffled_image);
+			movement--;
+		}
+		while(((int)movement < 0) && g_list_previous(current_shuffled_image)) {
+			current_shuffled_image = g_list_previous(current_shuffled_image);
+			movement++;
+		}
+
+		// The list isn't long enough to provide us with the desired image. Expand it:
+		while(movement != 0) {
+			BOSNode *next_candidate, *chosen_candidate;
+			// We select one random list element and then choose the sequentially next
+			// until we find one that has not been chosen yet. Walking sequentially
+			// after chosing one random integer index still generates a
+			// equidistributed permutation.
+			// This is O(n^2), since we must in the worst case lookup n-1 elements
+			// in a list of already chosen ones, but I think that this still is a
+			// better choice than to store an additional boolean in each file_t,
+			// which would make this O(n).
+			next_candidate = chosen_candidate = bostree_select(file_tree, g_random_int_range(0, count));
+			while(g_list_find(shuffled_images_list, next_candidate)) {
+				next_candidate = bostree_next_node(next_candidate);
+				if(!next_candidate) {
+					next_candidate = bostree_select(file_tree, 0);
+				}
+				if(next_candidate == chosen_candidate) {
+					// All images have been visited, restart over
+					g_list_free_full(shuffled_images_list, (GDestroyNotify)relative_image_pointer_shuffle_list_unref_fn);
+					shuffled_images_list = g_list_append(NULL, bostree_node_weak_ref(chosen_candidate));
+					return chosen_candidate;
+				}
+			}
+
+			if(movement > 0) {
+				shuffled_images_list = g_list_append(shuffled_images_list, bostree_node_weak_ref(next_candidate));
+				movement--;
+				current_shuffled_image = g_list_last(shuffled_images_list);
+			}
+			else {
+				shuffled_images_list = g_list_prepend(shuffled_images_list, bostree_node_weak_ref(next_candidate));
+				movement++;
+				current_shuffled_image = g_list_first(shuffled_images_list);
+			}
+		}
+
+		if(!current_shuffled_image) {
+			// Either the list was empty, or something went horribly wrong. Restart over.
+			BOSNode *chosen_candidate = bostree_select(file_tree, g_random_int_range(0, count));
+			g_list_free_full(shuffled_images_list, (GDestroyNotify)relative_image_pointer_shuffle_list_unref_fn);
+			shuffled_images_list = g_list_append(NULL, bostree_node_weak_ref(chosen_candidate));
+			return chosen_candidate;
+		}
+
+		// We found an image. Dereference the weak reference, and walk the list until a valid reference
+		// if found if it is invalid, removing all invalid references along the way.
+		BOSNode *image = bostree_node_weak_unref(file_tree, bostree_node_weak_ref(current_shuffled_image->data));
+		while(!image && shuffled_images_list) {
+			GList *new_shuffled_image = g_list_next(current_shuffled_image);
+			bostree_node_weak_unref(file_tree, current_shuffled_image->data);
+			shuffled_images_list = g_list_delete_link(shuffled_images_list, current_shuffled_image);
+
+			current_shuffled_image = new_shuffled_image ? new_shuffled_image : g_list_last(shuffled_images_list);
+			if(current_shuffled_image) {
+				image = bostree_node_weak_unref(file_tree, bostree_node_weak_ref(current_shuffled_image->data));
+			}
+			else {
+				// All images have gone. This _is_ a problem, and should not
+				// happen. pqiv will likely exit. But return the current image,
+				// just to be sure that nothing breaks.
+				return current_file_node;
+			}
+		}
+		return image;
+	}
+	else {
+		// Sequential movement. This is the simple stuff:
+
+		if(movement == 0) {
+			// Only used for initialization, current_file_node might be 0
+			return current_file_node ? current_file_node : bostree_select(file_tree, 0);
+		}
+		else if(movement == 1) {
+			BOSNode *ret = bostree_next_node(current_file_node);
+			return ret ? ret : bostree_select(file_tree, 0);
+		}
+		else if(movement == -1) {
+			BOSNode *ret = bostree_previous_node(current_file_node);
+			return ret ? ret : bostree_select(file_tree, bostree_node_count(file_tree) - 1);
+		}
+		else {
+			ptrdiff_t pos = bostree_rank(current_file_node) + movement;
+			while(pos < 0) {
+				pos += count;
+			}
+			pos %= count;
+
+			return bostree_select(file_tree, pos);
+		}
+	}
+}/*}}}*/
 void relative_image_movement(ptrdiff_t movement) {/*{{{*/
 	// Calculate new position
 	D_LOCK(file_tree);
-	size_t count = bostree_node_count(file_tree);
-	ptrdiff_t pos = bostree_rank(current_file_node) + movement;
-	while(pos < 0) {
-		pos += count;
-	}
-	pos %= count;
-	BOSNode *target = bostree_node_weak_ref(bostree_select(file_tree, pos));
+	BOSNode *target = bostree_node_weak_ref(relative_image_pointer(movement));
 	D_UNLOCK(file_tree);
 
 	absolute_image_movement(target);
@@ -2988,9 +3121,16 @@ gboolean window_key_press_callback(GtkWidget *widget, GdkEventKey *event, gpoint
 
 		case GDK_KEY_r:
 		case GDK_KEY_R:
+			if(event->state & GDK_CONTROL_MASK) {
+				option_shuffle = !option_shuffle;
+				update_info_text(option_shuffle ? "Shuffle mode enabled" : "Shuffle mode disabled");
+				gtk_widget_queue_draw(GTK_WIDGET(main_window));
+				break;
+			}
+
 			CURRENT_FILE->is_loaded = FALSE;
 			update_info_text("Reloading image..");
-			queue_image_load(current_file_node);
+			queue_image_load(relative_image_pointer(0));
 			break;
 
 		case GDK_KEY_0:
@@ -3603,10 +3743,6 @@ int main(int argc, char *argv[]) {
 
 	parse_configuration_file(&argc, &argv);
 	parse_command_line(&argc, argv);
-	if(option_sort && option_shuffle) {
-		g_printerr("--shuffle conflicts with --sort.\n");
-		exit(1);
-	}
 	if(fabs(option_initial_scale - 1.0) < 2 * FLT_MIN) {
 		option_initial_scale_used = TRUE;
 	}
