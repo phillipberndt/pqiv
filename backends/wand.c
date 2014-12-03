@@ -24,6 +24,7 @@
 #include "../lib/filebuffer.h"
 #include <stdint.h>
 #include <string.h>
+#include <strings.h>
 #include <wand/MagickWand.h>
 #include <cairo/cairo.h>
 
@@ -90,10 +91,16 @@ void file_type_wand_load(file_t *file, GInputStream *data, GError **error_pointe
 		file->file_flags |= FILE_FLAGS_ANIMATION;
 	}
 	else {
-		MagickWand *wand = MagickMergeImageLayers(private->wand, FlattenLayer);
-		DestroyMagickWand(private->wand);
-		private->wand = wand;
-		MagickResetIterator(private->wand);
+		// This doesn't work as expected for .psd files. As a hack, disable it
+		// for them.
+		// TODO Check periodically if the problem still persists (heavily distorted images), and remove if it doesn't anymore
+		char *extension;
+		if(!(file->file_flags & FILE_FLAGS_MEMORY_IMAGE) && file->file_name && (extension = strrchr(file->file_name, '.')) && strcasecmp(extension, ".psd") != 0) {
+			MagickWand *wand = MagickMergeImageLayers(private->wand, FlattenLayer);
+			DestroyMagickWand(private->wand);
+			private->wand = wand;
+			MagickResetIterator(private->wand);
+		}
 	}
 	MagickNextImage(private->wand);
 	file_type_wand_update_image_surface(file);
