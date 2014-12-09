@@ -1693,6 +1693,10 @@ BOSNode *relative_image_pointer(ptrdiff_t movement) {/*{{{*/
 			// better choice than to store an additional boolean in each file_t,
 			// which would make this O(n).
 			next_candidate = chosen_candidate = bostree_select(file_tree, g_random_int_range(0, count));
+			if(!next_candidate) {
+				// All images have gone.
+				return current_file_node;
+			}
 			while(g_list_find(shuffled_images_list, next_candidate)) {
 				next_candidate = bostree_next_node(next_candidate);
 				if(!next_candidate) {
@@ -1721,6 +1725,10 @@ BOSNode *relative_image_pointer(ptrdiff_t movement) {/*{{{*/
 		if(!current_shuffled_image) {
 			// Either the list was empty, or something went horribly wrong. Restart over.
 			BOSNode *chosen_candidate = bostree_select(file_tree, g_random_int_range(0, count));
+			if(!chosen_candidate) {
+				// All images have gone.
+				return current_file_node;
+			}
 			g_list_free_full(shuffled_images_list, (GDestroyNotify)relative_image_pointer_shuffle_list_unref_fn);
 			shuffled_images_list = g_list_append(NULL, bostree_node_weak_ref(chosen_candidate));
 			return chosen_candidate;
