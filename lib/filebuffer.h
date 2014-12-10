@@ -28,10 +28,10 @@
 #include "../pqiv.h"
 
 // Return a bytes view on a file_t
-GBytes *buffered_file_as_bytes(file_t *file, GInputStream *data);
+GBytes *buffered_file_as_bytes(file_t *file, GInputStream *data, GError **error_pointer);
 
 // Return a (possibly temporary) file for a file_t
-char *buffered_file_as_local_file(file_t *file, GInputStream *data);
+char *buffered_file_as_local_file(file_t *file, GInputStream *data, GError **error_pointer);
 
 // Unreference one of the above, free'ing memory if
 // necessary

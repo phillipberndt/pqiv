@@ -28,7 +28,7 @@ struct buffered_file {
 
 GHashTable *file_buffer_table = NULL;
 
-GBytes *buffered_file_as_bytes(file_t *file, GInputStream *data) {
+GBytes *buffered_file_as_bytes(file_t *file, GInputStream *data, GError **error_pointer) {
 	if(!file_buffer_table) {
 		file_buffer_table = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, g_free);
 	}
@@ -41,15 +41,19 @@ GBytes *buffered_file_as_bytes(file_t *file, GInputStream *data) {
 		}
 		else {
 			if(!data) {
-				data = image_loader_stream_file(file, NULL);
+				data = image_loader_stream_file(file, error_pointer);
 				if(!data) {
 					return NULL;
 				}
-				data_bytes = g_input_stream_read_completely(data, image_loader_cancellable, NULL);
+				data_bytes = g_input_stream_read_completely(data, image_loader_cancellable, error_pointer);
 				g_object_unref(data);
 			}
 			else {
-				data_bytes = g_input_stream_read_completely(data, image_loader_cancellable, NULL);
+				data_bytes = g_input_stream_read_completely(data, image_loader_cancellable, error_pointer);
+			}
+
+			if(!data_bytes) {
+				return NULL;
 			}
 		}
 		buffer = g_new0(struct buffered_file, 1);
@@ -60,7 +64,7 @@ GBytes *buffered_file_as_bytes(file_t *file, GInputStream *data) {
 	return buffer->data;
 }
 
-char *buffered_file_as_local_file(file_t *file, GInputStream *data) {
+char *buffered_file_as_local_file(file_t *file, GInputStream *data, GError **error_pointer) {
 	if(!file_buffer_table) {
 		file_buffer_table = g_hash_table_new(g_str_hash, g_str_equal);
 	}
@@ -86,7 +90,7 @@ char *buffered_file_as_local_file(file_t *file, GInputStream *data) {
 	else {
 		gboolean local_data = FALSE;
 		if(!data) {
-			data = image_loader_stream_file(file, NULL);
+			data = image_loader_stream_file(file, error_pointer);
 			if(!data) {
 				g_hash_table_remove(file_buffer_table, file->file_name);
 				return NULL;
@@ -99,11 +103,11 @@ char *buffered_file_as_local_file(file_t *file, GInputStream *data) {
 		gchar *extension = strrchr(file->file_name, '.');
 		if(extension) {
 			gchar *name_template = g_strdup_printf("pqiv-XXXXXX%s", extension);
-			temporary_file = g_file_new_tmp(name_template, &iostream, NULL);
+			temporary_file = g_file_new_tmp(name_template, &iostream, error_pointer);
 			g_free(name_template);
 		}
 		else {
-			temporary_file = g_file_new_tmp("pqiv-XXXXXX.ps", &iostream, NULL);
+			temporary_file = g_file_new_tmp("pqiv-XXXXXX.ps", &iostream, error_pointer);
 		}
 		if(!temporary_file) {
 			g_printerr("Failed to buffer %s: Could not create a temporary file in %s\n", file->file_name, g_get_tmp_dir());
@@ -114,10 +118,7 @@ char *buffered_file_as_local_file(file_t *file, GInputStream *data) {
 			return NULL;
 		}
 
-		GError *error_pointer = NULL;
-		if(g_output_stream_splice(g_io_stream_get_output_stream(G_IO_STREAM(iostream)), data, G_OUTPUT_STREAM_SPLICE_CLOSE_TARGET, image_loader_cancellable, &error_pointer) < 0) {
-			g_printerr("Failed to store a temporary local copy of %s: %s", file->file_name, error_pointer->message);
-			g_clear_error(&error_pointer);
+		if(g_output_stream_splice(g_io_stream_get_output_stream(G_IO_STREAM(iostream)), data, G_OUTPUT_STREAM_SPLICE_CLOSE_TARGET, image_loader_cancellable, error_pointer) < 0) {
 			g_hash_table_remove(file_buffer_table, file->file_name);
 			if(local_data) {
 				g_object_unref(data);

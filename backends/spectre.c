@@ -55,12 +55,14 @@ void cmsPluginTHR(void *context, void *plugin) {
 
 BOSNode *file_type_spectre_alloc(load_images_state_t state, file_t *file) {/*{{{*/
 	BOSNode *first_node = NULL;
+	GError *error_pointer = NULL;
 
 	// Load the document to get the number of pages
 	struct SpectreDocument *document = spectre_document_new();
-	char *file_name = buffered_file_as_local_file(file, NULL);
+	char *file_name = buffered_file_as_local_file(file, &error_pointer);
 	if(!file_name) {
-		g_printerr("Failed to load PS file %s: Error while reading file\n", file->file_name);
+		g_printerr("Failed to load PS file %s: %s\n", file->file_name, error_pointer->message);
+		g_clear_error(&error_pointer);
 		return NULL;
 	}
 	spectre_document_load(document, file_name);
@@ -110,9 +112,8 @@ void file_type_spectre_free(file_t *file) {/*{{{*/
 void file_type_spectre_load(file_t *file, GInputStream *data, GError **error_pointer) {/*{{{*/
 	file_private_data_spectre_t *private = file->private;
 
-	gchar *file_name = buffered_file_as_local_file(file, data);
+	gchar *file_name = buffered_file_as_local_file(file, data, error_pointer);
 	if(!file_name) {
-		*error_pointer = g_error_new(g_quark_from_static_string("pqiv-spectre-error"), 1, "Failed to load image %s: Error while reading file\n", file->file_name);
 		return;
 	}
 	struct SpectreDocument *document = spectre_document_new();

@@ -48,9 +48,10 @@ BOSNode *file_type_poppler_alloc(load_images_state_t state, file_t *file) {/*{{{
 		}
 		PopplerDocument *poppler_document = poppler_document_new_from_stream(data, -1, NULL, NULL, &error_pointer);
 	#else
-		GBytes *data_bytes = buffered_file_as_bytes(file, NULL);
+		GBytes *data_bytes = buffered_file_as_bytes(file, NULL, &error_pointer);
 		if(!data_bytes) {
-			g_printerr("Failed to load PDF %s: Error while reading file\n", file->display_name);
+			g_printerr("Failed to load PDF %s: %s\n", file->display_name, error_pointer->message);
+			g_clear_error(&error_pointer);
 			file_free(file);
 			return NULL;
 		}
@@ -110,9 +111,8 @@ void file_type_poppler_load(file_t *file, GInputStream *data, GError **error_poi
 	#if POPPLER_CHECK_VERSION(0, 26, 5)
 		PopplerDocument *document = poppler_document_new_from_stream(data, -1, NULL, image_loader_cancellable, error_pointer);
 	#else
-		GBytes *data_bytes = buffered_file_as_bytes(file, data);
+		GBytes *data_bytes = buffered_file_as_bytes(file, data, error_pointer);
 		if(!data_bytes) {
-			*error_pointer = g_error_new(g_quark_from_static_string("pqiv-spectre-error"), 1, "Failed to load PDF %s: Error while reading file\n", file->file_name);
 			return;
 		}
 		gsize data_size;

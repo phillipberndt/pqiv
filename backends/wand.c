@@ -70,7 +70,10 @@ void file_type_wand_load(file_t *file, GInputStream *data, GError **error_pointe
 
 	private->wand = NewMagickWand();
 	gsize image_size;
-	GBytes *image_bytes = buffered_file_as_bytes(file, data);
+	GBytes *image_bytes = buffered_file_as_bytes(file, data, error_pointer);
+	if(!image_bytes) {
+		return;
+	}
 	const gchar *image_data = g_bytes_get_data(image_bytes, &image_size);
 	MagickBooleanType success = MagickReadImageBlob(private->wand, image_data, image_size);
 
