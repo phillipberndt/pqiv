@@ -1442,6 +1442,18 @@ gpointer image_loader_thread(gpointer user_data) {/*{{{*/
 			continue;
 		}
 
+		// It is a hard decision whether to first load the new image or whether
+		// to GC the old ones first: The former minimizes I/O for multi-page
+		// images, the latter is better if memory is low.
+		// As a compromise, load the new image first unless option_lowmem is
+		// set.
+		if(!option_lowmem && !FILE(node)->is_loaded) {
+			// Load image
+			image_loader_thread_currently_loading = node;
+			image_loader_load_single(node, FALSE);
+			image_loader_thread_currently_loading = NULL;
+		}
+
 		// Before trying to load the image, unload the old ones to free
 		// up memory.
 		// We do that here to avoid a race condition with the image loaders
@@ -1454,7 +1466,7 @@ gpointer image_loader_thread(gpointer user_data) {/*{{{*/
 				loaded_files_list = g_list_delete_link(loaded_files_list, node_list);
 			}
 			else {
-				if(loaded_node != current_file_node && (option_lowmem || (loaded_node != previous_file() && loaded_node != next_file()))) {
+				if(loaded_node != node && loaded_node != current_file_node && (option_lowmem || (loaded_node != previous_file() && loaded_node != next_file()))) {
 					unload_image(loaded_node);
 					// It is important to unref after unloading, because the image data structure
 					// might be reduced to zero if it has been deleted before!
@@ -1466,8 +1478,8 @@ gpointer image_loader_thread(gpointer user_data) {/*{{{*/
 			node_list = next;
 		}
 
-		// Now take take of the queued image
-		if(!FILE(node)->is_loaded) {
+		// Now take take of the queued image, unless it has been loaded above
+		if(option_lowmem && !FILE(node)->is_loaded) {
 			// Load image
 			image_loader_thread_currently_loading = node;
 			image_loader_load_single(node, FALSE);
