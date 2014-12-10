@@ -59,7 +59,7 @@ BOSNode *file_type_spectre_alloc(load_images_state_t state, file_t *file) {/*{{{
 
 	// Load the document to get the number of pages
 	struct SpectreDocument *document = spectre_document_new();
-	char *file_name = buffered_file_as_local_file(file, &error_pointer);
+	char *file_name = buffered_file_as_local_file(file, NULL, &error_pointer);
 	if(!file_name) {
 		g_printerr("Failed to load PS file %s: %s\n", file->file_name, error_pointer->message);
 		g_clear_error(&error_pointer);
