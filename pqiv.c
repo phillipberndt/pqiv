@@ -777,7 +777,7 @@ void load_images_handle_parameter(char *param, load_images_state_t state, gint d
 
 	// Check for memory image
 	if(state == PARAMETER && g_strcmp0(param, "-") == 0) {
-		file = g_new0(file_t, 1);
+		file = g_slice_new0(file_t);
 		file->file_flags = FILE_FLAGS_MEMORY_IMAGE;
 		file->display_name = g_strdup("-");
 		file->file_name = g_strdup("-");
@@ -792,7 +792,7 @@ void load_images_handle_parameter(char *param, load_images_state_t state, gint d
 		if(!file->file_data) {
 			g_printerr("Failed to load image from stdin: %s\n", error_ptr->message);
 			g_clear_error(&error_ptr);
-			g_free(file);
+			g_slice_free(file_t, file);
 			g_object_unref(stdin_stream);
 			return;
 		}
@@ -925,7 +925,7 @@ void load_images_handle_parameter(char *param, load_images_state_t state, gint d
 		}
 
 		// Prepare file structure
-		file = g_new0(file_t, 1);
+		file = g_slice_new0(file_t);
 		file->display_name = g_filename_display_name(param);
 
 		// In sorting/watch-directories mode, we store the full path to the file in file_name, to be able
@@ -1016,7 +1016,7 @@ void file_free(file_t *file) {/*{{{*/
 		g_bytes_unref(file->file_data);
 		file->file_data = NULL;
 	}
-	g_free(file);
+	g_slice_free(file_t, file);
 }/*}}}*/
 void file_tree_free_helper(BOSNode *node) {
 	// This helper function is only called once a node is eventually freed,
@@ -1923,7 +1923,7 @@ void apply_external_image_filter(gchar *external_filter) {/*{{{*/
 					// We now have a new image in memory in the char buffer image_data. Construct a new file
 					// for the result, and load it
 					//
-					file_t *new_image = g_new0(file_t, 1);
+					file_t *new_image = g_slice_new0(file_t);
 					new_image->display_name = g_strdup_printf("%s [Output of `%s`]", CURRENT_FILE->display_name, argv[2]);
 					new_image->file_type = &file_type_handlers[0];
 					new_image->file_flags = FILE_FLAGS_MEMORY_IMAGE;
