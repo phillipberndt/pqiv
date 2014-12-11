@@ -1671,6 +1671,14 @@ BOSNode *relative_image_pointer(ptrdiff_t movement) {/*{{{*/
 		GList *current_shuffled_image = g_list_find(shuffled_images_list, current_file_node);
 		if(!current_shuffled_image) {
 			current_shuffled_image = g_list_last(shuffled_images_list);
+
+			// This also happens if the user switched off random mode, moved a
+			// little, and reenabled it. The image that the user saw last is,
+			// expect if lowmem is used, the 2nd last in the list, because
+			// there already is a preloaded next one. Correct that.
+			if(!option_lowmem && current_shuffled_image && g_list_previous(current_shuffled_image)) {
+				current_shuffled_image = g_list_previous(current_shuffled_image);
+			}
 		}
 		while(((int)movement > 0) && g_list_next(current_shuffled_image)) {
 			current_shuffled_image = g_list_next(current_shuffled_image);
