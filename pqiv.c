@@ -1478,7 +1478,7 @@ gpointer image_loader_thread(gpointer user_data) {/*{{{*/
 			node_list = next;
 		}
 
-		// Now take take of the queued image, unless it has been loaded above
+		// Now take care of the queued image, unless it has been loaded above
 		if(option_lowmem && !FILE(node)->is_loaded) {
 			// Load image
 			image_loader_thread_currently_loading = node;
@@ -3126,7 +3126,7 @@ gboolean window_key_press_callback(GtkWidget *widget, GdkEventKey *event, gpoint
 		case GDK_KEY_Q:
 		case GDK_KEY_q:
 		case GDK_KEY_Escape:
-			gtk_main_quit();
+			gtk_widget_destroy(GTK_WIDGET(main_window));
 			break;
 
 		case GDK_KEY_1:
@@ -3634,10 +3634,14 @@ int main(int argc, char *argv[]) {
 	gtk_main();
 
 	// We are outside of the main thread again, so we can unload the remaining images
+	// We need to do this, because some file types create temporary files
 	abort_pending_image_loads(NULL);
-	unload_image(current_file_node);
-	unload_image(previous_file());
-	unload_image(next_file());
+	for(BOSNode *node = bostree_select(file_tree, 0); node; node = bostree_next_node(node)) {
+		// Iterate over the images ourselves, because there might be open weak references which
+		// prevent this to be called from bostree_destroy.
+		unload_image(node);
+	}
+	bostree_destroy(file_tree);
 
 	return 0;
 }

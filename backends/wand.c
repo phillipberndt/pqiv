@@ -17,7 +17,6 @@
  *
  * ImageMagick wand backend
  *
- * TODO Multi page images support, background in PS/PDF
  */
 
 #include "../pqiv.h"
@@ -28,10 +27,29 @@
 #include <wand/MagickWand.h>
 #include <cairo/cairo.h>
 
+// ImageMagick's multithreading is broken. To test this, open a multi-page
+// postscript document using this backend without --low-memory and then quit
+// pqiv. The backend will freeze in MagickWandTerminus() while waiting for
+// a Mutex. We must do this call to allow ImageMagick to delete temporary
+// files created using postscript processing (in /tmp usually).
+//
+// The only way around this, sadly, is to use a global mutex around all
+// ImageMagick calls.
+G_LOCK_DEFINE_STATIC(magick_wand_global_lock);
+
 typedef struct {
 	MagickWand *wand;
 	cairo_surface_t *rendered_image_surface;
+
+	// Starting from 1 for numbered files, 0 for unpaginated files
+	unsigned int page_number;
 } file_private_data_wand_t;
+
+// Check if a (named) file has a certain extension. Used for psd fix and multi-page detection (ps, pdf, ..)
+static gboolean file_type_wand_has_extension(file_t *file, const char *extension) {
+	char *actual_extension;
+	return (!(file->file_flags & FILE_FLAGS_MEMORY_IMAGE) && file->file_name && (actual_extension = strrchr(file->file_name, '.')) && strcasecmp(actual_extension, extension) == 0);
+}
 
 // Functions to render the Magick backend to a cairo surface via in-memory PNG export
 cairo_status_t file_type_wand_read_data(void *closure, unsigned char *data, unsigned int length) {/*{{{*/
@@ -48,7 +66,8 @@ void file_type_wand_update_image_surface(file_t *file) {/*{{{*/
 		private->rendered_image_surface = NULL;
 	}
 
-	MagickSetImageFormat(private->wand, "PNG");
+	MagickSetImageFormat(private->wand, "PNG32");
+
 	size_t image_size;
 	unsigned char *image_data = MagickGetImageBlob(private->wand, &image_size);
 	unsigned char *image_data_loc = image_data;
@@ -59,19 +78,88 @@ void file_type_wand_update_image_surface(file_t *file) {/*{{{*/
 }/*}}}*/
 
 BOSNode *file_type_wand_alloc(load_images_state_t state, file_t *file) {/*{{{*/
-	file->private = g_new0(file_private_data_wand_t, 1);
-	return load_images_handle_parameter_add_file(state, file);
+	G_LOCK(magick_wand_global_lock);
+
+	if(file_type_wand_has_extension(file, ".pdf") || file_type_wand_has_extension(file, ".ps")) {
+		// Multi-page document. Load number of pages and create one file_t per page
+		GError *error_pointer = NULL;
+		MagickWand *wand = NewMagickWand();
+		GBytes *image_bytes = buffered_file_as_bytes(file, NULL, &error_pointer);
+		if(!image_bytes) {
+			g_printerr("Failed to read image %s: %s\n", file->file_name, error_pointer->message);
+			g_clear_error(&error_pointer);
+			G_UNLOCK(magick_wand_global_lock);
+			return NULL;
+		}
+		size_t image_size;
+		const gchar *image_data = g_bytes_get_data(image_bytes, &image_size);
+		MagickBooleanType success = MagickReadImageBlob(wand, image_data, image_size);
+		if(success == MagickFalse) {
+			ExceptionType severity;
+			char *message = MagickGetException(wand, &severity);
+			g_printerr("Failed to read image %s: %s\n", file->file_name, message);
+			MagickRelinquishMemory(message);
+			DestroyMagickWand(wand);
+			buffered_file_unref(file);
+			G_UNLOCK(magick_wand_global_lock);
+			return NULL;
+		}
+
+		int n_pages = MagickGetNumberImages(wand);
+		DestroyMagickWand(wand);
+		buffered_file_unref(file);
+
+		BOSNode *first_node = NULL;
+		for(int n=0; n<n_pages; n++) {
+			file_t *new_file = g_slice_new(file_t);
+			*new_file = *file;
+
+			if((file->file_flags & FILE_FLAGS_MEMORY_IMAGE)) {
+				g_bytes_ref(new_file->file_data);
+			}
+			new_file->file_name = g_strdup(file->file_name);
+			if(n == 0) {
+				new_file->display_name = g_strdup(file->display_name);
+			}
+			else {
+				new_file->display_name = g_strdup_printf("%s[%d]", file->display_name, n + 1);
+			}
+
+			new_file->private = g_new0(file_private_data_wand_t, 1);
+			((file_private_data_wand_t *)new_file->private)->page_number = n + 1;
+
+			if(n == 0) {
+				first_node = load_images_handle_parameter_add_file(state, new_file);
+			}
+			else {
+				load_images_handle_parameter_add_file(state, new_file);
+			}
+		}
+
+		file_free(file);
+		G_UNLOCK(magick_wand_global_lock);
+		return first_node;
+	}
+	else {
+		// Simple image
+		file->private = g_new0(file_private_data_wand_t, 1);
+		BOSNode *first_node = load_images_handle_parameter_add_file(state, file);
+		G_UNLOCK(magick_wand_global_lock);
+		return first_node;
+	}
 }/*}}}*/
 void file_type_wand_free(file_t *file) {/*{{{*/
 	g_free(file->private);
 }/*}}}*/
 void file_type_wand_load(file_t *file, GInputStream *data, GError **error_pointer) {/*{{{*/
+	G_LOCK(magick_wand_global_lock);
 	file_private_data_wand_t *private = file->private;
 
 	private->wand = NewMagickWand();
 	gsize image_size;
 	GBytes *image_bytes = buffered_file_as_bytes(file, data, error_pointer);
 	if(!image_bytes) {
+		G_UNLOCK(magick_wand_global_lock);
 		return;
 	}
 	const gchar *image_data = g_bytes_get_data(image_bytes, &image_size);
@@ -85,48 +173,79 @@ void file_type_wand_load(file_t *file, GInputStream *data, GError **error_pointe
 		DestroyMagickWand(private->wand);
 		private->wand = NULL;
 		buffered_file_unref(file);
+		G_UNLOCK(magick_wand_global_lock);
 		return;
 	}
 
 	MagickResetIterator(private->wand);
-	size_t delay = MagickGetImageDelay(private->wand);
-	if(delay) {
-		file->file_flags |= FILE_FLAGS_ANIMATION;
+	if(private->page_number > 0) {
+		// PDF/PS files are displayed one page per file_t
+		MagickSetIteratorIndex(private->wand, private->page_number - 1);
 	}
 	else {
-		// This doesn't work as expected for .psd files. As a hack, disable it
-		// for them.
-		// TODO Check periodically if the problem still persists (heavily distorted images), and remove if it doesn't anymore
-		char *extension;
-		if(!(file->file_flags & FILE_FLAGS_MEMORY_IMAGE) && file->file_name && (extension = strrchr(file->file_name, '.')) && strcasecmp(extension, ".psd") != 0) {
-			MagickWand *wand = MagickMergeImageLayers(private->wand, FlattenLayer);
+		// Other files are either interpreted as animated (if they have a delay
+		// set) or merged down to one image (interpreted as layered, as in
+		// PSD/XCF files)
+		size_t delay = MagickGetImageDelay(private->wand);
+		if(delay) {
+			MagickWand *wand = MagickCoalesceImages(private->wand);
 			DestroyMagickWand(private->wand);
 			private->wand = wand;
-			MagickResetIterator(private->wand);
+			MagickResetIterator(wand);
+
+			file->file_flags |= FILE_FLAGS_ANIMATION;
 		}
+		else if(MagickGetNumberImages(private->wand) > 1) {
+			// Merge multi-page files.
+			// This doesn't work as expected for .psd files. As a hack, disable
+			// it for them.
+			// TODO Check periodically if the problem still persists (heavily distorted images) and remove this once it has been solved
+			if(!file_type_wand_has_extension(file, ".psd")) {
+				MagickWand *wand = MagickMergeImageLayers(private->wand, FlattenLayer);
+				DestroyMagickWand(private->wand);
+				private->wand = wand;
+				MagickResetIterator(private->wand);
+			}
+		}
+		MagickNextImage(private->wand);
 	}
-	MagickNextImage(private->wand);
 	file_type_wand_update_image_surface(file);
 
 	file->width = MagickGetImageWidth(private->wand);
 	file->height = MagickGetImageHeight(private->wand);
 	file->is_loaded = TRUE;
+	G_UNLOCK(magick_wand_global_lock);
 }/*}}}*/
 double file_type_wand_animation_initialize(file_t *file) {/*{{{*/
 	file_private_data_wand_t *private = file->private;
+	// The unit of MagickGetImageDelay is "ticks-per-second"
 	return 1000. / MagickGetImageDelay(private->wand);
 }/*}}}*/
 double file_type_wand_animation_next_frame(file_t *file) {/*{{{*/
+	// ImageMagick tends to be really slow when it comes to loading frames.
+	// We therefore measure the required time and subtract it from the time
+	// pqiv waits before loading the next frame:
+	G_LOCK(magick_wand_global_lock);
+	gint64 begin_time = g_get_monotonic_time();
+
 	file_private_data_wand_t *private = file->private;
+
 	MagickBooleanType status = MagickNextImage(private->wand);
 	if(status == MagickFalse) {
 		MagickResetIterator(private->wand);
 		MagickNextImage(private->wand);
 	}
 	file_type_wand_update_image_surface(file);
-	return 1000. / MagickGetImageDelay(private->wand);
+
+	gint64 required_time = (g_get_monotonic_time() - begin_time) / 1000;
+	gint pause = 1000. / MagickGetImageDelay(private->wand);
+
+	G_UNLOCK(magick_wand_global_lock);
+
+	return pause + 1 > required_time ? pause - required_time : 1;
 }/*}}}*/
 void file_type_wand_unload(file_t *file) {/*{{{*/
+	G_LOCK(magick_wand_global_lock);
 	file_private_data_wand_t *private = file->private;
 
 	if(private->rendered_image_surface) {
@@ -140,11 +259,18 @@ void file_type_wand_unload(file_t *file) {/*{{{*/
 
 		buffered_file_unref(file);
 	}
+	G_UNLOCK(magick_wand_global_lock);
 }/*}}}*/
 void file_type_wand_draw(file_t *file, cairo_t *cr) {/*{{{*/
 	file_private_data_wand_t *private = file->private;
 
 	if(private->rendered_image_surface) {
+		if(private->page_number > 0) {
+			// Is multi-page document. Draw white background.
+			cairo_set_source_rgb(cr, 1., 1., 1.);
+			cairo_paint(cr);
+			cairo_set_operator(cr, CAIRO_OPERATOR_OVER);
+		}
 		cairo_set_source_surface(cr, private->rendered_image_surface, 0, 0);
 		cairo_paint(cr);
 	}
@@ -169,6 +295,10 @@ void file_type_wand_initializer(file_type_handler_t *info) {/*{{{*/
 		g_free(format);
 	}
 	MagickRelinquishMemory(formats);
+
+	// We need to register MagickWandTerminus(), imageMagick's exit handler, to
+	// cleanup temporary files when pqiv exits.
+	atexit(MagickWandTerminus);
 
 	// Magick Wand does not give us MIME types. Manually add the most interesting one:
 	gtk_file_filter_add_mime_type(info->file_types_handled, "image/vnd.adobe.photoshop");
