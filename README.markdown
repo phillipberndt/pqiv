@@ -130,6 +130,7 @@ pqiv 2.3 (Work in progress)
  * configure/Makefile updated to support (Free-)BSD
  * Added ctrl + space/backspace hotkey for jumping to the next/previous directory
  * Improved pqiv's reaction if a file is removed
+ * gtk 3.16 deprecates `gdk_cursor_new`, replaced by a different function
 
 pqiv 2.2
  * Accept URLs as command line arguments

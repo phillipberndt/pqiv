@@ -3305,7 +3305,8 @@ gboolean window_scroll_callback(GtkWidget *widget, GdkEventScroll *event, gpoint
 	return FALSE;
 }/*}}}*/
 void fullscreen_hide_cursor() {/*{{{*/
-	GdkCursor *cursor = gdk_cursor_new(GDK_BLANK_CURSOR);
+	GdkDisplay *display = gtk_widget_get_display(GTK_WIDGET(main_window));
+	GdkCursor *cursor = gdk_cursor_new_for_display(display, GDK_BLANK_CURSOR);
 	GdkWindow *window = gtk_widget_get_window(GTK_WIDGET(main_window));
 	gdk_window_set_cursor(window, cursor);
 	#if GTK_MAJOR_VERSION >= 3
