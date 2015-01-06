@@ -1569,6 +1569,21 @@ void unload_image(BOSNode *node) {/*{{{*/
 		file->file_monitor = NULL;
 	}
 }/*}}}*/
+void preload_adjacent_images() {/*{{{*/
+	if(!option_lowmem) {
+		D_LOCK(file_tree);
+		BOSNode *new_prev = previous_file();
+		BOSNode *new_next = next_file();
+
+		if(!FILE(new_next)->is_loaded) {
+			queue_image_load(new_next);
+		}
+		if(!FILE(new_prev)->is_loaded) {
+			queue_image_load(new_prev);
+		}
+		D_UNLOCK(file_tree);
+	}
+}/*}}}*/
 gboolean absolute_image_movement(BOSNode *ref) {/*{{{*/
 	D_LOCK(file_tree);
 	BOSNode *node = bostree_node_weak_unref(file_tree, ref);
@@ -1580,16 +1595,7 @@ gboolean absolute_image_movement(BOSNode *ref) {/*{{{*/
 	// No need to continue the other pending loads
 	abort_pending_image_loads(node);
 
-	BOSNode *new_prev = bostree_previous_node(node);
-	if(!new_prev) {
-		new_prev = bostree_select(file_tree, bostree_node_count(file_tree) - 1);
-	}
-	BOSNode *new_next = bostree_next_node(node);
-	if(!new_next) {
-		new_next = bostree_select(file_tree, 0);
-	}
-
-	// Check which images have to be loaded
+	// Set the new image as current
 	if(current_file_node != NULL) {
 		bostree_node_weak_unref(file_tree, current_file_node);
 	}
@@ -1602,15 +1608,11 @@ gboolean absolute_image_movement(BOSNode *ref) {/*{{{*/
 		gtk_widget_queue_draw(GTK_WIDGET(main_window));
 	}
 
+	// Load it
 	queue_image_load(current_file_node);
-	if(!option_lowmem) {
-		if(!FILE(new_next)->is_loaded) {
-			queue_image_load(new_next);
-		}
-		if(!FILE(new_prev)->is_loaded) {
-			queue_image_load(new_prev);
-		}
-	}
+
+	// Preload the adjacent images
+	preload_adjacent_images();
 
 	// Activate fading
 	if(option_fading) {
@@ -3139,6 +3141,7 @@ gboolean window_key_press_callback(GtkWidget *widget, GdkEventKey *event, gpoint
 		case GDK_KEY_R:
 			if(event->state & GDK_CONTROL_MASK) {
 				option_shuffle = !option_shuffle;
+				preload_adjacent_images();
 				update_info_text(option_shuffle ? "Shuffle mode enabled" : "Shuffle mode disabled");
 				gtk_widget_queue_draw(GTK_WIDGET(main_window));
 				break;
