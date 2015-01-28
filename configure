@@ -23,6 +23,8 @@ CFLAGS=
 MANDIR=
 PKG_CONFIG=pkg-config
 BACKENDS=
+ENFORCED_BACKENDS=
+DISABLED_BACKENDS=
 
 # Help and options
 help() {
@@ -40,6 +42,8 @@ options:
                           poppler (PDF),
                           spectre (PS/EPS),
                           wand (ImageMagick, various formats)
+  --with[out]-<backend> Alternative syntax for backend selection. Non-specified backends are
+                        autodetermined.
 
 EOF
 }
@@ -98,9 +102,20 @@ while [ $# -gt 0 ]; do
 			done
 			;;
 		*)
-			echo "Unknown option: $1" >&2
-			help
-			exit 1
+			if [ "${PARAMETER#--without-}" != "${PARAMETER}" ]; then
+				DISABLED_BACKENDS="${PARAMETER#--without-} ${DISABLED_BACKENDS}"
+			elif [ "${PARAMETER#--with-}" != "${PARAMETER}" ]; then
+				NAME="${PARAMETER#--with-}"
+				if ! [ -e backends/${NAME}.c ]; then
+					echo "Unknown option: $1" >&2
+					exit 1
+				fi
+				ENFORCED_BACKENDS="${NAME} ${ENFORCED_BACKENDS}"
+			else
+				echo "Unknown option: $1" >&2
+				help
+				exit 1
+			fi
 	esac
 	shift
 done
@@ -180,11 +195,21 @@ fi
 # Auto-determine available backends
 if [ -z "$BACKENDS" ]; then
 	echo -n "Checking for supported backends..             "
-	BACKENDS=`$MAKE get_available_backends PKG_CONFIG=$PKG_CONFIG | sed -nre 's#^BACKENDS: ?(.+)#\1#p'`
+	BACKENDS="`$MAKE get_available_backends PKG_CONFIG=$PKG_CONFIG | sed -nre 's#^BACKENDS: ?(.+)#\1#p'` "
 	echo "${BACKENDS:-(none)}"
-	if [ -z "$BACKENDS" ]; then
-		echo "WARNING: Building without backends! You won't be able to see _any_ images." >&2
-	fi
+fi
+
+# Disable explicitly disabled and enable explicitly enabled backends
+for BACKEND in ${DISABLED_BACKENDS}; do
+	BACKENDS="${BACKENDS//${BACKEND} /}"
+done
+for BACKEND in ${ENFORCED_BACKENDS}; do
+	BACKENDS="${BACKEND} ${BACKENDS//${BACKEND} /}"
+done
+
+echo "Building with backends:                       ${BACKENDS:-(none)}"
+if [ -z "$BACKENDS" ]; then
+	echo "WARNING: Building without backends! You won't be able to see _any_ images." >&2
 fi
 
 echo -n "Checking if the prerequisites are installed.. "
