@@ -118,7 +118,7 @@ Known bugs
 Changelog
 ---------
 
-pqiv 2.3 (Work in progress)
+pqiv 2.3
  * Refactored an abstraction layer around the image backend
  * Added optional support for PDF-files through
    [poppler](http://poppler.freedesktop.org/)
