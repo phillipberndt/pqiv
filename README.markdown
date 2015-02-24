@@ -118,6 +118,9 @@ Known bugs
 Changelog
 ---------
 
+pqiv 2.4 (work in progress)
+ * Properly handle if a user closes pqiv while the image loader is still active
+
 pqiv 2.3
  * Refactored an abstraction layer around the image backend
  * Added optional support for PDF-files through

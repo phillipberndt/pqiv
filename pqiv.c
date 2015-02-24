@@ -177,6 +177,7 @@ BOSTree *file_tree;
 BOSTree *directory_tree;
 BOSNode *current_file_node = NULL;
 BOSNode *image_loader_thread_currently_loading = NULL;
+gboolean file_tree_valid = FALSE;
 
 // We asynchroniously load images in a separate thread
 GAsyncQueue *image_loader_queue = NULL;
@@ -395,6 +396,7 @@ cairo_surface_t *get_scaled_image_surface_for_current_image();
 void window_state_into_fullscreen_actions();
 void window_state_out_of_fullscreen_actions();
 BOSNode *relative_image_pointer(ptrdiff_t movement);
+void file_tree_free_helper(BOSNode *node);
 // }}}
 /* Command line handling, creation of the image list {{{ */
 gboolean options_keyboard_alias_set_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error) {/*{{{*/
@@ -670,6 +672,15 @@ BOSNode *load_images_handle_parameter_add_file(load_images_state_t state, file_t
 	// We need to check if the previous/next images have changed, because they
 	// might have been preloaded and need unloading if so.
 	D_LOCK(file_tree);
+
+	// The file tree might have been invalidated if the user exited pqiv while a loader
+	// was processing a file. In that case, just cancel and free the file.
+	if(!file_tree_valid) {
+		file_free(file);
+		D_UNLOCK(file_tree);
+		return NULL;
+	}
+
 	BOSNode *new_node = NULL;
 	if(!option_sort) {
 		float *index = (float *)g_malloc(sizeof(float));
@@ -698,10 +709,12 @@ BOSNode *load_images_handle_parameter_add_file(load_images_state_t state, file_t
 	D_UNLOCK(file_tree);
 	if(option_lazy_load && !gui_initialized) {
 		// When the first image has been processed, we can show the window
-		// Check if it successfully loads though:
-		if(initialize_image_loader()) {
+		// Since it might not successfully load, we might need to call this
+		// multiple times. We cannot load the image in this thread because some
+		// backends have a global mutex and would call this function with
+		// the mutex locked.
+		if(!gui_initialized) {
 			gdk_threads_add_idle(initialize_gui_callback, NULL);
-			gui_initialized = TRUE;
 		}
 	}
 	if(state == INOTIFY) {
@@ -773,6 +786,11 @@ gboolean load_images_handle_parameter_find_handler(const char *param, load_image
 }/*}}}*/
 void load_images_handle_parameter(char *param, load_images_state_t state, gint depth) {/*{{{*/
 	file_t *file;
+
+	// If the file tree has been invalidated, cancel.
+	if(!file_tree_valid) {
+		return;
+	}
 
 	// Check for memory image
 	if(state == PARAMETER && g_strcmp0(param, "-") == 0) {
@@ -897,6 +915,11 @@ void load_images_handle_parameter(char *param, load_images_state_t state, gint d
 					load_images_handle_parameter(dir_entry_full, RECURSION, depth + 1);
 				}
 				g_free(dir_entry_full);
+
+				// If the file tree has been invalidated, cancel.
+				if(!file_tree_valid) {
+					return;
+				}
 			}
 			g_dir_close(dir_ptr);
 
@@ -1038,6 +1061,7 @@ void load_images(int *argc, char *argv[]) {/*{{{*/
 		option_sort ? (BOSTree_cmp_function)strnatcasecmp : (BOSTree_cmp_function)image_tree_float_compare,
 		file_tree_free_helper
 	);
+	file_tree_valid = TRUE;
 
 	// The directory tree is used to prevent nested-symlink loops
 	directory_tree = bostree_new((BOSTree_cmp_function)g_strcmp0, directory_tree_free_helper);
@@ -3704,7 +3728,11 @@ gboolean initialize_gui() {/*{{{*/
 	return FALSE;
 }/*}}}*/
 gboolean initialize_gui_callback(gpointer user_data) {/*{{{*/
-	initialize_gui();
+	if(!gui_initialized && initialize_image_loader()) {
+		initialize_gui();
+		gui_initialized = TRUE;
+	}
+
 	return FALSE;
 }/*}}}*/
 // }}}
@@ -3791,13 +3819,23 @@ int main(int argc, char *argv[]) {
 
 	// We are outside of the main thread again, so we can unload the remaining images
 	// We need to do this, because some file types create temporary files
+	//
+	// Note: If we locked the file_tree here, unload_image() could dead-lock
+	// (The wand backend has a global mutex and calls a function that locks file_tree)
+	// Instead, accept that in the worst case, some images might not be unloaded properly.
+	// At least, after file_tree_valid = FALSE, no new images will be inserted.
+	file_tree_valid = FALSE;
+	D_LOCK(file_tree);
+	D_UNLOCK(file_tree);
 	abort_pending_image_loads(NULL);
 	for(BOSNode *node = bostree_select(file_tree, 0); node; node = bostree_next_node(node)) {
 		// Iterate over the images ourselves, because there might be open weak references which
 		// prevent this to be called from bostree_destroy.
 		unload_image(node);
 	}
+	D_LOCK(file_tree);
 	bostree_destroy(file_tree);
+	D_UNLOCK(file_tree);
 
 	return 0;
 }
