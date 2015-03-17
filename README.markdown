@@ -118,7 +118,7 @@ Known bugs
 Changelog
 ---------
 
-pqiv 2.4 (work in progress)
+pqiv 2.3.1
  * Properly handle if a user closes pqiv while the image loader is still active
 
 pqiv 2.3
