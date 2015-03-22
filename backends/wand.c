@@ -276,6 +276,12 @@ void file_type_wand_draw(file_t *file, cairo_t *cr) {/*{{{*/
 	}
 }/*}}}*/
 
+static void file_type_wand_exit_handler() {/*{{{*/
+	G_LOCK(magick_wand_global_lock);
+	MagickWandTerminus();
+	G_UNLOCK(magick_wand_global_lock);
+}/*}}}*/
+
 void file_type_wand_initializer(file_type_handler_t *info) {/*{{{*/
 	// Fill the file filter pattern
 	MagickWandGenesis();
@@ -298,7 +304,7 @@ void file_type_wand_initializer(file_type_handler_t *info) {/*{{{*/
 
 	// We need to register MagickWandTerminus(), imageMagick's exit handler, to
 	// cleanup temporary files when pqiv exits.
-	atexit(MagickWandTerminus);
+	atexit(file_type_wand_exit_handler);
 
 	// Magick Wand does not give us MIME types. Manually add the most interesting one:
 	gtk_file_filter_add_mime_type(info->file_types_handled, "image/vnd.adobe.photoshop");

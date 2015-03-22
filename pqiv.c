@@ -3765,9 +3765,11 @@ gpointer load_images_thread(gpointer user_data) {/*{{{*/
 
 	load_images(&global_argc, global_argv);
 
-	if(bostree_node_count(file_tree) == 0) {
-		g_printerr("No images left to display.\n");
-		exit(1);
+	if(file_tree_valid) {
+		if(bostree_node_count(file_tree) == 0) {
+			g_printerr("No images left to display.\n");
+			exit(1);
+		}
 	}
 
 	if(user_data != NULL) {

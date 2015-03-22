@@ -118,6 +118,9 @@ Known bugs
 Changelog
 ---------
 
+pqiv 2.3.2
+ * Avoid a possible deadlock in the fix for 2.3.1
+
 pqiv 2.3.1
  * Properly handle if a user closes pqiv while the image loader is still active
 
