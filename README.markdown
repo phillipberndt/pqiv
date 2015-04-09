@@ -118,6 +118,9 @@ Known bugs
 Changelog
 ---------
 
+pqiv (wip)
+ * Properly reload multi-page files if they change on disk while being viewed
+
 pqiv 2.3.2
  * Avoid a possible deadlock in the fix for 2.3.1
 
