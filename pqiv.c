@@ -1155,7 +1155,7 @@ void image_file_updated_callback(GFileMonitor *monitor, GFile *file, GFile *othe
 	BOSNode *node = (BOSNode *)user_data;
 
 	if(event_type == G_FILE_MONITOR_EVENT_CHANGES_DONE_HINT) {
-		unload_image(node);
+		FILE(node)->force_reload = TRUE;
 		queue_image_load(node);
 	}
 	if(event_type == G_FILE_MONITOR_EVENT_DELETED) {
@@ -1469,7 +1469,8 @@ gpointer image_loader_thread(gpointer user_data) {/*{{{*/
 		// to GC the old ones first: The former minimizes I/O for multi-page
 		// images, the latter is better if memory is low.
 		// As a compromise, load the new image first unless option_lowmem is
-		// set.
+		// set.  Note that a node that has force_reload set will not be loaded
+		// here, because it still is_loaded.
 		if(!option_lowmem && !FILE(node)->is_loaded) {
 			// Load image
 			image_loader_thread_currently_loading = node;
@@ -1489,7 +1490,23 @@ gpointer image_loader_thread(gpointer user_data) {/*{{{*/
 				loaded_files_list = g_list_delete_link(loaded_files_list, node_list);
 			}
 			else {
-				if(loaded_node != node && loaded_node != current_file_node && (option_lowmem || (loaded_node != previous_file() && loaded_node != next_file()))) {
+				// If the image to be loaded has force_reload set and this has the same file name, also set force_reload
+				if(FILE(node)->force_reload && strcmp(FILE(loaded_node)->file_name, FILE(loaded_node)->file_name) == 0) {
+					FILE(loaded_node)->force_reload = TRUE;
+				}
+
+				if(
+					// Unloading due to force_reload being set on either this image
+					// This is required because an image can be in a filebuffer, and would thus not be reloaded even if it changed on disk.
+					FILE(loaded_node)->force_reload ||
+					// Regular unloading: The image will not be seen by the user in the foreseeable feature
+					(loaded_node != node && loaded_node != current_file_node && (option_lowmem || (loaded_node != previous_file() && loaded_node != next_file())))
+				) {
+					// If this node had force_reload set, we must reload it to populate the cache
+					if(FILE(loaded_node)->force_reload && loaded_node != node) {
+						queue_image_load(node);
+					}
+
 					unload_image(loaded_node);
 					// It is important to unref after unloading, because the image data structure
 					// might be reduced to zero if it has been deleted before!
@@ -1585,6 +1602,7 @@ void unload_image(BOSNode *node) {/*{{{*/
 		file->file_type->unload_fn(file);
 	}
 	file->is_loaded = FALSE;
+	file->force_reload = FALSE;
 	if(file->file_monitor != NULL) {
 		g_file_monitor_cancel(file->file_monitor);
 		if(G_IS_OBJECT(file->file_monitor)) {
