@@ -55,6 +55,13 @@
 	#endif
 #endif
 
+#ifdef DEBUG
+	#include <sys/resource.h>
+	#define PQIV_VERSION_DEBUG "-debug"
+#else
+	#define PQIV_VERSION_DEBUG ""
+#endif
+
 // GTK 2 does not define keyboard aliases the way we do
 #if GTK_MAJOR_VERSION < 3 // {{{
 
@@ -619,7 +626,7 @@ void parse_configuration_file(int *argc, char **argv[]) {/*{{{*/
 }/*}}}*/
 void parse_command_line(int *argc, char *argv[]) {/*{{{*/
 	GOptionContext *parser = g_option_context_new("FILES");
-	g_option_context_set_summary(parser, "A minimalist image viewer\npqiv version " PQIV_VERSION " by Phillip Berndt");
+	g_option_context_set_summary(parser, "A minimalist image viewer\npqiv version " PQIV_VERSION PQIV_VERSION_DEBUG " by Phillip Berndt");
 	g_option_context_set_description(parser, long_description_text);
 	g_option_context_set_help_enabled(parser, TRUE);
 	g_option_context_set_ignore_unknown_options(parser, FALSE);
@@ -3797,6 +3804,12 @@ gpointer load_images_thread(gpointer user_data) {/*{{{*/
 }/*}}}*/
 
 int main(int argc, char *argv[]) {
+	#ifdef DEBUG
+		struct rlimit core_limits;
+		core_limits.rlim_cur = core_limits.rlim_max = RLIM_INFINITY;
+		setrlimit(RLIMIT_CORE, &core_limits);
+	#endif
+
 	#ifndef _WIN32
 		XInitThreads();
 	#endif
