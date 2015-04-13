@@ -118,13 +118,11 @@ Known bugs
 Changelog
 ---------
 
+pqiv 2.3.4
+ * Fix reference counting if an image fails to load
+
 pqiv 2.3.3
  * Properly reload multi-page files if they change on disk while being viewed
-
-pqiv 2.3.2
- * Avoid a possible deadlock in the fix for 2.3.1
-
-pqiv 2.3.1
  * Properly handle if a user closes pqiv while the image loader is still active
 
 pqiv 2.3
@@ -151,8 +149,6 @@ pqiv 2.2
  * Added --max-depth=n to limit how deep directories are searched
  * Added --browse to load, in addition to images from the command line, also
    all other images from the containing directories
-
-pqiv 2.1.1
  * Bugfix: Fixed handling of non-image command line arguments
 
 pqiv 2.1
