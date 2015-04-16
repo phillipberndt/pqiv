@@ -1918,7 +1918,7 @@ void directory_image_movement(int direction) {/*{{{*/
 	// complex.
 
 	D_LOCK(file_tree);
-	BOSNode *target = current_file_node;
+	BOSNode *target;
 	BOSNode *current = current_file_node;
 
 	if(direction == 1) {

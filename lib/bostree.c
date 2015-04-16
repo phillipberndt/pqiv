@@ -406,6 +406,7 @@ BOSNode *bostree_node_weak_unref(BOSTree *tree, BOSNode *node) {
 			tree->free_function(node);
 		}
 		free(node);
+		return NULL;
 	}
 	return retval;
 }
