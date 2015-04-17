@@ -1632,6 +1632,13 @@ void preload_adjacent_images() {/*{{{*/
 		D_UNLOCK(file_tree);
 	}
 }/*}}}*/
+gboolean absolute_image_movement_still_unloaded_timer_callback(gpointer user_data) {/*{{{*/
+	if(user_data == (void *)current_file_node && !CURRENT_FILE->is_loaded) {
+		update_info_text(NULL);
+		gtk_widget_queue_draw(GTK_WIDGET(main_window));
+	}
+	return FALSE;
+}/*}}}*/
 gboolean absolute_image_movement(BOSNode *ref) {/*{{{*/
 	D_LOCK(file_tree);
 	BOSNode *node = bostree_node_weak_unref(file_tree, ref);
@@ -1650,10 +1657,10 @@ gboolean absolute_image_movement(BOSNode *ref) {/*{{{*/
 	current_file_node = bostree_node_weak_ref(node);
 	D_UNLOCK(file_tree);
 
-	// If the new image has not been loaded yet, display an information message
+	// If the new image has not been loaded yet, prepare to display an information message
+	// after some grace period
 	if(!CURRENT_FILE->is_loaded) {
-		update_info_text(NULL);
-		gtk_widget_queue_draw(GTK_WIDGET(main_window));
+		gdk_threads_add_timeout(500, absolute_image_movement_still_unloaded_timer_callback, current_file_node);
 	}
 
 	// Load it

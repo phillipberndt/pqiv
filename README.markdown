@@ -118,6 +118,10 @@ Known bugs
 Changelog
 ---------
 
+pqiv (wip)
+ * Delay the "Image is still loading" message for half a second to avoid
+   flickering status messages
+
 pqiv 2.3.4
  * Fix reference counting if an image fails to load
 
