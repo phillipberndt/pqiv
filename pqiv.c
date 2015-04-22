@@ -587,7 +587,9 @@ void parse_configuration_file(int *argc, char **argv[]) {/*{{{*/
 					gchar *option_value = g_key_file_get_string(key_file, "options", iter->long_name, NULL);
 					if(option_value != NULL) {
 						if(iter->arg == G_OPTION_ARG_CALLBACK) {
-							(*(GOptionArgFunc *)(iter->arg_data))(NULL, option_value, NULL, &error_pointer);
+							gchar long_name[64];
+							g_snprintf(long_name, 64, "--%s", iter->long_name);
+							((GOptionArgFunc)(iter->arg_data))(long_name, option_value, NULL, &error_pointer);
 						}
 						else {
 							*(gchar **)(iter->arg_data) = option_value;
