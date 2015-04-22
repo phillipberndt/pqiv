@@ -118,10 +118,11 @@ Known bugs
 Changelog
 ---------
 
+pqiv 2.3.5
+ * Fix parameters in pqivrc that are handled by a callback
+
 pqiv 2.3.4
  * Fix reference counting if an image fails to load
-
-pqiv 2.3.3
  * Properly reload multi-page files if they change on disk while being viewed
  * Properly handle if a user closes pqiv while the image loader is still active
 
