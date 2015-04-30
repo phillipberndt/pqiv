@@ -25,6 +25,7 @@ PKG_CONFIG=pkg-config
 BACKENDS=
 ENFORCED_BACKENDS=
 DISABLED_BACKENDS=
+BACKENDS_BUILD=static
 
 # Help and options
 help() {
@@ -44,6 +45,10 @@ options:
                           wand (ImageMagick, various formats)
   --with[out]-<backend> Alternative syntax for backend selection. Non-specified backends are
                         autodetermined.
+  --backends-build=..   Either \`shared' to compile the backends as shared libraries,
+                        or \`static' to compile them into pqiv. \`shared' is only of use if you
+                        plan to package pqiv and want to get rid of the run-time dependencies,
+                        so this defaults to \`static'.
 
 EOF
 }
@@ -74,6 +79,13 @@ while [ $# -gt 0 ]; do
 			CROSS=$VALUE
 			if [ "${CROSS: -1}" != "-" ]; then
 				CROSS="$CROSS-"
+			fi
+			;;
+		--backends-build)
+			BACKENDS_BUILD=$VALUE
+			if [ "$BACKENDS_BUILD" != "static" -a "$BACKENDS_BUILD" != "shared" ]; then
+				echo "Invalid argument to --backends-build: Value must be either \`static' or \`shared'." >&2
+				exit 1
 			fi
 			;;
 		# Undocumented options for autoconf (esp. dh_auto_configure) compatibility
@@ -259,6 +271,7 @@ GTK_VERSION=$GTK_VERSION
 CROSS=$CROSS
 EXECUTABLE_EXTENSION=$EXECUTABLE_EXTENSION
 PKG_CONFIG=$PKG_CONFIG
+BACKENDS_BUILD=$BACKENDS_BUILD
 ${CFLAGS:+CFLAGS+=$CFLAGS}
 ${MANDIR:+MANDIR=$MANDIR}
 ${BACKENDS:+BACKENDS=$BACKENDS}

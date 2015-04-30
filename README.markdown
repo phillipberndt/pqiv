@@ -64,10 +64,10 @@ and optionally also
  * poppler (any version, for pdf support)
  * MagickWand (any version, for additional image formats like psd)
 
-The backends are currently statically linked into the code, so all backend
+The backends are per default linked statically into the code, so all backend
 related build-time dependencies are also run-time dependencies. If you need
 a shared version of the backends, for example for separate packaging of
-the binaries, let me know. It's quite easy to implement that.
+the binaries, use the `--backends-build=shared` option.
 
 There are experimental, nightly [static builds available for
 download](http://page.mi.fu-berlin.de/pberndt/pqiv-builds/) for Windows and
@@ -121,6 +121,7 @@ Changelog
 pqiv (wip)
  * Delay the "Image is still loading" message for half a second to avoid
    flickering status messages
+ * Added a configure option to build the backends as shared libraries
 
 pqiv 2.3.5
  * Fix parameters in pqivrc that are handled by a callback

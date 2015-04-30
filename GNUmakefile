@@ -14,6 +14,7 @@ EXECUTABLE_EXTENSION=
 PKG_CONFIG=$(CROSS)pkg-config
 OBJECTS=pqiv.o lib/strnatcmp.o lib/bostree.o lib/filebuffer.o
 BACKENDS=gdkpixbuf
+BACKENDS_BUILD=static
 
 # Load config.make (created by configure)
 ifeq ($(wildcard config.make),config.make)
@@ -66,19 +67,40 @@ else
 endif
 
 # Add backend-specific libraries and objects
+SHARED_OBJECTS=
+SHARED_BACKENDS=
+SHARED_BACKENDS_COUNT=0
 BACKENDS_INITIALIZER:=backends/initializer
 define handle-backend
 ifneq ($(origin LIBS_$(1)),undefined)
 	ifneq ($(findstring $(1), $(BACKENDS)),)
-		LIBS+=$(LIBS_$(1))
-		OBJECTS+=backends/$(1).o
-		LDLIBS+=$(LDLIBS_$(1))
-		BACKENDS_INITIALIZER:=$(BACKENDS_INITIALIZER)-$(1)
+		ifeq ($(BACKENDS_BUILD), shared)
+			ifeq ($(shell $(PKG_CONFIG) --errors-to-stdout --print-errors "$(LIBS_$(1))" 2>&1), )
+				SHARED_OBJECTS+=backends/pqiv-backend-$(1).so
+				BACKENDS_BUILD_CFLAGS_$(1):=$(shell $(PKG_CONFIG) --errors-to-stdout --print-errors --cflags "$(LIBS_$(1))" 2>&1)
+				BACKENDS_BUILD_LDLIBS_$(1):=$(shell $(PKG_CONFIG) --errors-to-stdout --print-errors --libs "$(LIBS_$(1))" 2>&1)
+				SHARED_BACKENDS+= $(1)
+				SHARED_BACKENDS_COUNT=$(SHARED_BACKENDS_COUNT)+1
+			endif
+		else
+			LIBS+=$(LIBS_$(1))
+			OBJECTS+=backends/$(1).o
+			LDLIBS+=$(LDLIBS_$(1))
+			BACKENDS_INITIALIZER:=$(BACKENDS_INITIALIZER)-$(1)
+		endif
 	endif
 endif
 endef
 $(foreach BACKEND_C, $(wildcard backends/*.c), $(eval $(call handle-backend,$(basename $(notdir $(BACKEND_C))))))
-OBJECTS+=$(BACKENDS_INITIALIZER).o
+ifeq ($(BACKENDS_BUILD), shared)
+	CFLAGS_SHARED=-fPIC
+	OBJECTS+=backends/shared-initializer.o
+	BACKENDS_BUILD_CFLAGS_shared-initializer=-DBACKENDS='"$(SHARED_BACKENDS)"' -DBACKEND_COUNT=$(SHARED_BACKENDS_COUNT)
+	LIBS+=gmodule-2.0
+else
+	CFLAGS_SHARED=
+	OBJECTS+=$(BACKENDS_INITIALIZER).o
+endif
 
 # Add version information to builds from git
 PQIV_VERSION_STRING=$(shell [ -d .git ] && (which git 2>&1 >/dev/null) && git describe --dirty --tags)
@@ -94,15 +116,24 @@ ifndef VERBOSE
 endif
 
 # Assemble final compiler flags
-CFLAGS_REAL=-std=gnu99 $(PQIV_WARNING_FLAGS) $(PQIV_VERSION_FLAG) $(CFLAGS) $(shell $(PKG_CONFIG) --cflags "$(LIBS)")
+CFLAGS_REAL=-std=gnu99 $(PQIV_WARNING_FLAGS) $(PQIV_VERSION_FLAG) $(CFLAGS) $(CFLAGS_SHARED) $(shell $(PKG_CONFIG) --cflags "$(LIBS)")
 LDLIBS_REAL=$(shell $(PKG_CONFIG) --libs "$(LIBS)") $(LDLIBS)
 LDFLAGS_REAL=$(LDFLAGS)
 
-all: pqiv$(EXECUTABLE_EXTENSION)
+all: pqiv$(EXECUTABLE_EXTENSION) $(SHARED_OBJECTS)
 .PHONY: get_libs get_available_backends _build_variables clean distclean install uninstall all
+.SECONDARY:
 
 pqiv$(EXECUTABLE_EXTENSION): $(OBJECTS)
 	$(SILENT_CCLD) $(CROSS)$(CC) $(CPPFLAGS) -o $@ $+ $(LDLIBS_REAL) $(LDFLAGS_REAL)
+
+ifeq ($(BACKENDS_BUILD), shared)
+backends/%.o: backends/%.c
+	$(SILENT_CC) $(CROSS)$(CC) $(CPPFLAGS) -c -o $@ $(CFLAGS_REAL) $(BACKENDS_BUILD_CFLAGS_$*) $+
+
+backends/pqiv-backend-%.so: backends/%.o
+	$(SILENT_CCLD) $(CROSS)$(CC) -shared $(CPPFLAGS) -o $@ $+ $(LDLIBS_REAL) $(LDFLAGS_REAL) $(BACKENDS_BUILD_LDLIBS_$*)
+endif
 
 %.o: %.c
 	$(SILENT_CC) $(CROSS)$(CC) $(CPPFLAGS) -c -o $@ $(CFLAGS_REAL) $+
@@ -120,21 +151,25 @@ $(BACKENDS_INITIALIZER).c:
 		echo "}" \
 	) > $@
 
-install: pqiv$(EXECUTABLE_EXTENSION)
+install: all
 	mkdir -p $(DESTDIR)$(PREFIX)/bin
 	install pqiv$(EXECUTABLE_EXTENSION) $(DESTDIR)$(PREFIX)/bin/pqiv$(EXECUTABLE_EXTENSION)
 	-mkdir -p $(DESTDIR)$(MANDIR)/man1
 	-install pqiv.1 $(DESTDIR)$(MANDIR)/man1/pqiv.1
+ifeq ($(BACKENDS_BUILD), shared)
+	mkdir -p $(DESTDIR)$(PREFIX)/lib
+	install $(SHARED_OBJECTS) $(DESTDIR)$(PREFIX)/lib/
+endif
 
 uninstall:
 	rm -f $(DESTDIR)$(PREFIX)/bin/pqiv$(EXECUTABLE_EXTENSION)
 	rm -f $(DESTDIR)$(MANDIR)/man1/pqiv.1
 
 clean:
-	rm -f pqiv$(EXECUTABLE_EXTENSION) $(OBJECTS) $(BACKENDS_INITIALIZER).c
+	rm -f pqiv$(EXECUTABLE_EXTENSION) *.o backends/*.o backends/*.so libs/*.o backends/initializer-*.c
 
 distclean: clean
-	rm -f config.make backends/initializer*
+	rm -f config.make
 
 get_libs:
 	$(info LIBS: $(LIBS))
