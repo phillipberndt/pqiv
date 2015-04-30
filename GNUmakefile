@@ -100,6 +100,12 @@ else
 	OBJECTS+=$(BACKENDS_INITIALIZER).o
 endif
 
+# Add debug flags
+ifdef DEBUG
+	PQIV_DEBUG_DEFS=-DDEBUG
+	LDFLAGS_DEBUG=-Wl,-rpath $(shell pwd)/backends
+endif
+
 # Add version information to builds from git
 PQIV_VERSION_STRING=$(shell [ -d .git ] && (which git 2>&1 >/dev/null) && git describe --dirty --tags)
 ifneq ($(PQIV_VERSION_STRING),)
@@ -114,9 +120,9 @@ ifndef VERBOSE
 endif
 
 # Assemble final compiler flags
-CFLAGS_REAL=-std=gnu99 $(PQIV_WARNING_FLAGS) $(PQIV_VERSION_FLAG) $(CFLAGS) $(CFLAGS_SHARED) $(shell $(PKG_CONFIG) --cflags "$(LIBS)")
+CFLAGS_REAL=-std=gnu99 $(PQIV_WARNING_FLAGS) $(PQIV_VERSION_FLAG) $(PQIV_DEBUG_DEFS) $(CFLAGS) $(CFLAGS_SHARED) $(shell $(PKG_CONFIG) --cflags "$(LIBS)")
 LDLIBS_REAL=$(shell $(PKG_CONFIG) --libs "$(LIBS)") $(LDLIBS)
-LDFLAGS_REAL=$(LDFLAGS)
+LDFLAGS_REAL=$(LDFLAGS) $(LDFLAGS_DEBUG)
 
 all: pqiv$(EXECUTABLE_EXTENSION) $(SHARED_OBJECTS)
 .PHONY: get_libs get_available_backends _build_variables clean distclean install uninstall all
