@@ -69,7 +69,6 @@ endif
 # Add backend-specific libraries and objects
 SHARED_OBJECTS=
 SHARED_BACKENDS=
-SHARED_BACKENDS_COUNT=0
 BACKENDS_INITIALIZER:=backends/initializer
 define handle-backend
 ifneq ($(origin LIBS_$(1)),undefined)
@@ -79,8 +78,7 @@ ifneq ($(origin LIBS_$(1)),undefined)
 				SHARED_OBJECTS+=backends/pqiv-backend-$(1).so
 				BACKENDS_BUILD_CFLAGS_$(1):=$(shell $(PKG_CONFIG) --errors-to-stdout --print-errors --cflags "$(LIBS_$(1))" 2>&1)
 				BACKENDS_BUILD_LDLIBS_$(1):=$(shell $(PKG_CONFIG) --errors-to-stdout --print-errors --libs "$(LIBS_$(1))" 2>&1)
-				SHARED_BACKENDS+= $(1)
-				SHARED_BACKENDS_COUNT=$(SHARED_BACKENDS_COUNT)+1
+				SHARED_BACKENDS+="$(1)",
 			endif
 		else
 			LIBS+=$(LIBS_$(1))
@@ -95,7 +93,7 @@ $(foreach BACKEND_C, $(wildcard backends/*.c), $(eval $(call handle-backend,$(ba
 ifeq ($(BACKENDS_BUILD), shared)
 	CFLAGS_SHARED=-fPIC
 	OBJECTS+=backends/shared-initializer.o
-	BACKENDS_BUILD_CFLAGS_shared-initializer=-DBACKENDS='"$(SHARED_BACKENDS)"' -DBACKEND_COUNT=$(SHARED_BACKENDS_COUNT)
+	BACKENDS_BUILD_CFLAGS_shared-initializer=-DSHARED_BACKENDS='$(SHARED_BACKENDS)'
 	LIBS+=gmodule-2.0
 else
 	CFLAGS_SHARED=

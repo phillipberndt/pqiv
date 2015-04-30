@@ -1,13 +1,15 @@
 #include <string.h>
 #include "../pqiv.h"
 
-static const char *available_backends = BACKENDS;
-file_type_handler_t file_type_handlers[BACKEND_COUNT + 1];
+static const char *available_backends[] = {
+	SHARED_BACKENDS
+	NULL
+};
+file_type_handler_t file_type_handlers[sizeof(available_backends) / sizeof(char *)];
 
 void initialize_file_type_handlers() {
 	int i = 0;
-	gchar **backends = g_strsplit(available_backends, " ", 0);
-	for(gchar **backend=backends; *backend; backend++) {
+	for(char **backend=(char **)&available_backends[0]; *backend; backend++) {
 		gchar *backend_candidate = g_strdup_printf("pqiv-backend-%s.so", *backend);
 
 		GModule *backend_module = g_module_open(backend_candidate, 0);
@@ -26,5 +28,4 @@ void initialize_file_type_handlers() {
 
 		g_free(backend_candidate);
 	}
-	g_strfreev(backends);
 }
