@@ -692,7 +692,7 @@ BOSNode *load_images_handle_parameter_add_file(load_images_state_t state, file_t
 
 	BOSNode *new_node = NULL;
 	if(!option_sort) {
-		float *index = (float *)g_malloc(sizeof(float));
+		float *index = g_slice_new0(float);
 		if(state == FILTER_OUTPUT) {
 			// As index, use
 			//  min(index(current) + .001, .5 index(current) + .5 index(next))
@@ -1059,6 +1059,9 @@ void file_tree_free_helper(BOSNode *node) {
 	unload_image(node);
 
 	file_free(FILE(node));
+	if(!option_sort) {
+		g_slice_free(float, node->key);
+	}
 }
 void directory_tree_free_helper(BOSNode *node) {
 	free(node->key);
