@@ -47,8 +47,14 @@ typedef struct {
 	// FILE_FLAGS_MEMORY_IMAGE     -> File lives in memory
 	guint file_flags;
 
-	// The file name to display and to sort by
+	// The file name to display
+	// Must be different from file_name, because it is free()d seperately
 	gchar *display_name;
+
+	// The name to sort by
+	// Must be set if option_sort is set; in backends the simplest approach
+	// is to only touch this if it is not NULL
+	gchar *sort_name;
 
 	// The URI or file name of the file
 	gchar *file_name;

@@ -292,6 +292,7 @@ gdouble option_initial_scale = 1.0;
 gboolean option_initial_scale_used = FALSE;
 gboolean option_start_with_slideshow_mode = FALSE;
 gboolean option_sort = FALSE;
+enum { NAME, MTIME } option_sort_key = NAME;
 gboolean option_shuffle = FALSE;
 gboolean option_reverse_cursor_keys = FALSE;
 gboolean option_transparent_background = FALSE;
@@ -310,6 +311,7 @@ gint64 fading_initial_time;
 gboolean options_keyboard_alias_set_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error);
 gboolean option_window_position_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error);
 gboolean option_scale_level_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error);
+gboolean option_sort_key_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error);
 void load_images_handle_parameter(char *param, load_images_state_t state, gint depth);
 
 struct {
@@ -353,6 +355,7 @@ GOptionEntry options[] = {
 	{ "max-depth", 0, 0, G_OPTION_ARG_INT, &option_max_depth, "Descend at most LEVELS levels of directories below the command line arguments", "LEVELS" },
 	{ "shuffle", 0, 0, G_OPTION_ARG_NONE, &option_shuffle, "Shuffle files", NULL },
 	{ "watch-directories", 0, 0, G_OPTION_ARG_NONE, &option_watch_directories, "Watch directories for new files", NULL },
+	{ "sort-key", 0, 0, G_OPTION_ARG_CALLBACK, (gpointer)&option_sort_key_callback, "Key to use for sorting", "PROPERTY" },
 
 	{ NULL, 0, 0, 0, NULL, NULL, NULL }
 };
@@ -442,6 +445,19 @@ gboolean option_scale_level_callback(const gchar *option_name, const gchar *valu
 	}
 	else {
 		option_scale = 0;
+	}
+	return TRUE;
+}/*}}}*/
+gboolean option_sort_key_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error) {/*{{{*/
+	if(strcmp(value, "name") == 0) {
+		option_sort_key = NAME;
+	}
+	else if(strcmp(value, "mtime") == 0) {
+		option_sort_key = MTIME;
+	}
+	else {
+		g_set_error(error, G_OPTION_ERROR, G_OPTION_ERROR_FAILED, "Unexpected argument value for the --sort-key option. Allowed keys are: name, mtime.");
+		return FALSE;
 	}
 	return TRUE;
 }/*}}}*/
@@ -710,7 +726,7 @@ BOSNode *load_images_handle_parameter_add_file(load_images_state_t state, file_t
 		new_node = bostree_insert(file_tree, (void *)index, file);
 	}
 	else {
-		new_node = bostree_insert(file_tree, file->display_name, file);
+		new_node = bostree_insert(file_tree, file->sort_name, file);
 	}
 	if(state == BROWSE_ORIGINAL_PARAMETER && browse_startup_node == NULL) {
 		browse_startup_node = bostree_node_weak_ref(new_node);
@@ -806,6 +822,9 @@ void load_images_handle_parameter(char *param, load_images_state_t state, gint d
 		file = g_slice_new0(file_t);
 		file->file_flags = FILE_FLAGS_MEMORY_IMAGE;
 		file->display_name = g_strdup("-");
+		if(option_sort) {
+			file->sort_name = g_strdup("-");
+		}
 		file->file_name = g_strdup("-");
 
 		GError *error_ptr = NULL;
@@ -958,6 +977,25 @@ void load_images_handle_parameter(char *param, load_images_state_t state, gint d
 		// Prepare file structure
 		file = g_slice_new0(file_t);
 		file->display_name = g_filename_display_name(param);
+		if(option_sort) {
+			if(option_sort_key == MTIME) {
+				// Prepend the modification time to the display name
+				GFile *param_file = gfile_for_commandline_arg(param);
+				if(param_file) {
+					GFileInfo *file_info = g_file_query_info(param_file, G_FILE_ATTRIBUTE_TIME_MODIFIED, G_FILE_QUERY_INFO_NONE, NULL, NULL);
+					if(file_info) {
+						GTimeVal result;
+						g_file_info_get_modification_time(file_info, &result);
+						g_object_unref(file_info);
+						file->sort_name = g_strdup_printf("%lu;%s", result.tv_sec, file->display_name);
+					}
+					g_object_unref(param_file);
+				}
+			}
+			if(file->sort_name == NULL) {
+				file->sort_name = g_strdup(file->display_name);
+			}
+		}
 
 		// In sorting/watch-directories mode, we store the full path to the file in file_name, to be able
 		// to identify the file if it is deleted
@@ -1042,6 +1080,9 @@ void file_free(file_t *file) {/*{{{*/
 	}
 	g_free(file->display_name);
 	g_free(file->file_name);
+	if(file->sort_name) {
+		g_free(file->sort_name);
+	}
 	if(file->file_data) {
 		g_bytes_unref(file->file_data);
 		file->file_data = NULL;
@@ -2141,6 +2182,9 @@ void apply_external_image_filter(gchar *external_filter) {/*{{{*/
 					//
 					file_t *new_image = g_slice_new0(file_t);
 					new_image->display_name = g_strdup_printf("%s [Output of `%s`]", CURRENT_FILE->display_name, argv[2]);
+					if(option_sort) {
+						new_image->sort_name = g_strdup_printf("%s;%s", CURRENT_FILE->sort_name, argv[2]);
+					}
 					new_image->file_type = &file_type_handlers[0];
 					new_image->file_flags = FILE_FLAGS_MEMORY_IMAGE;
 					new_image->file_data = g_bytes_new_take(image_data, image_data_length);

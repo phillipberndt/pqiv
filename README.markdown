@@ -119,6 +119,7 @@ Changelog
 ---------
 
 pqiv (wip)
+ * Added --sort-key=mtime to sort by modification time instead of file name
  * Delay the "Image is still loading" message for half a second to avoid
    flickering status messages
 

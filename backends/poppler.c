@@ -80,6 +80,9 @@ BOSNode *file_type_poppler_alloc(load_images_state_t state, file_t *file) {/*{{{
 			else {
 				new_file->display_name = g_strdup_printf("%s[%d]", file->display_name, n + 1);
 			}
+			if(file->sort_name) {
+				new_file->sort_name = g_strdup_printf("%s[%d]", file->sort_name, n + 1);
+			}
 			new_file->private = g_new0(file_private_data_poppler_t, 1);
 			((file_private_data_poppler_t *)new_file->private)->page_number = n;
 

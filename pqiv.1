@@ -153,6 +153,15 @@ they appear. Note that the yellow info box does not update automatically, but
 only when the window needs to be redrawn anyway. This option uses GIO's
 GFileMonitor internally. Depending on which system you use, GIO might internally
 poll regularly for changes, i.e. create some load. (In Linux, inotify is used.)
+.TP
+.B --sort-key=PROPERTY
+If
+.I --sort
+is enabled, sort by PROPERTY. Currently supported are
+.I name
+(default), which sorts by filename, and
+.I mtime
+which sorts by the files' modification timestamps.
 
 .PP
 You can use the file
