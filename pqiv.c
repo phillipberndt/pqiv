@@ -1006,7 +1006,6 @@ void load_images_handle_parameter(char *param, load_images_state_t state, gint d
 		GFileInfo *file_info = g_file_query_info(param_file, G_FILE_ATTRIBUTE_STANDARD_CONTENT_TYPE, G_FILE_QUERY_INFO_NONE, NULL, NULL);
 		if(file_info) {
 			gchar *param_file_mime_type = g_content_type_get_mime_type(g_file_info_get_content_type(file_info));
-
 			if(param_file_mime_type) {
 				GtkFileFilterInfo mime_guesser;
 				mime_guesser.contains = GTK_FILE_FILTER_MIME_TYPE;
@@ -1022,9 +1021,9 @@ void load_images_handle_parameter(char *param, load_images_state_t state, gint d
 					g_printerr("Didn't recognize file `%s': Both its extension and MIME-type `%s' are unknown. Fall-back to default file handler.\n", param, param_file_mime_type);
 					g_free(param_file_mime_type);
 					g_object_unref(param_file);
-					g_object_unref(file_info);
 				}
 			}
+			g_object_unref(file_info);
 		}
 
 		// If nothing else worked, assume that this file is handled by the default handler
