@@ -67,7 +67,8 @@ and optionally also
 The backends are per default linked statically into the code, so all backend
 related build-time dependencies are also run-time dependencies. If you need
 a shared version of the backends, for example for separate packaging of
-the binaries, use the `--backends-build=shared` option.
+the binaries, use the `--backends-build=shared` option. This is only supported
+on Linux platforms currently.
 
 There are experimental, nightly [static builds available for
 download](http://page.mi.fu-berlin.de/pberndt/pqiv-builds/) for Windows and
