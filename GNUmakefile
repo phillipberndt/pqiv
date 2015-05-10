@@ -95,6 +95,7 @@ ifeq ($(BACKENDS_BUILD), shared)
 	OBJECTS+=backends/shared-initializer.o
 	BACKENDS_BUILD_CFLAGS_shared-initializer=-DSHARED_BACKENDS='$(SHARED_BACKENDS)'
 	LIBS+=gmodule-2.0
+	LDFLAGS_RPATH=-Wl,-rpath,'$$ORIGIN/backends'
 else
 	CFLAGS_SHARED=
 	OBJECTS+=$(BACKENDS_INITIALIZER).o
@@ -103,7 +104,6 @@ endif
 # Add debug flags
 ifdef DEBUG
 	PQIV_DEBUG_DEFS=-DDEBUG
-	LDFLAGS_DEBUG=-Wl,-rpath $(shell pwd)/backends
 endif
 
 # Add version information to builds from git
@@ -122,7 +122,7 @@ endif
 # Assemble final compiler flags
 CFLAGS_REAL=-std=gnu99 $(PQIV_WARNING_FLAGS) $(PQIV_VERSION_FLAG) $(PQIV_DEBUG_DEFS) $(CFLAGS) $(CFLAGS_SHARED) $(shell $(PKG_CONFIG) --cflags "$(LIBS)")
 LDLIBS_REAL=$(shell $(PKG_CONFIG) --libs "$(LIBS)") $(LDLIBS)
-LDFLAGS_REAL=$(LDFLAGS) $(LDFLAGS_DEBUG)
+LDFLAGS_REAL=$(LDFLAGS) $(LDFLAGS_RPATH)
 
 all: pqiv$(EXECUTABLE_EXTENSION) $(SHARED_OBJECTS)
 .PHONY: get_libs get_available_backends _build_variables clean distclean install uninstall all
