@@ -170,7 +170,7 @@ uninstall:
 	rm -f $(DESTDIR)$(MANDIR)/man1/pqiv.1
 
 clean:
-	rm -f pqiv$(EXECUTABLE_EXTENSION) *.o backends/*.o backends/*.so libs/*.o backends/initializer-*.c
+	rm -f pqiv$(EXECUTABLE_EXTENSION) *.o backends/*.o backends/*.so lib/*.o backends/initializer-*.c
 
 distclean: clean
 	rm -f config.make
