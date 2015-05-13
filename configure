@@ -19,7 +19,6 @@ DESTDIR=
 GTK_VERSION=0
 CROSS=
 BINARY_EXTENSION=
-CFLAGS=
 MANDIR=
 PKG_CONFIG=pkg-config
 BACKENDS=
@@ -157,7 +156,7 @@ echo -n "Determining executable extension..            "
 DIR=`tempdir`
 cd $DIR
 echo 'int main(int argc, char *argv[]) { return 0; }' > test.c
-${CROSS}${CC:-cc} test.c
+${CROSS}${CC:-cc} ${CFLAGS} test.c ${LDFLAGS}
 RV=$?
 rm -f test.c
 EXECUTABLE=`ls`
@@ -259,7 +258,9 @@ GTK_VERSION=$GTK_VERSION
 CROSS=$CROSS
 EXECUTABLE_EXTENSION=$EXECUTABLE_EXTENSION
 PKG_CONFIG=$PKG_CONFIG
-${CFLAGS:+CFLAGS+=$CFLAGS}
+${CFLAGS:+CFLAGS=$CFLAGS}
+${LDFLAGS:+LDFLAGS=$LDFLAGS}
+${CCFLAGS:+CCFLAGS=$CCFLAGS}
 ${MANDIR:+MANDIR=$MANDIR}
 ${BACKENDS:+BACKENDS=$BACKENDS}
 ${CC:+CC=$CC}
