@@ -1417,7 +1417,9 @@ gboolean image_loader_load_single(BOSNode *node, gboolean called_from_main) {/*{
 		}
 
 		// Mark the image as loaded for the GC
+		D_LOCK(file_tree);
 		loaded_files_list = g_list_prepend(loaded_files_list, bostree_node_weak_ref(node));
+		D_UNLOCK(file_tree);
 
 		return TRUE;
 	}
@@ -1491,6 +1493,7 @@ gpointer image_loader_thread(gpointer user_data) {/*{{{*/
 		// Before trying to load the image, unload the old ones to free
 		// up memory.
 		// We do that here to avoid a race condition with the image loaders
+		D_LOCK(file_tree);
 		for(GList *node_list = loaded_files_list; node_list; ) {
 			GList *next = g_list_next(node_list);
 
@@ -1527,6 +1530,7 @@ gpointer image_loader_thread(gpointer user_data) {/*{{{*/
 
 			node_list = next;
 		}
+		D_UNLOCK(file_tree);
 
 		// Now take care of the queued image, unless it has been loaded above
 		if(option_lowmem && !FILE(node)->is_loaded) {
@@ -1539,7 +1543,9 @@ gpointer image_loader_thread(gpointer user_data) {/*{{{*/
 			current_image_drawn = FALSE;
 			gdk_threads_add_idle((GSourceFunc)image_loaded_handler, node);
 		}
+		D_LOCK(file_tree);
 		bostree_node_weak_unref(file_tree, node);
+		D_UNLOCK(file_tree);
 	}
 }/*}}}*/
 gboolean initialize_image_loader() {/*{{{*/
@@ -3827,7 +3833,7 @@ int main(int argc, char *argv[]) {
 		g_thread_init(NULL);
 		gdk_threads_init();
 	#endif
-	gtk_init(&argc, &argv);
+	gtk_init(&argc, &argv); // fyi, this generates a MemorySanitizer warning currently
 
 	initialize_file_type_handlers();
 
