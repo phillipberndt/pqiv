@@ -3826,7 +3826,9 @@ gpointer load_images_thread(gpointer user_data) {/*{{{*/
 		}
 	}
 
-	gdk_threads_add_idle(initialize_gui_or_quit_callback, NULL);
+	if(option_lazy_load) {
+		gdk_threads_add_idle(initialize_gui_or_quit_callback, NULL);
+	}
 
 	if(user_data != NULL) {
 		g_source_remove(event_source);
