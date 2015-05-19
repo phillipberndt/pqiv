@@ -3776,6 +3776,19 @@ gboolean initialize_gui_callback(gpointer user_data) {/*{{{*/
 
 	return FALSE;
 }/*}}}*/
+gboolean initialize_gui_or_quit_callback(gpointer user_data) {/*{{{*/
+	if(!gui_initialized && initialize_image_loader()) {
+		initialize_gui();
+		gui_initialized = TRUE;
+	}
+
+	if(!file_tree_valid || bostree_node_count(file_tree) == 0) {
+		g_printerr("No images left to display.\n");
+		exit(1);
+	}
+
+	return FALSE;
+}/*}}}*/
 // }}}
 
 gboolean load_images_thread_update_info_text(gpointer user_data) {/*{{{*/
@@ -3812,6 +3825,8 @@ gpointer load_images_thread(gpointer user_data) {/*{{{*/
 			exit(1);
 		}
 	}
+
+	gdk_threads_add_idle(initialize_gui_or_quit_callback, NULL);
 
 	if(user_data != NULL) {
 		g_source_remove(event_source);
