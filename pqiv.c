@@ -56,7 +56,9 @@
 #endif
 
 #ifdef DEBUG
-	#include <sys/resource.h>
+	#ifndef _WIN32
+		#include <sys/resource.h>
+	#endif
 	#define PQIV_VERSION_DEBUG "-debug"
 #else
 	#define PQIV_VERSION_DEBUG ""
@@ -3882,9 +3884,11 @@ gpointer load_images_thread(gpointer user_data) {/*{{{*/
 
 int main(int argc, char *argv[]) {
 	#ifdef DEBUG
-		struct rlimit core_limits;
-		core_limits.rlim_cur = core_limits.rlim_max = RLIM_INFINITY;
-		setrlimit(RLIMIT_CORE, &core_limits);
+		#ifndef _WIN32
+			struct rlimit core_limits;
+			core_limits.rlim_cur = core_limits.rlim_max = RLIM_INFINITY;
+			setrlimit(RLIMIT_CORE, &core_limits);
+		#endif
 	#endif
 
 	#ifndef _WIN32
