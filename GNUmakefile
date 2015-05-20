@@ -13,6 +13,7 @@ MANDIR=$(PREFIX)/share/man
 EXECUTABLE_EXTENSION=
 PKG_CONFIG=$(CROSS)pkg-config
 OBJECTS=pqiv.o lib/strnatcmp.o lib/bostree.o lib/filebuffer.o
+HEADERS=pqiv.h lib/bostree.h lib/filebuffer.h lib/strnatcmp.h
 BACKENDS=gdkpixbuf
 
 # Load config.make (created by configure)
@@ -104,8 +105,8 @@ all: pqiv$(EXECUTABLE_EXTENSION)
 pqiv$(EXECUTABLE_EXTENSION): $(OBJECTS)
 	$(SILENT_CCLD) $(CROSS)$(CC) $(CPPFLAGS) -o $@ $+ $(LDLIBS_REAL) $(LDFLAGS_REAL)
 
-%.o: %.c
-	$(SILENT_CC) $(CROSS)$(CC) $(CPPFLAGS) -c -o $@ $(CFLAGS_REAL) $+
+%.o: %.c $(HEADERS)
+	$(SILENT_CC) $(CROSS)$(CC) $(CPPFLAGS) -c -o $@ $(CFLAGS_REAL) $<
 
 $(BACKENDS_INITIALIZER).c:
 	@$(foreach BACKEND, $(sort $(BACKENDS)), [ -e backends/$(BACKEND).c ] || { echo; echo "Backend $(BACKEND) not found!" >&2; exit 1; };)
