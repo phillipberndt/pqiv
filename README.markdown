@@ -135,6 +135,10 @@ Known bugs
 Changelog
 ---------
 
+pqiv 2.10 (WIP)
+ * Added --background-gradient to draw gradient backgrounds in fullscreen,
+   instead of the default black one
+
 pqiv 2.9
  * Added a montage/image grid mode (bound to `m` by default)
  * Added a [WebP](https://developers.google.com/speed/webp/) backend

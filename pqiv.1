@@ -174,6 +174,11 @@ and insert the special key bindings within the curly braces.
 .RE
 .\"
 .TP
+.BR \-\-background\-gradient
+The default background in fullscreen is black. If this option is enabled, pqiv
+instead draws a gradient based on the average color of an image's corners.
+.\"
+.TP
 .BR \-\--box\-colors=\fIFOREGROUND\ COLOR:BACKGROUND\ COLOR\fR
 Customize the colors used to draw the info box and montage mode borders. Colors
 can be specified either as a comma separated list of RBG-values in the range
@@ -596,6 +601,9 @@ Shift the current image in x direction.
 .TP
 .BR shift_y(INT)
 Shift the current image in y direction.
+.TP
+.BR toggle_background_gradient(INT)
+Toggle background gradient mode: 0 to toggle, 1 to disable, 2 to enable.
 .TP
 .BR toggle_fullscreen(INT)
 Toggle fullscreen mode: 0 to toggle, 1 to go to fullscreen, 2 to return to

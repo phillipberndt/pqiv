@@ -316,6 +316,7 @@ gboolean option_browse = FALSE;
 enum { QUIT, WAIT, WRAP, WRAP_NO_RESHUFFLE } option_end_of_files_action = WRAP;
 enum { ON, OFF, CHANGES_ONLY } option_watch_files = ON;
 gchar *option_disable_backends;
+gboolean option_background_gradient = FALSE;
 
 double fading_current_alpha_stage = 0;
 gint64 fading_initial_time;
@@ -408,6 +409,9 @@ GOptionEntry options[] = {
 	{ "action", 0, 0, G_OPTION_ARG_CALLBACK, &option_action_callback, "Perform a given action", "ACTION" },
 	{ "actions-from-stdin", 0, 0, G_OPTION_ARG_NONE, &option_actions_from_stdin, "Read actions from stdin", NULL },
 	{ "allow-empty-window", 0, 0, G_OPTION_ARG_NONE, &option_allow_empty_window, "Show pqiv/do not quit even though no files are loaded", NULL },
+#endif
+	{ "background-gradient", 0, 0, G_OPTION_ARG_NONE, &option_background_gradient, "Draw a smooth gradient instead of the default black background", NULL },
+#ifndef CONFIGURED_WITHOUT_ACTIONS
 	{ "bind-key", 0, 0, G_OPTION_ARG_CALLBACK, &options_bind_key_callback, "Rebind a key to another action, see manpage and --show-keybindings output for details.", "KEY BINDING" },
 #endif
 #if !defined(CONFIGURED_WITHOUT_INFO_TEXT) || !defined(CONFIGURED_WITHOUT_MONTAGE_MODE)
@@ -676,6 +680,7 @@ const struct pqiv_action_descriptor {
 	{ "montage_mode_return_proceed", PARAMETER_NONE },
 	{ "montage_mode_return_cancel", PARAMETER_NONE },
 	{ "move_window", PARAMETER_2SHORT },
+	{ "toggle_background_gradient", PARAMETER_INT },
 	{ NULL, 0 }
 };
 /* }}} */
@@ -687,6 +692,10 @@ typedef struct {
 	gchar *base_param;
 } directory_watch_options_t;
 GHashTable *active_directory_watches;
+
+struct color {
+	double r, g, b;
+};
 
 void set_scale_level_to_fit();
 void set_scale_level_for_screen();
@@ -4192,6 +4201,44 @@ void calculate_base_draw_pos_and_size(int *image_transform_width, int *image_tra
 		*x = *y = 0;
 	}
 }/*}}}*/
+void cairo_average_rgba_surface(cairo_surface_t *surface, cairo_rectangle_int_t rectangle, struct color *rv) {/*{{{*/
+	cairo_surface_flush(surface);
+	int surf_width = cairo_image_surface_get_width(surface);
+	int surf_height = cairo_image_surface_get_height(surface);
+	int surf_stride = cairo_image_surface_get_stride(surface);
+	unsigned char *surf_data = cairo_image_surface_get_data(surface);
+
+	if(rectangle.x < 0) {
+		rectangle.x += surf_width;
+	}
+	if(rectangle.x + rectangle.width > surf_width) {
+		rectangle.width = surf_width - rectangle.x;
+	}
+	if(rectangle.y < 0) {
+		rectangle.y += surf_height;
+	}
+	if(rectangle.y + rectangle.height > surf_height) {
+		rectangle.height = surf_height - rectangle.y;
+	}
+
+	rv->r = 0.;
+	rv->g = 0.;
+	rv->b = 0.;
+
+	for(int x=rectangle.x; x<rectangle.x+rectangle.width; x++) {
+		for(int y=rectangle.y; y<rectangle.y+rectangle.height; y++) {
+			guint32 pixel = *(guint32 *)&surf_data[surf_stride*y + x * sizeof(guint32)];
+			rv->r += ((pixel & 0x00ff0000) >> 16) / 255.;
+			rv->g += ((pixel & 0x0000ff00) >> 8) / 255.;
+			rv->b += ((pixel & 0x000000ff)) / 255.;
+		}
+	}
+
+	double div = 1. * (rectangle.width * rectangle.height);
+	rv->r /= div;
+	rv->g /= div;
+	rv->b /= div;
+}/*}}}*/
 #ifndef CONFIGURED_WITHOUT_MONTAGE_MODE
 void montage_window_set_cursor(int pos_x, int pos_y) {/*{{{*/
 	const unsigned n_thumbs_x = main_window_width / (option_thumbnails.width + 10);
@@ -4887,12 +4934,61 @@ gboolean window_draw_callback(GtkWidget *widget, cairo_t *cr_arg, gpointer user_
 		else {
 			cr = cairo_create(temporary_image_surface);
 		}
+		cairo_surface_t *temporary_scaled_image_surface = NULL;
 
-		// Draw black background
 		cairo_save(cr);
-		cairo_set_source_rgba(cr, 0., 0., 0., option_transparent_background ? 0. : 1.);
-		cairo_set_operator(cr, CAIRO_OPERATOR_SOURCE);
-		cairo_paint(cr);
+		if(!option_background_gradient) {
+			// Draw black background
+			cairo_set_source_rgba(cr, 0., 0., 0., option_transparent_background ? 0. : 1.);
+			cairo_set_operator(cr, CAIRO_OPERATOR_SOURCE);
+			cairo_paint(cr);
+		}
+		else {
+			// Sample the four corners of the image, and draw a gradient
+
+			// Load the image into an image surface for sampling
+			cairo_surface_t *sample_surface = CURRENT_FILE->thumbnail;
+			if(!sample_surface) {
+				temporary_scaled_image_surface = get_scaled_image_surface_for_current_image();
+				sample_surface = temporary_scaled_image_surface;
+			}
+
+			// Sample the four corners of the image
+			cairo_pattern_t *bg_pattern = cairo_pattern_create_mesh();
+			cairo_mesh_pattern_begin_patch(bg_pattern);
+			cairo_mesh_pattern_move_to(bg_pattern, 0, 0);
+			cairo_mesh_pattern_line_to(bg_pattern, main_window_width, 0);
+			cairo_mesh_pattern_line_to(bg_pattern, main_window_width, main_window_height);
+			cairo_mesh_pattern_line_to(bg_pattern, 0, main_window_height);
+			struct color color;
+			{
+				cairo_rectangle_int_t corner = { 0, 0, 50, 50 };
+				cairo_average_rgba_surface(sample_surface, corner, &color);
+				cairo_mesh_pattern_set_corner_color_rgba(bg_pattern, 0, color.r, color.g, color.b, 1.);
+			}
+			{
+				cairo_rectangle_int_t corner = { -50, 0, 50, 50 };
+				cairo_average_rgba_surface(sample_surface, corner, &color);
+				cairo_mesh_pattern_set_corner_color_rgba(bg_pattern, 1, color.r, color.g, color.b, 1.);
+			}
+			{
+				cairo_rectangle_int_t corner = { -50, -50, 50, 50 };
+				cairo_average_rgba_surface(sample_surface, corner, &color);
+				cairo_mesh_pattern_set_corner_color_rgba(bg_pattern, 2, color.r, color.g, color.b, 1.);
+			}
+			{
+				cairo_rectangle_int_t corner = { 0, -50, 50, 50 };
+				cairo_average_rgba_surface(sample_surface, corner, &color);
+				cairo_mesh_pattern_set_corner_color_rgba(bg_pattern, 3, color.r, color.g, color.b, 1.);
+			}
+			cairo_mesh_pattern_end_patch(bg_pattern);
+
+			// Draw the gradient
+			cairo_set_source(cr, bg_pattern);
+			cairo_set_operator(cr, CAIRO_OPERATOR_SOURCE);
+			cairo_paint(cr);
+			cairo_pattern_destroy(bg_pattern);
+		}
 		cairo_restore(cr);
 
 		// From here on, draw at the target position
@@ -4927,7 +5023,7 @@ gboolean window_draw_callback(GtkWidget *widget, cairo_t *cr_arg, gpointer user_
 		}
 
 		// Draw the scaled image.
-		if(option_lowmem || cr == cr_arg) {
+		if(!temporary_scaled_image_surface && (option_lowmem || cr == cr_arg)) {
 			// In low memory mode, we scale here and draw on the fly
 			// The other situation where we do this is if creating the temporary
 			// image surface failed, because if this failed creating the temporary
@@ -4942,7 +5038,9 @@ gboolean window_draw_callback(GtkWidget *widget, cairo_t *cr_arg, gpointer user_
 		else {
 			// Elsewise, we cache a scaled copy in a separate image surface
 			// to speed up rotations on scaled images
-			cairo_surface_t *temporary_scaled_image_surface = get_scaled_image_surface_for_current_image();
+			if(!temporary_scaled_image_surface) {
+				temporary_scaled_image_surface = get_scaled_image_surface_for_current_image();
+			}
 			cairo_set_source_surface(cr, temporary_scaled_image_surface, 0, 0);
 			cairo_paint(cr);
 			cairo_surface_destroy(temporary_scaled_image_surface);
@@ -6262,6 +6360,18 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 				}
 				gtk_window_move(main_window, parameter.p2short.p1, parameter.p2short.p2);
 			}
+			break;
+
+		case ACTION_TOGGLE_BACKGROUND_GRADIENT:
+			switch(parameter.pint) {
+				case 0:
+					option_background_gradient = !option_background_gradient;
+				case 1:
+					option_background_gradient = 0;
+				default:
+					option_background_gradient = 1;
+			}
+			gtk_widget_queue_draw(GTK_WIDGET(main_window));
 			break;
 
 		default:
