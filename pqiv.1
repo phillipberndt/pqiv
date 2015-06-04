@@ -25,6 +25,9 @@ click again to hide them.  This will only work in compositing window managers.
 .B -d, --slideshow-interval=n
 Set the interval for the slideshow mode
 .TP
+.B --disable-scaling
+Disable scaling of images
+.TP
 .B -f, --fullscreen
 Start in fullscreen mode
 .TP
@@ -49,6 +52,10 @@ might end up not being the first one in the final file list. As with the
 .I --watch-directories
 option, the info box does not automatically update when new images are added.
 .TP
+.B --low-memory
+Try to avoid memory hungry operations: Do not preload the next image, do not
+keep a scaled image in memory for faster redraw operations, etc.
+.TP
 .B --max-depth=n
 Descend at most n levels of directories below the command line arguments. Like
 in find, passing 0 disables recursion. Negative numbers mean infinite recursion
@@ -70,6 +77,18 @@ Reverse the meaning of the cursor keys
 .TP
 .B -s, --slideshow
 Initially activate slideshow mode
+.TP
+.B --shuffle
+Shuffle files
+.TP
+.B --sort-key=PROPERTY
+If
+.I --sort
+is enabled, sort by PROPERTY. Currently supported are
+.I name
+(default), which sorts by filename, and
+.I mtime
+which sorts by the files' modification timestamps.
 .TP
 .B -t, --scale-images-up
 Scale images up to fill the whole screen
@@ -136,32 +155,12 @@ The output is not cached, so reloading the image will revert to the old state.
 
 .po 0
 
-.TP
-.B --disable-scaling
-Disable scaling of images
-.TP
-.B --low-memory
-Try to avoid memory hungry operations: Do not preload the next image, do not
-keep a scaled image in memory for faster redraw operations, etc.
-.TP
-.B --shuffle
-Shuffle files
-.TP
 .B --watch-directories
 Watch directories (given on the command line) for new images and add them as
 they appear. Note that the yellow info box does not update automatically, but
 only when the window needs to be redrawn anyway. This option uses GIO's
 GFileMonitor internally. Depending on which system you use, GIO might internally
 poll regularly for changes, i.e. create some load. (In Linux, inotify is used.)
-.TP
-.B --sort-key=PROPERTY
-If
-.I --sort
-is enabled, sort by PROPERTY. Currently supported are
-.I name
-(default), which sorts by filename, and
-.I mtime
-which sorts by the files' modification timestamps.
 
 .PP
 You can use the file
