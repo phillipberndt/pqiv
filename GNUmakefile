@@ -15,6 +15,7 @@ PKG_CONFIG=$(CROSS)pkg-config
 OBJECTS=pqiv.o lib/strnatcmp.o lib/bostree.o lib/filebuffer.o
 HEADERS=pqiv.h lib/bostree.h lib/filebuffer.h lib/strnatcmp.h
 BACKENDS=gdkpixbuf
+EXTRA_DEFS=
 
 # Load config.make (created by configure)
 ifeq ($(wildcard config.make),config.make)
@@ -98,7 +99,7 @@ ifndef VERBOSE
 endif
 
 # Assemble final compiler flags
-CFLAGS_REAL=-std=gnu99 $(PQIV_WARNING_FLAGS) $(PQIV_VERSION_FLAG) $(CFLAGS) $(DEBUG_CFLAGS) $(shell $(PKG_CONFIG) --cflags "$(LIBS)")
+CFLAGS_REAL=-std=gnu99 $(PQIV_WARNING_FLAGS) $(PQIV_VERSION_FLAG) $(CFLAGS) $(DEBUG_CFLAGS) $(EXTRA_DEFS) $(shell $(PKG_CONFIG) --cflags "$(LIBS)")
 LDLIBS_REAL=$(shell $(PKG_CONFIG) --libs "$(LIBS)") $(LDLIBS)
 LDFLAGS_REAL=$(LDFLAGS)
 

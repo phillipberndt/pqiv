@@ -24,6 +24,7 @@ PKG_CONFIG=pkg-config
 BACKENDS=
 ENFORCED_BACKENDS=
 DISABLED_BACKENDS=
+EXTRA_DEFS=
 
 # Help and options
 help() {
@@ -32,19 +33,30 @@ pqiv configuration
 
 options:
   --prefix=..           Set the prefix for installed files
-  --destdir=..          Set the destdir for installed files (for package maintainers)
+  --destdir=..          Set the destdir for installed files (for package
+                        maintainers)
   --gtk-version=2       Use GTK+-2.0 even if GTK+-3.0 is available
   --cross=..            Set a cross-compiler prefix (e.g. \`i686-pc-mingw32-')
-  --backends=..         Select which backends to include in pqiv (autodetermined by default)
+  --backends=..         Select which backends to include in pqiv
+                        (autodetermined by default)
                         Available:
                           gdkpixbuf (images),
                           poppler (PDF),
                           spectre (PS/EPS),
                           wand (ImageMagick, various formats)
-  --with[out]-<backend> Alternative syntax for backend selection. Non-specified backends are
-                        autodetermined.
-
+  --with[out]-<backend> Alternative syntax for backend selection.
+                        Non-specified backends are autodetermined.
 EOF
+
+sed -n -re 's!#ifn?def (\S+)\s*/\* option (\S+): (.+) ?\*/!\1 \2 \3!p' pqiv.c | while read DEFNAME OPTFLAG DESCRIPTION; do
+	if [ ${#DESCRIPTION} -gt 50 ]; then
+		printf "  %-22s\n  %-22s%s\n" $OPTFLAG "" "$DESCRIPTION" >&2
+	else
+		printf "  %-22s%s\n" $OPTFLAG "$DESCRIPTION" >&2
+	fi
+done
+echo >&2
+
 }
 
 while [ $# -gt 0 ]; do
@@ -101,19 +113,30 @@ while [ $# -gt 0 ]; do
 			done
 			;;
 		*)
-			if [ "${PARAMETER#--without-}" != "${PARAMETER}" ]; then
-				DISABLED_BACKENDS="${PARAMETER#--without-} ${DISABLED_BACKENDS}"
-			elif [ "${PARAMETER#--with-}" != "${PARAMETER}" ]; then
-				NAME="${PARAMETER#--with-}"
-				if ! [ -e backends/${NAME}.c ]; then
+			DEF=$(
+				sed -n -re 's!#ifn?def (\S+)\s*/\* option (\S+): (.+) ?\*/!\1 \2 \3!p' pqiv.c | while read DEFNAME OPTFLAG DESCRIPTION; do
+					if [ "${PARAMETER}" = "${OPTFLAG}" ]; then
+						echo "-D${DEFNAME}"
+					fi
+				done
+			)
+			if [ -n "${DEF}" ]; then
+				EXTRA_DEFS="${EXTRA_DEFS} ${DEF}"
+			else
+				if [ "${PARAMETER#--without-}" != "${PARAMETER}" ]; then
+					DISABLED_BACKENDS="${PARAMETER#--without-} ${DISABLED_BACKENDS}"
+				elif [ "${PARAMETER#--with-}" != "${PARAMETER}" ]; then
+					NAME="${PARAMETER#--with-}"
+					if ! [ -e backends/${NAME}.c ]; then
+						echo "Unknown option: $1" >&2
+						exit 1
+					fi
+					ENFORCED_BACKENDS="${NAME} ${ENFORCED_BACKENDS}"
+				else
 					echo "Unknown option: $1" >&2
+					help
 					exit 1
 				fi
-				ENFORCED_BACKENDS="${NAME} ${ENFORCED_BACKENDS}"
-			else
-				echo "Unknown option: $1" >&2
-				help
-				exit 1
 			fi
 	esac
 	shift
@@ -258,6 +281,7 @@ GTK_VERSION=$GTK_VERSION
 CROSS=$CROSS
 EXECUTABLE_EXTENSION=$EXECUTABLE_EXTENSION
 PKG_CONFIG=$PKG_CONFIG
+EXTRA_DEFS=${EXTRA_DEFS}
 ${CFLAGS:+CFLAGS=$CFLAGS}
 ${LDFLAGS:+LDFLAGS=$LDFLAGS}
 ${CCFLAGS:+CCFLAGS=$CCFLAGS}

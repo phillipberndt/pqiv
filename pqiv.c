@@ -260,9 +260,12 @@ guint current_image_animation_timeout_id = 0;
 // source set, anything bigger than that actually is a slideshow id.
 gint slideshow_timeout_id = -1;
 
+#ifndef CONFIGURED_WITHOUT_SHUFFLE
 // A list containing references to the images in shuffled order
 GList *shuffled_images_list = NULL;
+#endif
 
+#ifndef CONFIGURED_WITHOUT_EXTERNAL_COMMANDS
 // User options
 gchar *external_image_filter_commands[] = {
 	NULL,
@@ -276,6 +279,7 @@ gchar *external_image_filter_commands[] = {
 	NULL,
 	NULL
 };
+#endif
 
 gchar keyboard_aliases[127] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
@@ -295,7 +299,9 @@ gboolean option_initial_scale_used = FALSE;
 gboolean option_start_with_slideshow_mode = FALSE;
 gboolean option_sort = FALSE;
 enum { NAME, MTIME } option_sort_key = NAME;
+#ifndef CONFIGURED_WITHOUT_SHUFFLE
 gboolean option_shuffle = FALSE;
+#endif
 gboolean option_reverse_cursor_keys = FALSE;
 gboolean option_transparent_background = FALSE;
 gboolean option_watch_directories = FALSE;
@@ -324,7 +330,9 @@ struct {
 // Hint: Only types G_OPTION_ARG_NONE, G_OPTION_ARG_STRING, G_OPTION_ARG_DOUBLE/INTEGER and G_OPTION_ARG_CALLBACK are
 // implemented for option parsing.
 GOptionEntry options[] = {
+#ifndef CONFIGURED_WITHOUT_ADVANCED_SETTINGS
 	{ "keyboard-alias", 'a', 0, G_OPTION_ARG_CALLBACK, (gpointer)&options_keyboard_alias_set_callback, "Define n as a keyboard alias for f", "nfnf.." },
+#endif
 	{ "transparent-background", 'c', 0, G_OPTION_ARG_NONE, &option_transparent_background, "Borderless transparent window", NULL },
 	{ "slideshow-interval", 'd', 0, G_OPTION_ARG_DOUBLE, &option_slideshow_interval, "Set slideshow interval", "n" },
 	{ "fullscreen", 'f', 0, G_OPTION_ARG_NONE, &option_start_fullscreen, "Start in fullscreen mode", NULL },
@@ -333,13 +341,20 @@ GOptionEntry options[] = {
 	{ "lazy-load", 'l', 0, G_OPTION_ARG_NONE, &option_lazy_load, "Display the main window as soon as possible", NULL },
 	{ "sort", 'n', 0, G_OPTION_ARG_NONE, &option_sort, "Sort files in natural order", NULL },
 	{ "window-position", 'P', 0, G_OPTION_ARG_CALLBACK, (gpointer)&option_window_position_callback, "Set initial window position (`x,y' or `off' to not position the window at all)", "POSITION" },
+#ifndef CONFIGURED_WITHOUT_ADVANCED_SETTINGS
 	{ "reverse-cursor-keys", 'R', 0, G_OPTION_ARG_NONE, &option_reverse_cursor_keys, "Reverse the meaning of the cursor keys", NULL },
+#endif
 	{ "additional-from-stdin", 'r', 0, G_OPTION_ARG_NONE, &option_addl_from_stdin, "Read additional filenames/folders from stdin", NULL },
 	{ "slideshow", 's', 0, G_OPTION_ARG_NONE, &option_start_with_slideshow_mode, "Activate slideshow mode", NULL },
 	{ "scale-images-up", 't', G_OPTION_FLAG_NO_ARG, G_OPTION_ARG_CALLBACK, (gpointer)&option_scale_level_callback, "Scale images up to fill the whole screen", NULL },
+#ifndef CONFIGURED_WITHOUT_ADVANCED_SETTINGS
 	{ "window-title", 'T', 0, G_OPTION_ARG_STRING, &option_window_title, "Set the title of the window. See manpage for available variables.", "TITLE" },
+#endif
+#ifndef CONFIGURED_WITHOUT_ADVANCED_SETTINGS
 	{ "zoom-level", 'z', 0, G_OPTION_ARG_DOUBLE, &option_initial_scale, "Set initial zoom level (1.0 is 100%)", "FLOAT" },
+#endif
 
+#ifndef CONFIGURED_WITHOUT_EXTERNAL_COMMANDS
 	{ "command-1", '1', 0, G_OPTION_ARG_STRING, &external_image_filter_commands[0], "Bind the external COMMAND to key 1. See manpage for extended usage (commands starting with `>' or `|'). Use 2..9 for further commands.", "COMMAND" },
 	{ "command-2", '2', G_OPTION_FLAG_HIDDEN, G_OPTION_ARG_STRING, &external_image_filter_commands[1], NULL, NULL },
 	{ "command-3", '3', G_OPTION_FLAG_HIDDEN, G_OPTION_ARG_STRING, &external_image_filter_commands[2], NULL, NULL },
@@ -349,13 +364,16 @@ GOptionEntry options[] = {
 	{ "command-7", '7', G_OPTION_FLAG_HIDDEN, G_OPTION_ARG_STRING, &external_image_filter_commands[6], NULL, NULL },
 	{ "command-8", '8', G_OPTION_FLAG_HIDDEN, G_OPTION_ARG_STRING, &external_image_filter_commands[7], NULL, NULL },
 	{ "command-9", '9', G_OPTION_FLAG_HIDDEN, G_OPTION_ARG_STRING, &external_image_filter_commands[8], NULL, NULL },
+#endif
 
 	{ "browse", 0, 0, G_OPTION_ARG_NONE, &option_browse, "For each command line argument, additionally load all images from the image's directory", NULL },
 	{ "disable-scaling", 0, G_OPTION_FLAG_NO_ARG, G_OPTION_ARG_CALLBACK, (gpointer)&option_scale_level_callback, "Disable scaling of images", NULL },
 	{ "fade-duration", 0, 0, G_OPTION_ARG_DOUBLE, &option_fading_duration, "Adjust fades' duration", "SECONDS" },
 	{ "low-memory", 0, 0, G_OPTION_ARG_NONE, &option_lowmem, "Try to keep memory usage to a minimum", NULL },
 	{ "max-depth", 0, 0, G_OPTION_ARG_INT, &option_max_depth, "Descend at most LEVELS levels of directories below the command line arguments", "LEVELS" },
+#ifndef CONFIGURED_WITHOUT_SHUFFLE
 	{ "shuffle", 0, 0, G_OPTION_ARG_NONE, &option_shuffle, "Shuffle files", NULL },
+#endif
 	{ "watch-directories", 0, 0, G_OPTION_ARG_NONE, &option_watch_directories, "Watch directories for new files", NULL },
 	{ "sort-key", 0, 0, G_OPTION_ARG_CALLBACK, (gpointer)&option_sort_key_callback, "Key to use for sorting", "PROPERTY" },
 
@@ -372,7 +390,9 @@ const char *long_description_text = ("Keyboard & Mouse bindings:\n"
 "  f                                  Toggle fullscreen\n"
 "  j                                  Jump to an image (Shows a selection box)\n"
 "  r                                  Reload image\n"
+#ifndef CONFIGURED_WITHOUT_SHUFFLE
 "  CTRL r                             Toggle shuffle mode\n"
+#endif
 "  +/-/0, Button 3 & Drag             Zoom in/out/reset zoom\n"
 "  t                                  Toggle autoscale\n"
 "  l/k                                Rotate left/right\n"
@@ -1743,9 +1763,11 @@ gboolean absolute_image_movement(BOSNode *ref) {/*{{{*/
 
 	return FALSE;
 }/*}}}*/
+#ifndef CONFIGURED_WITHOUT_SHUFFLE
 void relative_image_pointer_shuffle_list_unref_fn(BOSNode *node) {
 	bostree_node_weak_unref(file_tree, node);
 }
+#endif
 BOSNode *relative_image_pointer(ptrdiff_t movement) {/*{{{*/
 	// Obtain a pointer to the image that is +movement away from the current image
 	// This function behaves differently depending on whether shuffle mode is
@@ -1755,6 +1777,7 @@ BOSNode *relative_image_pointer(ptrdiff_t movement) {/*{{{*/
 	//
 	size_t count = bostree_node_count(file_tree);
 
+#ifndef CONFIGURED_WITHOUT_SHUFFLE /* option --without-shuffle: Build without shuffle mode */
 	if(option_shuffle) {
 #if 0
 		// Output some debug info
@@ -1874,6 +1897,7 @@ BOSNode *relative_image_pointer(ptrdiff_t movement) {/*{{{*/
 		return image;
 	}
 	else {
+#endif
 		// Sequential movement. This is the simple stuff:
 
 		if(movement == 0) {
@@ -1897,7 +1921,9 @@ BOSNode *relative_image_pointer(ptrdiff_t movement) {/*{{{*/
 
 			return bostree_select(file_tree, pos);
 		}
+#ifndef CONFIGURED_WITHOUT_SHUFFLE
 	}
+#endif
 }/*}}}*/
 void relative_image_movement(ptrdiff_t movement) {/*{{{*/
 	// Calculate new position
@@ -2014,6 +2040,7 @@ void transform_current_image(cairo_matrix_t *transformation) {/*{{{*/
 	invalidate_current_scaled_image_surface();
 	gtk_widget_queue_draw(GTK_WIDGET(main_window));
 }/*}}}*/
+#ifndef CONFIGURED_WITHOUT_EXTERNAL_COMMANDS /* option --without-external-commands: Do not include support for calling external programs */
 gchar *apply_external_image_filter_prepare_command(gchar *command) { /*{{{*/
 		D_LOCK(file_tree);
 		if((CURRENT_FILE->file_flags & FILE_FLAGS_MEMORY_IMAGE) != 0) {
@@ -2212,6 +2239,7 @@ gpointer apply_external_image_filter_thread(gpointer external_filter_ptr) {/*{{{
 	apply_external_image_filter((gchar *)external_filter_ptr);
 	return NULL;
 }/*}}}*/
+#endif
 void hardlink_current_image() {/*{{{*/
 	BOSNode *the_file = bostree_node_weak_ref(current_file_node);
 
@@ -3250,6 +3278,7 @@ gboolean window_key_press_callback(GtkWidget *widget, GdkEventKey *event, gpoint
 
 		case GDK_KEY_r:
 		case GDK_KEY_R:
+#ifndef CONFIGURED_WITHOUT_SHUFFLE
 			if(event->state & GDK_CONTROL_MASK) {
 				option_shuffle = !option_shuffle;
 				preload_adjacent_images();
@@ -3257,6 +3286,7 @@ gboolean window_key_press_callback(GtkWidget *widget, GdkEventKey *event, gpoint
 				gtk_widget_queue_draw(GTK_WIDGET(main_window));
 				break;
 			}
+#endif
 
 			CURRENT_FILE->is_loaded = FALSE;
 			update_info_text("Reloading image..");
@@ -3399,6 +3429,7 @@ gboolean window_key_press_callback(GtkWidget *widget, GdkEventKey *event, gpoint
 			gtk_widget_destroy(GTK_WIDGET(main_window));
 			break;
 
+#ifndef CONFIGURED_WITHOUT_EXTERNAL_COMMANDS
 		case GDK_KEY_1:
 		case GDK_KEY_2:
 		case GDK_KEY_3:
@@ -3438,6 +3469,7 @@ gboolean window_key_press_callback(GtkWidget *widget, GdkEventKey *event, gpoint
 				}
 			}
 			break;
+#endif
 	}
 
 
