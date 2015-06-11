@@ -243,8 +243,10 @@ char **global_argv;
 cairo_surface_t *last_visible_image_surface = NULL;
 cairo_surface_t *current_scaled_image_surface = NULL;
 
+#ifndef CONFIGURED_WITHOUT_INFO_TEXT
 gchar *current_info_text = NULL;
 cairo_rectangle_int_t current_info_text_bounding_box = { 0, 0, 0, 0 };
+#endif
 
 
 // Current state of the displayed image and user interaction
@@ -260,10 +262,8 @@ guint current_image_animation_timeout_id = 0;
 // source set, anything bigger than that actually is a slideshow id.
 gint slideshow_timeout_id = -1;
 
-#ifndef CONFIGURED_WITHOUT_SHUFFLE
 // A list containing references to the images in shuffled order
 GList *shuffled_images_list = NULL;
-#endif
 
 #ifndef CONFIGURED_WITHOUT_EXTERNAL_COMMANDS
 // User options
@@ -292,16 +292,16 @@ gint option_scale = 1;
 gboolean scale_override = FALSE;
 const gchar *option_window_title = "pqiv: $FILENAME ($WIDTHx$HEIGHT) $ZOOM% [$IMAGE_NUMBER/$IMAGE_COUNT]";
 gdouble option_slideshow_interval = 5.;
+#ifndef CONFIGURED_WITHOUT_INFO_TEXT
 gboolean option_hide_info_box = FALSE;
+#endif
 gboolean option_start_fullscreen = FALSE;
 gdouble option_initial_scale = 1.0;
 gboolean option_initial_scale_used = FALSE;
 gboolean option_start_with_slideshow_mode = FALSE;
 gboolean option_sort = FALSE;
 enum { NAME, MTIME } option_sort_key = NAME;
-#ifndef CONFIGURED_WITHOUT_SHUFFLE
 gboolean option_shuffle = FALSE;
-#endif
 gboolean option_reverse_cursor_keys = FALSE;
 gboolean option_transparent_background = FALSE;
 gboolean option_watch_directories = FALSE;
@@ -330,29 +330,23 @@ struct {
 // Hint: Only types G_OPTION_ARG_NONE, G_OPTION_ARG_STRING, G_OPTION_ARG_DOUBLE/INTEGER and G_OPTION_ARG_CALLBACK are
 // implemented for option parsing.
 GOptionEntry options[] = {
-#ifndef CONFIGURED_WITHOUT_ADVANCED_SETTINGS
 	{ "keyboard-alias", 'a', 0, G_OPTION_ARG_CALLBACK, (gpointer)&options_keyboard_alias_set_callback, "Define n as a keyboard alias for f", "nfnf.." },
-#endif
 	{ "transparent-background", 'c', 0, G_OPTION_ARG_NONE, &option_transparent_background, "Borderless transparent window", NULL },
 	{ "slideshow-interval", 'd', 0, G_OPTION_ARG_DOUBLE, &option_slideshow_interval, "Set slideshow interval", "n" },
 	{ "fullscreen", 'f', 0, G_OPTION_ARG_NONE, &option_start_fullscreen, "Start in fullscreen mode", NULL },
 	{ "fade", 'F', 0, G_OPTION_ARG_NONE, (gpointer)&option_fading, "Fade between images", NULL },
+#ifndef CONFIGURED_WITHOUT_INFO_TEXT
 	{ "hide-info-box", 'i', 0, G_OPTION_ARG_NONE, &option_hide_info_box, "Initially hide the info box", NULL },
+#endif
 	{ "lazy-load", 'l', 0, G_OPTION_ARG_NONE, &option_lazy_load, "Display the main window as soon as possible", NULL },
 	{ "sort", 'n', 0, G_OPTION_ARG_NONE, &option_sort, "Sort files in natural order", NULL },
 	{ "window-position", 'P', 0, G_OPTION_ARG_CALLBACK, (gpointer)&option_window_position_callback, "Set initial window position (`x,y' or `off' to not position the window at all)", "POSITION" },
-#ifndef CONFIGURED_WITHOUT_ADVANCED_SETTINGS
 	{ "reverse-cursor-keys", 'R', 0, G_OPTION_ARG_NONE, &option_reverse_cursor_keys, "Reverse the meaning of the cursor keys", NULL },
-#endif
 	{ "additional-from-stdin", 'r', 0, G_OPTION_ARG_NONE, &option_addl_from_stdin, "Read additional filenames/folders from stdin", NULL },
 	{ "slideshow", 's', 0, G_OPTION_ARG_NONE, &option_start_with_slideshow_mode, "Activate slideshow mode", NULL },
 	{ "scale-images-up", 't', G_OPTION_FLAG_NO_ARG, G_OPTION_ARG_CALLBACK, (gpointer)&option_scale_level_callback, "Scale images up to fill the whole screen", NULL },
-#ifndef CONFIGURED_WITHOUT_ADVANCED_SETTINGS
 	{ "window-title", 'T', 0, G_OPTION_ARG_STRING, &option_window_title, "Set the title of the window. See manpage for available variables.", "TITLE" },
-#endif
-#ifndef CONFIGURED_WITHOUT_ADVANCED_SETTINGS
 	{ "zoom-level", 'z', 0, G_OPTION_ARG_DOUBLE, &option_initial_scale, "Set initial zoom level (1.0 is 100%)", "FLOAT" },
-#endif
 
 #ifndef CONFIGURED_WITHOUT_EXTERNAL_COMMANDS
 	{ "command-1", '1', 0, G_OPTION_ARG_STRING, &external_image_filter_commands[0], "Bind the external COMMAND to key 1. See manpage for extended usage (commands starting with `>' or `|'). Use 2..9 for further commands.", "COMMAND" },
@@ -371,9 +365,7 @@ GOptionEntry options[] = {
 	{ "fade-duration", 0, 0, G_OPTION_ARG_DOUBLE, &option_fading_duration, "Adjust fades' duration", "SECONDS" },
 	{ "low-memory", 0, 0, G_OPTION_ARG_NONE, &option_lowmem, "Try to keep memory usage to a minimum", NULL },
 	{ "max-depth", 0, 0, G_OPTION_ARG_INT, &option_max_depth, "Descend at most LEVELS levels of directories below the command line arguments", "LEVELS" },
-#ifndef CONFIGURED_WITHOUT_SHUFFLE
 	{ "shuffle", 0, 0, G_OPTION_ARG_NONE, &option_shuffle, "Shuffle files", NULL },
-#endif
 	{ "watch-directories", 0, 0, G_OPTION_ARG_NONE, &option_watch_directories, "Watch directories for new files", NULL },
 	{ "sort-key", 0, 0, G_OPTION_ARG_CALLBACK, (gpointer)&option_sort_key_callback, "Key to use for sorting", "PROPERTY" },
 
@@ -388,11 +380,11 @@ const char *long_description_text = ("Keyboard & Mouse bindings:\n"
 "  Space, Button 1, Scroll            Next image\n"
 "  CTRL Space/Backspace               Move to first image in next/previous directory\n"
 "  f                                  Toggle fullscreen\n"
+#ifndef CONFIGURED_WITHOUT_JUMP_DIALOG
 "  j                                  Jump to an image (Shows a selection box)\n"
-"  r                                  Reload image\n"
-#ifndef CONFIGURED_WITHOUT_SHUFFLE
-"  CTRL r                             Toggle shuffle mode\n"
 #endif
+"  r                                  Reload image\n"
+"  CTRL r                             Toggle shuffle mode\n"
 "  +/-/0, Button 3 & Drag             Zoom in/out/reset zoom\n"
 "  t                                  Toggle autoscale\n"
 "  l/k                                Rotate left/right\n"
@@ -409,8 +401,19 @@ typedef struct {
 
 void set_scale_level_to_fit();
 void set_scale_level_for_screen();
+#ifndef CONFIGURED_WITHOUT_INFO_TEXT
 void info_text_queue_redraw();
 void update_info_text(const char *);
+	#define UPDATE_INFO_TEXT(fmt, ...) { \
+		gchar *_info_text = g_strdup_printf(fmt, __VA_ARGS__);\
+		update_info_text(_info_text); \
+		g_free(_info_text); \
+	}
+#else
+	#define info_text_queue_redraw(...)
+	#define update_info_text(...)
+	#define UPDATE_INFO_TEXT(fmt, ...)
+#endif
 void queue_draw();
 gboolean main_window_center();
 void window_screen_changed_callback(GtkWidget *widget, GdkScreen *previous_screen, gpointer user_data);
@@ -1763,11 +1766,9 @@ gboolean absolute_image_movement(BOSNode *ref) {/*{{{*/
 
 	return FALSE;
 }/*}}}*/
-#ifndef CONFIGURED_WITHOUT_SHUFFLE
 void relative_image_pointer_shuffle_list_unref_fn(BOSNode *node) {
 	bostree_node_weak_unref(file_tree, node);
 }
-#endif
 BOSNode *relative_image_pointer(ptrdiff_t movement) {/*{{{*/
 	// Obtain a pointer to the image that is +movement away from the current image
 	// This function behaves differently depending on whether shuffle mode is
@@ -1777,7 +1778,6 @@ BOSNode *relative_image_pointer(ptrdiff_t movement) {/*{{{*/
 	//
 	size_t count = bostree_node_count(file_tree);
 
-#ifndef CONFIGURED_WITHOUT_SHUFFLE /* option --without-shuffle: Build without shuffle mode */
 	if(option_shuffle) {
 #if 0
 		// Output some debug info
@@ -1897,7 +1897,6 @@ BOSNode *relative_image_pointer(ptrdiff_t movement) {/*{{{*/
 		return image;
 	}
 	else {
-#endif
 		// Sequential movement. This is the simple stuff:
 
 		if(movement == 0) {
@@ -1921,9 +1920,7 @@ BOSNode *relative_image_pointer(ptrdiff_t movement) {/*{{{*/
 
 			return bostree_select(file_tree, pos);
 		}
-#ifndef CONFIGURED_WITHOUT_SHUFFLE
 	}
-#endif
 }/*}}}*/
 void relative_image_movement(ptrdiff_t movement) {/*{{{*/
 	// Calculate new position
@@ -2261,9 +2258,7 @@ void hardlink_current_image() {/*{{{*/
 		cairo_surface_t *surface = get_scaled_image_surface_for_current_image();
 		if(surface) {
 			if(cairo_surface_write_to_png(surface, store_target) == CAIRO_STATUS_SUCCESS) {
-				gchar *info_text = g_strdup_printf("Stored what you see into %s", store_target);
-				update_info_text(info_text);
-				g_free(info_text);
+				UPDATE_INFO_TEXT("Stored what you see into %s", store_target);
 			}
 			else {
 				update_info_text("Failed to write to the .pqiv-select subdirectory");
@@ -2306,9 +2301,7 @@ void hardlink_current_image() {/*{{{*/
 		cairo_surface_t *surface = get_scaled_image_surface_for_current_image();
 		if(surface) {
 			if(cairo_surface_write_to_png(surface, store_target) == CAIRO_STATUS_SUCCESS) {
-				gchar *info_text = g_strdup_printf("Failed to link file, but stored what you see into %s", store_target);
-				update_info_text(info_text);
-				g_free(info_text);
+				UPDATE_INFO_TEXT("Failed to link file, but stored what you see into %s", store_target);
 			}
 			else {
 				update_info_text("Failed to write to the .pqiv-select subdirectory");
@@ -2403,6 +2396,7 @@ cairo_surface_t *get_scaled_image_surface_for_current_image() {/*{{{*/
 }/*}}}*/
 // }}}
 /* Jump dialog {{{ */
+#ifndef CONFIGURED_WITHOUT_JUMP_DIALOG /* option --without-jump-dialog: Do not build with -j support */
 gboolean jump_dialog_search_list_filter_callback(GtkTreeModel *model, GtkTreeIter *iter, gpointer user_data) { /* {{{ */
 	/**
 	 * List filter function for the jump dialog
@@ -2596,9 +2590,10 @@ void do_jump_dialog() { /* {{{ */
 	g_object_unref(search_list);
 	g_object_unref(search_list_filter);
 } /* }}} */
+#endif
 // }}}
 /* Main window functions {{{ */
-void window_fullscreen() {
+void window_fullscreen() {/*{{{*/
 	// Bugfix for Awesome WM: If hints are active, windows are fullscreen'ed honoring the aspect ratio
 	gtk_window_set_geometry_hints(main_window, NULL, NULL, 0);
 
@@ -2614,8 +2609,8 @@ void window_fullscreen() {
 	#endif
 
 	gtk_window_fullscreen(main_window);
-}
-void window_unfullscreen() {
+}/*}}}*/
+void window_unfullscreen() {/*{{{*/
 	#ifndef _WIN32
 		if(!screen_supports_fullscreen) {
 			// WM does not support _NET_WM_ACTION_FULLSCREEN or no WM present
@@ -2626,12 +2621,13 @@ void window_unfullscreen() {
 	#endif
 
 	gtk_window_unfullscreen(main_window);
-}
+}/*}}}*/
 inline void queue_draw() {/*{{{*/
 	if(!current_image_drawn) {
 		gtk_widget_queue_draw(GTK_WIDGET(main_window));
 	}
 }/*}}}*/
+#ifndef CONFIGURED_WITHOUT_INFO_TEXT /* option --without-info-text: Build without support for the info text */
 inline void info_text_queue_redraw() {/*{{{*/
 	if(!option_hide_info_box) {
 		gtk_widget_queue_draw_area(GTK_WIDGET(main_window),
@@ -2737,6 +2733,7 @@ void update_info_text(const gchar *action) {/*{{{*/
 	gtk_window_set_title(GTK_WINDOW(main_window), new_window_title->str);
 	g_string_free(new_window_title, TRUE);
 }/*}}}*/
+#endif
 gboolean window_close_callback(GtkWidget *object, gpointer user_data) {/*{{{*/
 	gtk_main_quit();
 
@@ -2911,6 +2908,7 @@ gboolean window_draw_callback(GtkWidget *widget, cairo_t *cr_arg, gpointer user_
 	D_UNLOCK(file_tree);
 
 	// Draw info box (directly to the screen)
+#ifndef CONFIGURED_WITHOUT_INFO_TEXT
 	if(current_info_text != NULL) {
 		double x1, x2, y1, y2;
 		cairo_save(cr_arg);
@@ -2960,6 +2958,7 @@ gboolean window_draw_callback(GtkWidget *widget, cairo_t *cr_arg, gpointer user_
 		current_info_text_bounding_box.width = x2 - x1 + 10 + 30;
 		current_info_text_bounding_box.height = y2 - y1 + 8;
 	}
+#endif
 
 	return TRUE;
 }/*}}}*/
@@ -3192,10 +3191,8 @@ gboolean window_key_press_callback(GtkWidget *widget, GdkEventKey *event, gpoint
 					g_source_remove(slideshow_timeout_id);
 					slideshow_timeout_id = gdk_threads_add_timeout(option_slideshow_interval * 1000, slideshow_timeout_callback, NULL);
 				}
-				gchar *info_text = g_strdup_printf("Slideshow interval set to %d seconds", (int)option_slideshow_interval);
-				update_info_text(info_text);
+				UPDATE_INFO_TEXT("Slideshow interval set to %d seconds", (int)option_slideshow_interval);
 				gtk_widget_queue_draw(GTK_WIDGET(main_window));
-				g_free(info_text);
 				break;
 			}
 
@@ -3227,10 +3224,8 @@ gboolean window_key_press_callback(GtkWidget *widget, GdkEventKey *event, gpoint
 					g_source_remove(slideshow_timeout_id);
 					slideshow_timeout_id = gdk_threads_add_timeout(option_slideshow_interval * 1000, slideshow_timeout_callback, NULL);
 				}
-				gchar *info_text = g_strdup_printf("Slideshow interval set to %d seconds", (int)option_slideshow_interval);
-				update_info_text(info_text);
+				UPDATE_INFO_TEXT("Slideshow interval set to %d seconds", (int)option_slideshow_interval);
 				gtk_widget_queue_draw(GTK_WIDGET(main_window));
-				g_free(info_text);
 				break;
 			}
 
@@ -3278,7 +3273,6 @@ gboolean window_key_press_callback(GtkWidget *widget, GdkEventKey *event, gpoint
 
 		case GDK_KEY_r:
 		case GDK_KEY_R:
-#ifndef CONFIGURED_WITHOUT_SHUFFLE
 			if(event->state & GDK_CONTROL_MASK) {
 				option_shuffle = !option_shuffle;
 				preload_adjacent_images();
@@ -3286,7 +3280,6 @@ gboolean window_key_press_callback(GtkWidget *widget, GdkEventKey *event, gpoint
 				gtk_widget_queue_draw(GTK_WIDGET(main_window));
 				break;
 			}
-#endif
 
 			CURRENT_FILE->is_loaded = FALSE;
 			update_info_text("Reloading image..");
@@ -3361,17 +3354,21 @@ gboolean window_key_press_callback(GtkWidget *widget, GdkEventKey *event, gpoint
 			update_info_text("Image rotated right");
 			break;
 
+#ifndef CONFIGURED_WITHOUT_INFO_TEXT
 		case GDK_KEY_i:
 		case GDK_KEY_I:
 			option_hide_info_box = !option_hide_info_box;
 			update_info_text(NULL);
 			gtk_widget_queue_draw(GTK_WIDGET(main_window));
 			break;
+#endif
 
+#ifndef CONFIGURED_WITHOUT_JUMP_DIALOG
 		case GDK_KEY_j:
 		case GDK_KEY_J:
 			do_jump_dialog();
 			break;
+#endif
 
 		case GDK_KEY_s:
 		case GDK_KEY_S:
@@ -3450,15 +3447,11 @@ gboolean window_key_press_callback(GtkWidget *widget, GdkEventKey *event, gpoint
 					((CURRENT_FILE->file_flags & FILE_FLAGS_MEMORY_IMAGE) != 0 && command[0] != '|')
 					|| ((CURRENT_FILE->file_flags & FILE_FLAGS_ANIMATION) != 0 && command[0] == '|')) {
 
-					gchar *info = g_strdup_printf("Command %d incompatible with current file type", event->keyval - GDK_KEY_1 + 1);
-					update_info_text(info);
-					g_free(info);
+					UPDATE_INFO_TEXT("Command %d incompatible with current file type", event->keyval - GDK_KEY_1 + 1);
 					gtk_widget_queue_draw(GTK_WIDGET(main_window));
 				}
 				else {
-					gchar *info = g_strdup_printf("Executing command %d", event->keyval - GDK_KEY_1 + 1);
-					update_info_text(info);
-					g_free(info);
+					UPDATE_INFO_TEXT("Executing command %d", event->keyval - GDK_KEY_1 + 1);
 					gtk_widget_queue_draw(GTK_WIDGET(main_window));
 
 					#if GLIB_CHECK_VERSION(2, 32, 0)
@@ -3869,6 +3862,7 @@ gboolean initialize_gui_or_quit_callback(gpointer user_data) {/*{{{*/
 }/*}}}*/
 // }}}
 
+#ifndef CONFIGURED_WITHOUT_INFO_TEXT
 gboolean load_images_thread_update_info_text(gpointer user_data) {/*{{{*/
 	// If the window is already visible and new files have been found, update
 	// the info text every second
@@ -3887,13 +3881,16 @@ gboolean load_images_thread_update_info_text(gpointer user_data) {/*{{{*/
 	}
 	return TRUE;
 }/*}}}*/
+#endif
 gpointer load_images_thread(gpointer user_data) {/*{{{*/
+#ifndef CONFIGURED_WITHOUT_INFO_TEXT
 	guint event_source;
 	if(user_data != NULL) {
 		// Use the info text updater only if this function was called in a separate
 		// thread (--lazy-load option)
 		event_source = gdk_threads_add_timeout(1000, load_images_thread_update_info_text, NULL);
 	}
+#endif
 
 	load_images(&global_argc, global_argv);
 
@@ -3908,9 +3905,11 @@ gpointer load_images_thread(gpointer user_data) {/*{{{*/
 		gdk_threads_add_idle(initialize_gui_or_quit_callback, NULL);
 	}
 
+#ifndef CONFIGURED_WITHOUT_INFO_TEXT
 	if(user_data != NULL) {
 		g_source_remove(event_source);
 	}
+#endif
 	return NULL;
 }/*}}}*/
 
