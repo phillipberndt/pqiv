@@ -128,7 +128,7 @@ BOSNode *file_type_wand_alloc(load_images_state_t state, file_t *file) {/*{{{*/
 				new_file->sort_name = g_strdup_printf("%s[%d]", file->sort_name, n + 1);
 			}
 
-			new_file->private = g_new0(file_private_data_wand_t, 1);
+			new_file->private = g_slice_new0(file_private_data_wand_t);
 			((file_private_data_wand_t *)new_file->private)->page_number = n + 1;
 
 			if(n == 0) {
@@ -152,7 +152,7 @@ BOSNode *file_type_wand_alloc(load_images_state_t state, file_t *file) {/*{{{*/
 	}
 }/*}}}*/
 void file_type_wand_free(file_t *file) {/*{{{*/
-	g_free(file->private);
+	g_slice_free(file_private_data_wand_t, file->private);
 }/*}}}*/
 void file_type_wand_load(file_t *file, GInputStream *data, GError **error_pointer) {/*{{{*/
 	G_LOCK(magick_wand_global_lock);

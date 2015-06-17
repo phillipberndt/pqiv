@@ -78,7 +78,7 @@ BOSNode *file_type_spectre_alloc(load_images_state_t state, file_t *file) {/*{{{
 	buffered_file_unref(file);
 
 	for(int n=0; n<n_pages; n++) {
-		file_t *new_file = g_new(file_t, 1);
+		file_t *new_file = g_slice_new(file_t);
 		*new_file = *file;
 
 		if((file->file_flags & FILE_FLAGS_MEMORY_IMAGE)) {
@@ -110,7 +110,7 @@ BOSNode *file_type_spectre_alloc(load_images_state_t state, file_t *file) {/*{{{
 	return first_node;
 }/*}}}*/
 void file_type_spectre_free(file_t *file) {/*{{{*/
-	g_free(file->private);
+	g_slice_free(file_private_data_spectre_t, file->private);
 }/*}}}*/
 void file_type_spectre_load(file_t *file, GInputStream *data, GError **error_pointer) {/*{{{*/
 	file_private_data_spectre_t *private = file->private;
