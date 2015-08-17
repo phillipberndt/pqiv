@@ -88,6 +88,8 @@ ifneq ($(PQIV_VERSION_STRING),)
 endif
 ifdef DEBUG
 	DEBUG_CFLAGS=-DDEBUG
+else
+	DEBUG_CFLAGS=-DNDEBUG
 endif
 
 # Less verbose output
