@@ -145,7 +145,7 @@ BOSNode *file_type_wand_alloc(load_images_state_t state, file_t *file) {/*{{{*/
 	}
 	else {
 		// Simple image
-		file->private = g_new0(file_private_data_wand_t, 1);
+		file->private = g_slice_new0(file_private_data_wand_t);
 		BOSNode *first_node = load_images_handle_parameter_add_file(state, file);
 		G_UNLOCK(magick_wand_global_lock);
 		return first_node;

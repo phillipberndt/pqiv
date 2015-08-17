@@ -95,7 +95,7 @@ BOSNode *file_type_spectre_alloc(load_images_state_t state, file_t *file) {/*{{{
 			new_file->sort_name = g_strdup_printf("%s[%d]", file->sort_name, n + 1);
 		}
 
-		new_file->private = g_new0(file_private_data_spectre_t, 1);
+		new_file->private = g_slice_new0(file_private_data_spectre_t);
 		((file_private_data_spectre_t *)new_file->private)->page_number = n;
 
 		if(n == 0) {
