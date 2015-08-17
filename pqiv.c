@@ -29,6 +29,7 @@
 #include <string.h>
 #include <sys/types.h>
 #include <unistd.h>
+#include <assert.h>
 
 #ifdef _WIN32
 	#ifndef _WIN32_WINNT
@@ -1208,6 +1209,7 @@ gboolean image_animation_timeout_callback(gpointer user_data) {/*{{{*/
 void image_file_updated_callback(GFileMonitor *monitor, GFile *file, GFile *other_file, GFileMonitorEvent event_type, gpointer user_data) {/*{{{*/
 	BOSNode *node = (BOSNode *)user_data;
 
+	D_LOCK(file_tree);
 	if(event_type == G_FILE_MONITOR_EVENT_CHANGES_DONE_HINT) {
 		FILE(node)->force_reload = TRUE;
 		queue_image_load(node);
@@ -1227,10 +1229,11 @@ void image_file_updated_callback(GFileMonitor *monitor, GFile *file, GFile *othe
 		// If anyone ever complains about this it would be best to add an option to entirely
 		// disable this functionality.
 		if(bostree_node_count(file_tree) > 1) {
-			unload_image(node);
+			FILE(node)->force_reload = TRUE;
 			queue_image_load(node);
 		}
 	}
+	D_UNLOCK(file_tree);
 }/*}}}*/
 gboolean window_move_helper_callback(gpointer user_data) {/*{{{*/
 	gtk_window_move(main_window, option_window_position.x, option_window_position.y);
@@ -1423,6 +1426,9 @@ GInputStream *image_loader_stream_file(file_t *file, GError **error_pointer) {/*
 	return data;
 }/*}}}*/
 gboolean image_loader_load_single(BOSNode *node, gboolean called_from_main) {/*{{{*/
+	// Sanity check
+	assert(bostree_node_weak_unref(file_tree, bostree_node_weak_ref(node)) != NULL);
+
 	// Already loaded?
 	file_t *file = (file_t *)node->data;
 	if(file->is_loaded) {
@@ -1515,10 +1521,13 @@ gpointer image_loader_thread(gpointer user_data) {/*{{{*/
 	while(TRUE) {
 		// Handle new queued image load
 		BOSNode *node = g_async_queue_pop(image_loader_queue);
+		D_LOCK(file_tree);
 		if(bostree_node_weak_unref(file_tree, bostree_node_weak_ref(node)) == NULL) {
 			bostree_node_weak_unref(file_tree, node);
+			D_UNLOCK(file_tree);
 			continue;
 		}
+		D_UNLOCK(file_tree);
 
 		// It is a hard decision whether to first load the new image or whether
 		// to GC the old ones first: The former minimizes I/O for multi-page
@@ -1547,7 +1556,7 @@ gpointer image_loader_thread(gpointer user_data) {/*{{{*/
 			}
 			else {
 				// If the image to be loaded has force_reload set and this has the same file name, also set force_reload
-				if(FILE(node)->force_reload && strcmp(FILE(loaded_node)->file_name, FILE(loaded_node)->file_name) == 0) {
+				if(FILE(node)->force_reload && strcmp(FILE(node)->file_name, FILE(loaded_node)->file_name) == 0) {
 					FILE(loaded_node)->force_reload = TRUE;
 				}
 
@@ -1559,7 +1568,7 @@ gpointer image_loader_thread(gpointer user_data) {/*{{{*/
 					(loaded_node != node && loaded_node != current_file_node && (option_lowmem || (loaded_node != previous_file() && loaded_node != next_file())))
 				) {
 					// If this node had force_reload set, we must reload it to populate the cache
-					if(FILE(loaded_node)->force_reload && loaded_node != node) {
+					if(FILE(loaded_node)->force_reload && loaded_node == node) {
 						queue_image_load(node);
 					}
 
