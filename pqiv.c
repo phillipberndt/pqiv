@@ -1425,6 +1425,19 @@ GInputStream *image_loader_stream_file(file_t *file, GError **error_pointer) {/*
 
 	return data;
 }/*}}}*/
+file_t *image_loader_duplicate_file(file_t *file, gchar *custom_display_name, gchar *custom_sort_name) {/*{{{*/
+	file_t *new_file = g_slice_new(file_t);
+	*new_file = *file;
+
+	if((file->file_flags & FILE_FLAGS_MEMORY_IMAGE)) {
+		g_bytes_ref(new_file->file_data);
+	}
+	new_file->file_name = g_strdup(file->file_name);
+	new_file->display_name = custom_display_name ? custom_display_name : g_strdup(file->display_name);
+	new_file->sort_name = custom_sort_name ? custom_sort_name : (file->sort_name ? g_strdup(file->sort_name) : NULL);
+
+	return new_file;
+}/*}}}*/
 gboolean image_loader_load_single(BOSNode *node, gboolean called_from_main) {/*{{{*/
 	// Sanity check
 	assert(bostree_node_weak_unref(file_tree, bostree_node_weak_ref(node)) != NULL);
