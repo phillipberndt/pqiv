@@ -31,6 +31,7 @@ LIBS_gdkpixbuf=gdk-pixbuf-2.0 >= 2.2
 LIBS_poppler=poppler-glib
 LIBS_spectre=libspectre
 LIBS_wand=MagickWand
+LIBS_libav=libavformat libavcodec libswscale
 
 # This might be required if you use mingw, and is required as of
 # Aug 2014 for mxe, but IMHO shouldn't be required / is a bug in
