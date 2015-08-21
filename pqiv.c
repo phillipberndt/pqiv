@@ -3280,7 +3280,7 @@ gboolean window_key_press_callback(GtkWidget *widget, GdkEventKey *event, gpoint
 				break;
 			}
 
-			CURRENT_FILE->is_loaded = FALSE;
+			CURRENT_FILE->force_reload = TRUE;
 			update_info_text("Reloading image..");
 			queue_image_load(relative_image_pointer(0));
 			break;
