@@ -1182,7 +1182,7 @@ void invalidate_current_scaled_image_surface() {/*{{{*/
 }/*}}}*/
 gboolean image_animation_timeout_callback(gpointer user_data) {/*{{{*/
 	D_LOCK(file_tree);
-	if((BOSNode *)user_data != current_file_node) {
+	if((BOSNode *)user_data != current_file_node || FILE(current_file_node)->force_reload) {
 		D_UNLOCK(file_tree);
 		current_image_animation_timeout_id = 0;
 		return FALSE;
@@ -1196,10 +1196,15 @@ gboolean image_animation_timeout_callback(gpointer user_data) {/*{{{*/
 	double delay = CURRENT_FILE->file_type->animation_next_frame_fn(CURRENT_FILE);
 	D_UNLOCK(file_tree);
 
-	current_image_animation_timeout_id = gdk_threads_add_timeout(
-		delay,
-		image_animation_timeout_callback,
-		user_data);
+	if(delay >= 0) {
+		current_image_animation_timeout_id = gdk_threads_add_timeout(
+			delay,
+			image_animation_timeout_callback,
+			user_data);
+	}
+	else {
+		current_image_animation_timeout_id = 0;
+	}
 
 	invalidate_current_scaled_image_surface();
 	gtk_widget_queue_draw(GTK_WIDGET(main_window));
