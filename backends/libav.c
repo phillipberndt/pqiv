@@ -28,6 +28,11 @@
 #include <libavcodec/avcodec.h>
 #include <libswscale/swscale.h>
 
+#if LIBAVCODEC_VERSION_INT < AV_VERSION_INT(55,28,1)
+#define av_frame_alloc avcodec_alloc_frame
+#define av_frame_free avcodec_free_frame
+#endif
+
 // This is a list of extensions that are never handled by this backend
 // It is not a complete list of audio formats supported by ffmpeg,
 // only those I recognized right away.
@@ -45,6 +50,10 @@ typedef struct {
 
 	gboolean pkt_valid;
 	AVPacket pkt;
+
+	AVFrame *frame;
+	AVFrame *rgb_frame;
+	uint8_t *buffer;
 } file_private_data_libav_t;
 
 BOSNode *file_type_libav_alloc(load_images_state_t state, file_t *file) {/*{{{*/
@@ -62,8 +71,22 @@ void file_type_libav_unload(file_t *file) {/*{{{*/
 		private->pkt_valid = FALSE;
 	}
 
+	if(private->frame) {
+		av_frame_free(&(private->frame));
+	}
+
+	if(private->rgb_frame) {
+		av_frame_free(&(private->rgb_frame));
+	}
+
 	if(private->avcontext) {
+		avcodec_close(private->cocontext);
 		avformat_close_input(&(private->avcontext));
+	}
+
+	if(private->buffer) {
+		g_free(private->buffer);
+		private->buffer = NULL;
 	}
 }/*}}}*/
 void file_type_libav_load(file_t *file, GInputStream *data, GError **error_pointer) {/*{{{*/
@@ -101,6 +124,11 @@ void file_type_libav_load(file_t *file, GInputStream *data, GError **error_point
 		return;
 	}
 
+	private->frame = av_frame_alloc();
+	private->rgb_frame = av_frame_alloc();
+	size_t num_bytes = avpicture_get_size(AV_PIX_FMT_RGB32, private->cocontext->width, private->cocontext->height);
+	private->buffer = (uint8_t *)g_malloc(num_bytes * sizeof(uint8_t));
+
 	file->file_flags |= FILE_FLAGS_ANIMATION;
 	file->width = private->cocontext->width;
 	file->height = private->cocontext->height;
@@ -122,6 +150,7 @@ double file_type_libav_animation_next_frame(file_t *file) {/*{{{*/
 		// Loop until the next video frame is found
 		memset(&(private->pkt), 0, sizeof(AVPacket));
 		if(av_read_frame(private->avcontext, &(private->pkt)) < 0) {
+			av_free_packet(&(private->pkt));
 			avformat_seek_file(private->avcontext, -1, 0, 0, 1, 0);
 			if(av_read_frame(private->avcontext, &(private->pkt)) < 0) {
 				// Reading failed; end stream here to be on the safe side
@@ -141,7 +170,7 @@ double file_type_libav_animation_next_frame(file_t *file) {/*{{{*/
 		return private->pkt.duration * private->avcontext->streams[private->video_stream_id]->time_base.num * 1000. / private->avcontext->streams[private->video_stream_id]->time_base.den;
 	}
 
-	// TODO What could be done here?! -> Figure this out from ffmpeg!
+	// TODO What could be done here as a last fallback?! -> Figure this out from ffmpeg!
 	return 10;
 }/*}}}*/
 double file_type_libav_animation_initialize(file_t *file) {/*{{{*/
@@ -151,32 +180,27 @@ void file_type_libav_draw(file_t *file, cairo_t *cr) {/*{{{*/
 	file_private_data_libav_t *private = (file_private_data_libav_t *)file->private;
 
 	if(private->pkt_valid) {
-		AVFrame frame;
-		AVFrame rgb_frame;
-		memset(&frame, 0, sizeof(AVFrame));
+		AVFrame *frame = private->frame;
+		AVFrame *rgb_frame = private->rgb_frame;
 
 		int got_picture_ptr = 0;
 		// Decode a frame
-		if(avcodec_decode_video2(private->cocontext, &frame, &got_picture_ptr, &(private->pkt)) >= 0 && got_picture_ptr) {
-			// Allocate buffer for RGB32 version
-			uint8_t *buffer;
-			size_t numBytes = avpicture_get_size(AV_PIX_FMT_RGB32, private->cocontext->width, private->cocontext->height);
-			buffer = (uint8_t *)g_malloc(numBytes * sizeof(uint8_t));
-			avpicture_fill((AVPicture *)&rgb_frame, buffer, AV_PIX_FMT_RGB32, private->cocontext->width, private->cocontext->height);
+		if(avcodec_decode_video2(private->cocontext, frame, &got_picture_ptr, &(private->pkt)) >= 0 && got_picture_ptr) {
+			// Prepare buffer for RGB32 version
+			uint8_t *buffer = private->buffer;
+			avpicture_fill((AVPicture *)rgb_frame, buffer, AV_PIX_FMT_RGB32, private->cocontext->width, private->cocontext->height);
 
 			// Convert to RGB32
-			struct SwsContext *img_convert_ctx;
-			img_convert_ctx = sws_getCachedContext(NULL, private->cocontext->width, private->cocontext->height, private->cocontext->pix_fmt, private->cocontext->width, private->cocontext->height, AV_PIX_FMT_RGB32, SWS_BICUBIC, NULL, NULL,NULL);
-			sws_scale(img_convert_ctx, (const uint8_t * const *)((AVPicture*)&frame)->data, ((AVPicture*)&frame)->linesize, 0, private->cocontext->height, ((AVPicture *)&rgb_frame)->data, ((AVPicture *)&rgb_frame)->linesize);
+			struct SwsContext *img_convert_ctx = sws_getCachedContext(NULL, private->cocontext->width, private->cocontext->height, private->cocontext->pix_fmt, private->cocontext->width,
+					private->cocontext->height, AV_PIX_FMT_RGB32, SWS_BICUBIC, NULL, NULL, NULL);
+			sws_scale(img_convert_ctx, (const uint8_t * const *)((AVPicture*)frame)->data, ((AVPicture*)frame)->linesize, 0, private->cocontext->height, ((AVPicture *)rgb_frame)->data, ((AVPicture *)rgb_frame)->linesize);
 			sws_freeContext(img_convert_ctx);
 
 			// Draw to a temporary image surface and then to cr
-			cairo_surface_t *image_surface = cairo_image_surface_create_for_data(rgb_frame.data[0], CAIRO_FORMAT_ARGB32, file->width, file->height, ((AVPicture *)&rgb_frame)->linesize[0]);
+			cairo_surface_t *image_surface = cairo_image_surface_create_for_data(rgb_frame->data[0], CAIRO_FORMAT_ARGB32, file->width, file->height, ((AVPicture *)rgb_frame)->linesize[0]);
 			cairo_set_source_surface(cr, image_surface, 0, 0);
 			cairo_paint(cr);
 			cairo_surface_destroy(image_surface);
-
-			g_free(buffer);
 		}
 	}
 }/*}}}*/
