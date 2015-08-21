@@ -148,5 +148,9 @@ get_libs:
 	@true
 
 get_available_backends:
-	@echo -n "BACKENDS: "; $(foreach BACKEND_C, $(wildcard backends/*.c), [ -n "$(LIBS_$(basename $(notdir $(BACKEND_C))))" ] && $(PKG_CONFIG) --exists "$(LIBS_$(basename $(notdir $(BACKEND_C))))" && echo -n "$(basename $(notdir $(BACKEND_C))) ";) echo
+	@echo -n "BACKENDS: "; $(foreach BACKEND_C, $(wildcard backends/*.c), \
+		(! grep -qE "configure hint:.*disable-auto-configure" $(BACKEND_C)) && \
+		[ -n "$(LIBS_$(basename $(notdir $(BACKEND_C))))" ] && \
+		$(PKG_CONFIG) --exists "$(LIBS_$(basename $(notdir $(BACKEND_C))))" \
+		&& echo -n "$(basename $(notdir $(BACKEND_C))) ";) echo
 	@true

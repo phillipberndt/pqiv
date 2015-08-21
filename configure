@@ -37,6 +37,7 @@ options:
   --cross=..            Set a cross-compiler prefix (e.g. \`i686-pc-mingw32-')
   --backends=..         Select which backends to include in pqiv (autodetermined by default)
                         Available:
+                          libav (Video support, never included by default)
                           gdkpixbuf (images),
                           poppler (PDF),
                           spectre (PS/EPS),

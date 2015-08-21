@@ -16,6 +16,7 @@
  *
  *
  * libav backend
+ * configure hint: disable-auto-configure
  */
 
 /* This backend is based on the excellent short API example from
