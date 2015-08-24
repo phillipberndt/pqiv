@@ -1511,7 +1511,16 @@ gboolean image_loader_load_single(BOSNode *node, gboolean called_from_main) {/*{
 		if(node == current_file_node) {
 			current_file_node = next_file();
 			if(current_file_node == node) {
-				current_file_node = NULL;
+				if(bostree_node_count(file_tree) > 0) {
+					// This can be triggered in shuffle mode if images are deleted and the end of
+					// a shuffle cycle is reached, such that next_file() starts a new one. Fall
+					// back to display the first image. See bug #35 in github.
+					current_file_node = bostree_node_weak_ref(bostree_select(file_tree, 0));
+					queue_image_load(current_file_node);
+				}
+				else {
+					current_file_node = NULL;
+				}
 			}
 			else {
 				current_file_node = bostree_node_weak_ref(current_file_node);
