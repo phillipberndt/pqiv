@@ -1748,7 +1748,7 @@ gboolean absolute_image_movement(BOSNode *ref) {/*{{{*/
 
 	// If the new image has not been loaded yet, prepare to display an information message
 	// after some grace period
-	if(!CURRENT_FILE->is_loaded) {
+	if(!CURRENT_FILE->is_loaded && !option_hide_info_box) {
 		gdk_threads_add_timeout(500, absolute_image_movement_still_unloaded_timer_callback, current_file_node);
 	}
 

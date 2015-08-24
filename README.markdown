@@ -122,6 +122,7 @@ pqiv (wip)
  * Added --sort-key=mtime to sort by modification time instead of file name
  * Delay the "Image is still loading" message for half a second to avoid
    flickering status messages
+ * Remove the "Image is still loading" message if --hide-info-box is set
 
 pqiv 2.3.5
  * Fix parameters in pqivrc that are handled by a callback
