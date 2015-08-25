@@ -33,6 +33,9 @@ LIBS_spectre=libspectre
 LIBS_wand=MagickWand
 LIBS_libav=libavformat libavcodec libswscale
 
+# Disable the automated compilation of the libav backend
+DISABLE_AUTOMATED_BUILD_libav=yes
+
 # This might be required if you use mingw, and is required as of
 # Aug 2014 for mxe, but IMHO shouldn't be required / is a bug in
 # poppler (which does not specify this dependency). If it isn't
@@ -149,7 +152,7 @@ get_libs:
 
 get_available_backends:
 	@echo -n "BACKENDS: "; $(foreach BACKEND_C, $(wildcard backends/*.c), \
-		(! grep -qE "configure hint:.*disable-auto-configure" $(BACKEND_C)) && \
+		[ "$(DISABLE_AUTOMATED_BUILD_$(basename $(notdir $(BACKEND_C))))" != "yes" ] && \
 		[ -n "$(LIBS_$(basename $(notdir $(BACKEND_C))))" ] && \
 		$(PKG_CONFIG) --exists "$(LIBS_$(basename $(notdir $(BACKEND_C))))" \
 		&& echo -n "$(basename $(notdir $(BACKEND_C))) ";) echo
