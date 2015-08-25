@@ -19,7 +19,6 @@ DESTDIR=
 GTK_VERSION=0
 CROSS=
 BINARY_EXTENSION=
-CFLAGS=
 MANDIR=
 PKG_CONFIG=pkg-config
 BACKENDS=
@@ -39,6 +38,7 @@ options:
   --cross=..            Set a cross-compiler prefix (e.g. \`i686-pc-mingw32-')
   --backends=..         Select which backends to include in pqiv (autodetermined by default)
                         Available:
+                          libav (Video support, never included by default)
                           gdkpixbuf (images),
                           poppler (PDF),
                           spectre (PS/EPS),
@@ -169,7 +169,7 @@ echo -n "Determining executable extension..            "
 DIR=`tempdir`
 cd $DIR
 echo 'int main(int argc, char *argv[]) { return 0; }' > test.c
-${CROSS}${CC:-cc} test.c
+${CROSS}${CC:-cc} ${CFLAGS} test.c ${LDFLAGS}
 RV=$?
 rm -f test.c
 EXECUTABLE=`ls`
@@ -272,7 +272,9 @@ CROSS=$CROSS
 EXECUTABLE_EXTENSION=$EXECUTABLE_EXTENSION
 PKG_CONFIG=$PKG_CONFIG
 BACKENDS_BUILD=$BACKENDS_BUILD
-${CFLAGS:+CFLAGS+=$CFLAGS}
+${CFLAGS:+CFLAGS=$CFLAGS}
+${LDFLAGS:+LDFLAGS=$LDFLAGS}
+${CCFLAGS:+CCFLAGS=$CCFLAGS}
 ${MANDIR:+MANDIR=$MANDIR}
 ${BACKENDS:+BACKENDS=$BACKENDS}
 ${CC:+CC=$CC}

@@ -34,11 +34,11 @@ typedef struct {
 } file_private_data_gdkpixbuf_t;
 
 BOSNode *file_type_gdkpixbuf_alloc(load_images_state_t state, file_t *file) {/*{{{*/
-	file->private = (void *)g_new0(file_private_data_gdkpixbuf_t, 1);
+	file->private = (void *)g_slice_new0(file_private_data_gdkpixbuf_t);
 	return load_images_handle_parameter_add_file(state, file);
 }/*}}}*/
 void file_type_gdkpixbuf_free(file_t *file) {/*{{{*/
-	g_free(file->private);
+	g_slice_free(file_private_data_gdkpixbuf_t, file->private);
 }/*}}}*/
 void file_type_gdkpixbuf_unload(file_t *file) {/*{{{*/
 	file_private_data_gdkpixbuf_t *private = file->private;

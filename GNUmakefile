@@ -13,6 +13,7 @@ MANDIR=$(PREFIX)/share/man
 EXECUTABLE_EXTENSION=
 PKG_CONFIG=$(CROSS)pkg-config
 OBJECTS=pqiv.o lib/strnatcmp.o lib/bostree.o lib/filebuffer.o
+HEADERS=pqiv.h lib/bostree.h lib/filebuffer.h lib/strnatcmp.h
 BACKENDS=gdkpixbuf
 BACKENDS_BUILD=static
 
@@ -31,6 +32,7 @@ LIBS_gdkpixbuf=gdk-pixbuf-2.0 >= 2.2
 LIBS_poppler=poppler-glib
 LIBS_spectre=libspectre
 LIBS_wand=MagickWand
+LIBS_libav=libavformat libavcodec libswscale
 
 # This might be required if you use mingw, and is required as of
 # Aug 2014 for mxe, but IMHO shouldn't be required / is a bug in
@@ -101,15 +103,15 @@ else
 	OBJECTS+=$(BACKENDS_INITIALIZER).o
 endif
 
-# Add debug flags
-ifdef DEBUG
-	PQIV_DEBUG_DEFS=-DDEBUG
-endif
-
 # Add version information to builds from git
 PQIV_VERSION_STRING=$(shell [ -d .git ] && (which git 2>&1 >/dev/null) && git describe --dirty --tags)
 ifneq ($(PQIV_VERSION_STRING),)
 	PQIV_VERSION_FLAG=-DPQIV_VERSION=\"$(PQIV_VERSION_STRING)\"
+endif
+ifdef DEBUG
+	DEBUG_CFLAGS=-DDEBUG
+else
+	DEBUG_CFLAGS=-DNDEBUG
 endif
 
 # Less verbose output
@@ -120,7 +122,7 @@ ifndef VERBOSE
 endif
 
 # Assemble final compiler flags
-CFLAGS_REAL=-std=gnu99 $(PQIV_WARNING_FLAGS) $(PQIV_VERSION_FLAG) $(PQIV_DEBUG_DEFS) $(CFLAGS) $(CFLAGS_SHARED) $(shell $(PKG_CONFIG) --cflags "$(LIBS)")
+CFLAGS_REAL=-std=gnu99 $(PQIV_WARNING_FLAGS) $(PQIV_VERSION_FLAG) $(CFLAGS) $(CFLAGS_SHARED) $(DEBUG_CFLAGS) $(shell $(PKG_CONFIG) --cflags "$(LIBS)")
 LDLIBS_REAL=$(shell $(PKG_CONFIG) --libs "$(LIBS)") $(LDLIBS)
 LDFLAGS_REAL=$(LDFLAGS) $(LDFLAGS_RPATH)
 
@@ -133,14 +135,14 @@ pqiv$(EXECUTABLE_EXTENSION): $(OBJECTS)
 
 ifeq ($(BACKENDS_BUILD), shared)
 backends/%.o: backends/%.c
-	$(SILENT_CC) $(CROSS)$(CC) $(CPPFLAGS) -c -o $@ $(CFLAGS_REAL) $(BACKENDS_BUILD_CFLAGS_$*) $+
+	$(SILENT_CC) $(CROSS)$(CC) $(CPPFLAGS) -c -o $@ $(CFLAGS_REAL) $(BACKENDS_BUILD_CFLAGS_$*) $<
 
 backends/pqiv-backend-%.so: backends/%.o
 	$(SILENT_CCLD) $(CROSS)$(CC) -shared $(CPPFLAGS) -o $@ $+ $(LDLIBS_REAL) $(LDFLAGS_REAL) $(BACKENDS_BUILD_LDLIBS_$*)
 endif
 
 %.o: %.c
-	$(SILENT_CC) $(CROSS)$(CC) $(CPPFLAGS) -c -o $@ $(CFLAGS_REAL) $+
+	$(SILENT_CC) $(CROSS)$(CC) $(CPPFLAGS) -c -o $@ $(CFLAGS_REAL) $<
 
 $(BACKENDS_INITIALIZER).c:
 	@$(foreach BACKEND, $(sort $(BACKENDS)), [ -e backends/$(BACKEND).c ] || { echo; echo "Backend $(BACKEND) not found!" >&2; exit 1; };)
@@ -180,5 +182,9 @@ get_libs:
 	@true
 
 get_available_backends:
-	@echo -n "BACKENDS: "; $(foreach BACKEND_C, $(wildcard backends/*.c), [ -n "$(LIBS_$(basename $(notdir $(BACKEND_C))))" ] && $(PKG_CONFIG) --exists "$(LIBS_$(basename $(notdir $(BACKEND_C))))" && echo -n "$(basename $(notdir $(BACKEND_C))) ";) echo
+	@echo -n "BACKENDS: "; $(foreach BACKEND_C, $(wildcard backends/*.c), \
+		(! grep -qE "configure hint:.*disable-auto-configure" $(BACKEND_C)) && \
+		[ -n "$(LIBS_$(basename $(notdir $(BACKEND_C))))" ] && \
+		$(PKG_CONFIG) --exists "$(LIBS_$(basename $(notdir $(BACKEND_C))))" \
+		&& echo -n "$(basename $(notdir $(BACKEND_C))) ";) echo
 	@true

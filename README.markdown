@@ -63,6 +63,7 @@ and optionally also
  * libspectre (any version, for ps/eps support)
  * poppler (any version, for pdf support)
  * MagickWand (any version, for additional image formats like psd)
+ * ffmpeg / libav (for video support, only included if explicitly compiled in)
 
 The backends are per default linked statically into the code, so all backend
 related build-time dependencies are also run-time dependencies. If you need
@@ -120,8 +121,11 @@ Changelog
 ---------
 
 pqiv (wip)
+ * Added --sort-key=mtime to sort by modification time instead of file name
  * Delay the "Image is still loading" message for half a second to avoid
    flickering status messages
+ * Remove the "Image is still loading" message if --hide-info-box is set
+ * Added [libav](https://www.ffmpeg.org/) backend for video support
  * Added a configure option to build the backends as shared libraries
 
 pqiv 2.3.5

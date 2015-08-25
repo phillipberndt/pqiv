@@ -29,6 +29,7 @@
 #include <string.h>
 #include <sys/types.h>
 #include <unistd.h>
+#include <assert.h>
 
 #ifdef _WIN32
 	#ifndef _WIN32_WINNT
@@ -56,7 +57,9 @@
 #endif
 
 #ifdef DEBUG
-	#include <sys/resource.h>
+	#ifndef _WIN32
+		#include <sys/resource.h>
+	#endif
 	#define PQIV_VERSION_DEBUG "-debug"
 #else
 	#define PQIV_VERSION_DEBUG ""
@@ -292,6 +295,7 @@ gdouble option_initial_scale = 1.0;
 gboolean option_initial_scale_used = FALSE;
 gboolean option_start_with_slideshow_mode = FALSE;
 gboolean option_sort = FALSE;
+enum { NAME, MTIME } option_sort_key = NAME;
 gboolean option_shuffle = FALSE;
 gboolean option_reverse_cursor_keys = FALSE;
 gboolean option_transparent_background = FALSE;
@@ -310,6 +314,7 @@ gint64 fading_initial_time;
 gboolean options_keyboard_alias_set_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error);
 gboolean option_window_position_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error);
 gboolean option_scale_level_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error);
+gboolean option_sort_key_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error);
 void load_images_handle_parameter(char *param, load_images_state_t state, gint depth);
 
 struct {
@@ -352,6 +357,7 @@ GOptionEntry options[] = {
 	{ "low-memory", 0, 0, G_OPTION_ARG_NONE, &option_lowmem, "Try to keep memory usage to a minimum", NULL },
 	{ "max-depth", 0, 0, G_OPTION_ARG_INT, &option_max_depth, "Descend at most LEVELS levels of directories below the command line arguments", "LEVELS" },
 	{ "shuffle", 0, 0, G_OPTION_ARG_NONE, &option_shuffle, "Shuffle files", NULL },
+	{ "sort-key", 0, 0, G_OPTION_ARG_CALLBACK, (gpointer)&option_sort_key_callback, "Key to use for sorting", "PROPERTY" },
 	{ "watch-directories", 0, 0, G_OPTION_ARG_NONE, &option_watch_directories, "Watch directories for new files", NULL },
 
 	{ NULL, 0, 0, 0, NULL, NULL, NULL }
@@ -442,6 +448,19 @@ gboolean option_scale_level_callback(const gchar *option_name, const gchar *valu
 	}
 	else {
 		option_scale = 0;
+	}
+	return TRUE;
+}/*}}}*/
+gboolean option_sort_key_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error) {/*{{{*/
+	if(strcmp(value, "name") == 0) {
+		option_sort_key = NAME;
+	}
+	else if(strcmp(value, "mtime") == 0) {
+		option_sort_key = MTIME;
+	}
+	else {
+		g_set_error(error, G_OPTION_ERROR, G_OPTION_ERROR_FAILED, "Unexpected argument value for the --sort-key option. Allowed keys are: name, mtime.");
+		return FALSE;
 	}
 	return TRUE;
 }/*}}}*/
@@ -692,7 +711,7 @@ BOSNode *load_images_handle_parameter_add_file(load_images_state_t state, file_t
 
 	BOSNode *new_node = NULL;
 	if(!option_sort) {
-		float *index = (float *)g_malloc(sizeof(float));
+		float *index = g_slice_new0(float);
 		if(state == FILTER_OUTPUT) {
 			// As index, use
 			//  min(index(current) + .001, .5 index(current) + .5 index(next))
@@ -710,7 +729,7 @@ BOSNode *load_images_handle_parameter_add_file(load_images_state_t state, file_t
 		new_node = bostree_insert(file_tree, (void *)index, file);
 	}
 	else {
-		new_node = bostree_insert(file_tree, file->display_name, file);
+		new_node = bostree_insert(file_tree, file->sort_name, file);
 	}
 	if(state == BROWSE_ORIGINAL_PARAMETER && browse_startup_node == NULL) {
 		browse_startup_node = bostree_node_weak_ref(new_node);
@@ -806,6 +825,9 @@ void load_images_handle_parameter(char *param, load_images_state_t state, gint d
 		file = g_slice_new0(file_t);
 		file->file_flags = FILE_FLAGS_MEMORY_IMAGE;
 		file->display_name = g_strdup("-");
+		if(option_sort) {
+			file->sort_name = g_strdup("-");
+		}
 		file->file_name = g_strdup("-");
 
 		GError *error_ptr = NULL;
@@ -958,6 +980,25 @@ void load_images_handle_parameter(char *param, load_images_state_t state, gint d
 		// Prepare file structure
 		file = g_slice_new0(file_t);
 		file->display_name = g_filename_display_name(param);
+		if(option_sort) {
+			if(option_sort_key == MTIME) {
+				// Prepend the modification time to the display name
+				GFile *param_file = gfile_for_commandline_arg(param);
+				if(param_file) {
+					GFileInfo *file_info = g_file_query_info(param_file, G_FILE_ATTRIBUTE_TIME_MODIFIED, G_FILE_QUERY_INFO_NONE, NULL, NULL);
+					if(file_info) {
+						GTimeVal result;
+						g_file_info_get_modification_time(file_info, &result);
+						g_object_unref(file_info);
+						file->sort_name = g_strdup_printf("%lu;%s", result.tv_sec, file->display_name);
+					}
+					g_object_unref(param_file);
+				}
+			}
+			if(file->sort_name == NULL) {
+				file->sort_name = g_strdup(file->display_name);
+			}
+		}
 
 		// In sorting/watch-directories mode, we store the full path to the file in file_name, to be able
 		// to identify the file if it is deleted
@@ -1006,7 +1047,6 @@ void load_images_handle_parameter(char *param, load_images_state_t state, gint d
 		GFileInfo *file_info = g_file_query_info(param_file, G_FILE_ATTRIBUTE_STANDARD_CONTENT_TYPE, G_FILE_QUERY_INFO_NONE, NULL, NULL);
 		if(file_info) {
 			gchar *param_file_mime_type = g_content_type_get_mime_type(g_file_info_get_content_type(file_info));
-
 			if(param_file_mime_type) {
 				GtkFileFilterInfo mime_guesser;
 				mime_guesser.contains = GTK_FILE_FILTER_MIME_TYPE;
@@ -1022,9 +1062,9 @@ void load_images_handle_parameter(char *param, load_images_state_t state, gint d
 					g_printerr("Didn't recognize file `%s': Both its extension and MIME-type `%s' are unknown. Fall-back to default file handler.\n", param, param_file_mime_type);
 					g_free(param_file_mime_type);
 					g_object_unref(param_file);
-					g_object_unref(file_info);
 				}
 			}
+			g_object_unref(file_info);
 		}
 
 		// If nothing else worked, assume that this file is handled by the default handler
@@ -1043,6 +1083,9 @@ void file_free(file_t *file) {/*{{{*/
 	}
 	g_free(file->display_name);
 	g_free(file->file_name);
+	if(file->sort_name) {
+		g_free(file->sort_name);
+	}
 	if(file->file_data) {
 		g_bytes_unref(file->file_data);
 		file->file_data = NULL;
@@ -1059,6 +1102,9 @@ void file_tree_free_helper(BOSNode *node) {
 	unload_image(node);
 
 	file_free(FILE(node));
+	if(!option_sort) {
+		g_slice_free(float, node->key);
+	}
 }
 void directory_tree_free_helper(BOSNode *node) {
 	free(node->key);
@@ -1136,7 +1182,7 @@ void invalidate_current_scaled_image_surface() {/*{{{*/
 }/*}}}*/
 gboolean image_animation_timeout_callback(gpointer user_data) {/*{{{*/
 	D_LOCK(file_tree);
-	if((BOSNode *)user_data != current_file_node) {
+	if((BOSNode *)user_data != current_file_node || FILE(current_file_node)->force_reload) {
 		D_UNLOCK(file_tree);
 		current_image_animation_timeout_id = 0;
 		return FALSE;
@@ -1150,10 +1196,15 @@ gboolean image_animation_timeout_callback(gpointer user_data) {/*{{{*/
 	double delay = CURRENT_FILE->file_type->animation_next_frame_fn(CURRENT_FILE);
 	D_UNLOCK(file_tree);
 
-	current_image_animation_timeout_id = gdk_threads_add_timeout(
-		delay,
-		image_animation_timeout_callback,
-		user_data);
+	if(delay >= 0) {
+		current_image_animation_timeout_id = gdk_threads_add_timeout(
+			delay,
+			image_animation_timeout_callback,
+			user_data);
+	}
+	else {
+		current_image_animation_timeout_id = 0;
+	}
 
 	invalidate_current_scaled_image_surface();
 	gtk_widget_queue_draw(GTK_WIDGET(main_window));
@@ -1163,6 +1214,7 @@ gboolean image_animation_timeout_callback(gpointer user_data) {/*{{{*/
 void image_file_updated_callback(GFileMonitor *monitor, GFile *file, GFile *other_file, GFileMonitorEvent event_type, gpointer user_data) {/*{{{*/
 	BOSNode *node = (BOSNode *)user_data;
 
+	D_LOCK(file_tree);
 	if(event_type == G_FILE_MONITOR_EVENT_CHANGES_DONE_HINT) {
 		FILE(node)->force_reload = TRUE;
 		queue_image_load(node);
@@ -1182,10 +1234,11 @@ void image_file_updated_callback(GFileMonitor *monitor, GFile *file, GFile *othe
 		// If anyone ever complains about this it would be best to add an option to entirely
 		// disable this functionality.
 		if(bostree_node_count(file_tree) > 1) {
-			unload_image(node);
+			FILE(node)->force_reload = TRUE;
 			queue_image_load(node);
 		}
 	}
+	D_UNLOCK(file_tree);
 }/*}}}*/
 gboolean window_move_helper_callback(gpointer user_data) {/*{{{*/
 	gtk_window_move(main_window, option_window_position.x, option_window_position.y);
@@ -1377,7 +1430,23 @@ GInputStream *image_loader_stream_file(file_t *file, GError **error_pointer) {/*
 
 	return data;
 }/*}}}*/
+file_t *image_loader_duplicate_file(file_t *file, gchar *custom_display_name, gchar *custom_sort_name) {/*{{{*/
+	file_t *new_file = g_slice_new(file_t);
+	*new_file = *file;
+
+	if((file->file_flags & FILE_FLAGS_MEMORY_IMAGE)) {
+		g_bytes_ref(new_file->file_data);
+	}
+	new_file->file_name = g_strdup(file->file_name);
+	new_file->display_name = custom_display_name ? custom_display_name : g_strdup(file->display_name);
+	new_file->sort_name = custom_sort_name ? custom_sort_name : (file->sort_name ? g_strdup(file->sort_name) : NULL);
+
+	return new_file;
+}/*}}}*/
 gboolean image_loader_load_single(BOSNode *node, gboolean called_from_main) {/*{{{*/
+	// Sanity check
+	assert(bostree_node_weak_unref(file_tree, bostree_node_weak_ref(node)) != NULL);
+
 	// Already loaded?
 	file_t *file = (file_t *)node->data;
 	if(file->is_loaded) {
@@ -1415,7 +1484,9 @@ gboolean image_loader_load_single(BOSNode *node, gboolean called_from_main) {/*{
 		}
 
 		// Mark the image as loaded for the GC
+		D_LOCK(file_tree);
 		loaded_files_list = g_list_prepend(loaded_files_list, bostree_node_weak_ref(node));
+		D_UNLOCK(file_tree);
 
 		return TRUE;
 	}
@@ -1440,7 +1511,16 @@ gboolean image_loader_load_single(BOSNode *node, gboolean called_from_main) {/*{
 		if(node == current_file_node) {
 			current_file_node = next_file();
 			if(current_file_node == node) {
-				current_file_node = NULL;
+				if(bostree_node_count(file_tree) > 0) {
+					// This can be triggered in shuffle mode if images are deleted and the end of
+					// a shuffle cycle is reached, such that next_file() starts a new one. Fall
+					// back to display the first image. See bug #35 in github.
+					current_file_node = bostree_node_weak_ref(bostree_select(file_tree, 0));
+					queue_image_load(current_file_node);
+				}
+				else {
+					current_file_node = NULL;
+				}
 			}
 			else {
 				current_file_node = bostree_node_weak_ref(current_file_node);
@@ -1468,10 +1548,13 @@ gpointer image_loader_thread(gpointer user_data) {/*{{{*/
 	while(TRUE) {
 		// Handle new queued image load
 		BOSNode *node = g_async_queue_pop(image_loader_queue);
+		D_LOCK(file_tree);
 		if(bostree_node_weak_unref(file_tree, bostree_node_weak_ref(node)) == NULL) {
 			bostree_node_weak_unref(file_tree, node);
+			D_UNLOCK(file_tree);
 			continue;
 		}
+		D_UNLOCK(file_tree);
 
 		// It is a hard decision whether to first load the new image or whether
 		// to GC the old ones first: The former minimizes I/O for multi-page
@@ -1489,6 +1572,7 @@ gpointer image_loader_thread(gpointer user_data) {/*{{{*/
 		// Before trying to load the image, unload the old ones to free
 		// up memory.
 		// We do that here to avoid a race condition with the image loaders
+		D_LOCK(file_tree);
 		for(GList *node_list = loaded_files_list; node_list; ) {
 			GList *next = g_list_next(node_list);
 
@@ -1499,7 +1583,7 @@ gpointer image_loader_thread(gpointer user_data) {/*{{{*/
 			}
 			else {
 				// If the image to be loaded has force_reload set and this has the same file name, also set force_reload
-				if(FILE(node)->force_reload && strcmp(FILE(loaded_node)->file_name, FILE(loaded_node)->file_name) == 0) {
+				if(FILE(node)->force_reload && strcmp(FILE(node)->file_name, FILE(loaded_node)->file_name) == 0) {
 					FILE(loaded_node)->force_reload = TRUE;
 				}
 
@@ -1511,7 +1595,7 @@ gpointer image_loader_thread(gpointer user_data) {/*{{{*/
 					(loaded_node != node && loaded_node != current_file_node && (option_lowmem || (loaded_node != previous_file() && loaded_node != next_file())))
 				) {
 					// If this node had force_reload set, we must reload it to populate the cache
-					if(FILE(loaded_node)->force_reload && loaded_node != node) {
+					if(FILE(loaded_node)->force_reload && loaded_node == node) {
 						queue_image_load(node);
 					}
 
@@ -1525,6 +1609,7 @@ gpointer image_loader_thread(gpointer user_data) {/*{{{*/
 
 			node_list = next;
 		}
+		D_UNLOCK(file_tree);
 
 		// Now take care of the queued image, unless it has been loaded above
 		if(option_lowmem && !FILE(node)->is_loaded) {
@@ -1537,7 +1622,9 @@ gpointer image_loader_thread(gpointer user_data) {/*{{{*/
 			current_image_drawn = FALSE;
 			gdk_threads_add_idle((GSourceFunc)image_loaded_handler, node);
 		}
+		D_LOCK(file_tree);
 		bostree_node_weak_unref(file_tree, node);
+		D_UNLOCK(file_tree);
 	}
 }/*}}}*/
 gboolean initialize_image_loader() {/*{{{*/
@@ -1661,7 +1748,7 @@ gboolean absolute_image_movement(BOSNode *ref) {/*{{{*/
 
 	// If the new image has not been loaded yet, prepare to display an information message
 	// after some grace period
-	if(!CURRENT_FILE->is_loaded) {
+	if(!CURRENT_FILE->is_loaded && !option_hide_info_box) {
 		gdk_threads_add_timeout(500, absolute_image_movement_still_unloaded_timer_callback, current_file_node);
 	}
 
@@ -2133,6 +2220,9 @@ void apply_external_image_filter(gchar *external_filter) {/*{{{*/
 					//
 					file_t *new_image = g_slice_new0(file_t);
 					new_image->display_name = g_strdup_printf("%s [Output of `%s`]", CURRENT_FILE->display_name, argv[2]);
+					if(option_sort) {
+						new_image->sort_name = g_strdup_printf("%s;%s", CURRENT_FILE->sort_name, argv[2]);
+					}
 					new_image->file_type = &file_type_handlers[0];
 					new_image->file_flags = FILE_FLAGS_MEMORY_IMAGE;
 					new_image->file_data = g_bytes_new_take(image_data, image_data_length);
@@ -3204,7 +3294,7 @@ gboolean window_key_press_callback(GtkWidget *widget, GdkEventKey *event, gpoint
 				break;
 			}
 
-			CURRENT_FILE->is_loaded = FALSE;
+			CURRENT_FILE->force_reload = TRUE;
 			update_info_text("Reloading image..");
 			queue_image_load(relative_image_pointer(0));
 			break;
@@ -3768,6 +3858,19 @@ gboolean initialize_gui_callback(gpointer user_data) {/*{{{*/
 
 	return FALSE;
 }/*}}}*/
+gboolean initialize_gui_or_quit_callback(gpointer user_data) {/*{{{*/
+	if(!gui_initialized && initialize_image_loader()) {
+		initialize_gui();
+		gui_initialized = TRUE;
+	}
+
+	if(!file_tree_valid || bostree_node_count(file_tree) == 0) {
+		g_printerr("No images left to display.\n");
+		exit(1);
+	}
+
+	return FALSE;
+}/*}}}*/
 // }}}
 
 gboolean load_images_thread_update_info_text(gpointer user_data) {/*{{{*/
@@ -3805,6 +3908,10 @@ gpointer load_images_thread(gpointer user_data) {/*{{{*/
 		}
 	}
 
+	if(option_lazy_load) {
+		gdk_threads_add_idle(initialize_gui_or_quit_callback, NULL);
+	}
+
 	if(user_data != NULL) {
 		g_source_remove(event_source);
 	}
@@ -3813,9 +3920,11 @@ gpointer load_images_thread(gpointer user_data) {/*{{{*/
 
 int main(int argc, char *argv[]) {
 	#ifdef DEBUG
-		struct rlimit core_limits;
-		core_limits.rlim_cur = core_limits.rlim_max = RLIM_INFINITY;
-		setrlimit(RLIMIT_CORE, &core_limits);
+		#ifndef _WIN32
+			struct rlimit core_limits;
+			core_limits.rlim_cur = core_limits.rlim_max = RLIM_INFINITY;
+			setrlimit(RLIMIT_CORE, &core_limits);
+		#endif
 	#endif
 
 	#ifndef _WIN32
@@ -3825,7 +3934,7 @@ int main(int argc, char *argv[]) {
 		g_thread_init(NULL);
 		gdk_threads_init();
 	#endif
-	gtk_init(&argc, &argv);
+	gtk_init(&argc, &argv); // fyi, this generates a MemorySanitizer warning currently
 
 	initialize_file_type_handlers();
 

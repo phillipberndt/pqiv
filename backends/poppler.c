@@ -67,20 +67,10 @@ BOSNode *file_type_poppler_alloc(load_images_state_t state, file_t *file) {/*{{{
 		g_object_unref(poppler_document);
 
 		for(int n=0; n<n_pages; n++) {
-			file_t *new_file = g_new(file_t, 1);
-			*new_file = *file;
-
-			if((file->file_flags & FILE_FLAGS_MEMORY_IMAGE)) {
-				g_bytes_ref(new_file->file_data);
-			}
-			new_file->file_name = g_strdup(file->file_name);
-			if(n == 0) {
-				new_file->display_name = g_strdup(file->display_name);
-			}
-			else {
-				new_file->display_name = g_strdup_printf("%s[%d]", file->display_name, n + 1);
-			}
-			new_file->private = g_new0(file_private_data_poppler_t, 1);
+			file_t *new_file = image_loader_duplicate_file(file,
+					n == 0 ? NULL :  g_strdup_printf("%s[%d]", file->display_name, n + 1),
+					g_strdup_printf("%s[%d]", file->sort_name, n + 1));
+			new_file->private = g_slice_new0(file_private_data_poppler_t);
 			((file_private_data_poppler_t *)new_file->private)->page_number = n;
 
 			if(n == 0) {
@@ -102,7 +92,7 @@ BOSNode *file_type_poppler_alloc(load_images_state_t state, file_t *file) {/*{{{
 	return first_node;
 }/*}}}*/
 void file_type_poppler_free(file_t *file) {/*{{{*/
-	g_free(file->private);
+	g_slice_free(file_private_data_poppler_t, file->private);
 }/*}}}*/
 void file_type_poppler_load(file_t *file, GInputStream *data, GError **error_pointer) {/*{{{*/
 	file_private_data_poppler_t *private = file->private;
