@@ -94,12 +94,14 @@ typedef struct {
 // variable.
 
 typedef enum { PARAMETER, RECURSION, INOTIFY, BROWSE_ORIGINAL_PARAMETER, FILTER_OUTPUT } load_images_state_t;
+
 // Allocation function: Allocate the ->private structure within a file and add the
 // image(s) to the list of available images via load_images_handle_parameter_add_file()
 // If an image is not to be loaded for any reason, the file structure should be
 // deallocated using file_free()
 // Returns a pointer to the first added image
 // Optional, you can also set the pointer to this function to NULL.
+// If new file_t structures are needed, use image_loader_duplicate_file
 typedef BOSNode *(*file_type_alloc_fn_t)(load_images_state_t state, file_t *file);
 
 // Deallocation, if a file is removed from the images list. Free the ->private structure.
@@ -154,6 +156,9 @@ extern gdouble current_scale_level;
 
 // Load a file from disc/memory/network
 GInputStream *image_loader_stream_file(file_t *file, GError **error_pointer);
+
+// Duplicate a file_t; the private section does not get duplicated, only the pointer gets copied
+file_t *image_loader_duplicate_file(file_t *file, gchar *custom_display_name, gchar *custom_sort_name);
 
 // Add a file to the list of loaded files
 // Should be called at least once in a file_type_alloc_fn_t, with the state being

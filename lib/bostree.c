@@ -387,6 +387,7 @@ void bostree_remove(BOSTree *tree, BOSNode *node) {
 	once it has been removed from the tree.
 */
 BOSNode *bostree_node_weak_ref(BOSNode *node) {
+	assert(node->weak_ref_count > 0);
 	node->weak_ref_count++;
 	return node;
 }
@@ -401,6 +402,7 @@ BOSNode *bostree_node_weak_ref(BOSNode *node) {
 */
 BOSNode *bostree_node_weak_unref(BOSTree *tree, BOSNode *node) {
 	BOSNode *retval = node->weak_ref_node_valid ? node : NULL;
+	assert(node->weak_ref_count > 0);
 	if(--node->weak_ref_count == 0) {
 		if(tree->free_function != NULL) {
 			tree->free_function(node);

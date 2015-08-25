@@ -32,6 +32,7 @@ LIBS_gdkpixbuf=gdk-pixbuf-2.0 >= 2.2
 LIBS_poppler=poppler-glib
 LIBS_spectre=libspectre
 LIBS_wand=MagickWand
+LIBS_libav=libavformat libavcodec libswscale
 
 # This might be required if you use mingw, and is required as of
 # Aug 2014 for mxe, but IMHO shouldn't be required / is a bug in
@@ -89,6 +90,8 @@ ifneq ($(PQIV_VERSION_STRING),)
 endif
 ifdef DEBUG
 	DEBUG_CFLAGS=-DDEBUG
+else
+	DEBUG_CFLAGS=-DNDEBUG
 endif
 
 # Less verbose output
@@ -146,5 +149,9 @@ get_libs:
 	@true
 
 get_available_backends:
-	@echo -n "BACKENDS: "; $(foreach BACKEND_C, $(wildcard backends/*.c), [ -n "$(LIBS_$(basename $(notdir $(BACKEND_C))))" ] && $(PKG_CONFIG) --exists "$(LIBS_$(basename $(notdir $(BACKEND_C))))" && echo -n "$(basename $(notdir $(BACKEND_C))) ";) echo
+	@echo -n "BACKENDS: "; $(foreach BACKEND_C, $(wildcard backends/*.c), \
+		(! grep -qE "configure hint:.*disable-auto-configure" $(BACKEND_C)) && \
+		[ -n "$(LIBS_$(basename $(notdir $(BACKEND_C))))" ] && \
+		$(PKG_CONFIG) --exists "$(LIBS_$(basename $(notdir $(BACKEND_C))))" \
+		&& echo -n "$(basename $(notdir $(BACKEND_C))) ";) echo
 	@true
