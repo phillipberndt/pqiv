@@ -141,7 +141,7 @@ backends/pqiv-backend-%.so: backends/%.o
 	$(SILENT_CCLD) $(CROSS)$(CC) -shared $(CPPFLAGS) -o $@ $+ $(LDLIBS_REAL) $(LDFLAGS_REAL) $(BACKENDS_BUILD_LDLIBS_$*)
 endif
 
-%.o: %.c
+%.o: %.c $(HEADERS)
 	$(SILENT_CC) $(CROSS)$(CC) $(CPPFLAGS) -c -o $@ $(CFLAGS_REAL) $<
 
 $(BACKENDS_INITIALIZER).c:
