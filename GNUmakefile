@@ -170,6 +170,10 @@ endif
 uninstall:
 	rm -f $(DESTDIR)$(PREFIX)/bin/pqiv$(EXECUTABLE_EXTENSION)
 	rm -f $(DESTDIR)$(MANDIR)/man1/pqiv.1
+ifeq ($(BACKENDS_BUILD), shared)
+	rm -f $(foreach SO_FILE, $(SHARED_OBJECTS), $(DESTDIR)$(PREFIX)/lib/pqiv/$(notdir $(SO_FILE)))
+	rmdir $(DESTDIR)$(PREFIX)/lib/pqiv
+endif
 
 clean:
 	rm -f pqiv$(EXECUTABLE_EXTENSION) *.o backends/*.o backends/*.so lib/*.o backends/initializer-*.c
