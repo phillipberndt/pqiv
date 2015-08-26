@@ -97,7 +97,7 @@ ifeq ($(BACKENDS_BUILD), shared)
 	OBJECTS+=backends/shared-initializer.o
 	BACKENDS_BUILD_CFLAGS_shared-initializer=-DSHARED_BACKENDS='$(SHARED_BACKENDS)'
 	LIBS+=gmodule-2.0
-	LDFLAGS_RPATH=-Wl,-rpath,'$$ORIGIN/backends'
+	LDFLAGS_RPATH=-Wl,-rpath,'$$ORIGIN/backends',-rpath,'$$ORIGIN/../lib/pqiv',-rpath,'$(PREFIX)/lib/pqiv'
 else
 	CFLAGS_SHARED=
 	OBJECTS+=$(BACKENDS_INITIALIZER).o
@@ -163,8 +163,8 @@ install: all
 	-mkdir -p $(DESTDIR)$(MANDIR)/man1
 	-install pqiv.1 $(DESTDIR)$(MANDIR)/man1/pqiv.1
 ifeq ($(BACKENDS_BUILD), shared)
-	mkdir -p $(DESTDIR)$(PREFIX)/lib
-	install $(SHARED_OBJECTS) $(DESTDIR)$(PREFIX)/lib/
+	mkdir -p $(DESTDIR)$(PREFIX)/lib/pqiv
+	install $(SHARED_OBJECTS) $(DESTDIR)$(PREFIX)/lib/pqiv/
 endif
 
 uninstall:
