@@ -262,7 +262,14 @@ guint current_image_animation_timeout_id = 0;
 gint slideshow_timeout_id = -1;
 
 // A list containing references to the images in shuffled order
+typedef struct {
+	gboolean viewed;
+	BOSNode *node;
+} shuffled_image_ref_t;
+guint shuffled_images_visited_count = 0;
+guint shuffled_images_list_length = 0;
 GList *shuffled_images_list = NULL;
+#define LIST_SHUFFLED_IMAGE(x) (((shuffled_image_ref_t *)x->data))
 
 // User options
 gchar *external_image_filter_commands[] = {
@@ -410,6 +417,8 @@ void window_state_into_fullscreen_actions();
 void window_state_out_of_fullscreen_actions();
 BOSNode *relative_image_pointer(ptrdiff_t movement);
 void file_tree_free_helper(BOSNode *node);
+gint relative_image_pointer_shuffle_list_cmp(shuffled_image_ref_t *ref, BOSNode *node);
+void relative_image_pointer_shuffle_list_unref_fn(shuffled_image_ref_t *ref);
 // }}}
 /* Command line handling, creation of the image list {{{ */
 gboolean options_keyboard_alias_set_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error) {/*{{{*/
@@ -1350,6 +1359,23 @@ gboolean image_loaded_handler(gconstpointer node) {/*{{{*/
 		return FALSE;
 	}
 
+	// If in shuffle mode, mark the current image as viewed, and possibly
+	// reset the list once all images have been
+	if(option_shuffle) {
+		GList *current_shuffled_image = g_list_find_custom(shuffled_images_list, current_file_node, (GCompareFunc)relative_image_pointer_shuffle_list_cmp);
+		if(current_shuffled_image) {
+			if(!LIST_SHUFFLED_IMAGE(current_shuffled_image)->viewed) {
+				LIST_SHUFFLED_IMAGE(current_shuffled_image)->viewed = 1;
+				if(++shuffled_images_visited_count == bostree_node_count(file_tree)) {
+					g_list_free_full(shuffled_images_list, (GDestroyNotify)relative_image_pointer_shuffle_list_unref_fn);
+					shuffled_images_list = NULL;
+					shuffled_images_visited_count = 0;
+					shuffled_images_list_length = 0;
+				}
+			}
+		}
+	}
+
 	// Sometimes when a user is hitting the next image button really fast this
 	// function's execution can be delayed until CURRENT_FILE is again not loaded.
 	// Return without doing anything in that case.
@@ -1779,8 +1805,20 @@ gboolean absolute_image_movement(BOSNode *ref) {/*{{{*/
 
 	return FALSE;
 }/*}}}*/
-void relative_image_pointer_shuffle_list_unref_fn(BOSNode *node) {
-	bostree_node_weak_unref(file_tree, node);
+void relative_image_pointer_shuffle_list_unref_fn(shuffled_image_ref_t *ref) {
+	bostree_node_weak_unref(file_tree, ref->node);
+	g_slice_free(shuffled_image_ref_t, ref);
+}
+gint relative_image_pointer_shuffle_list_cmp(shuffled_image_ref_t *ref, BOSNode *node) {
+	if(node == ref->node) return 0;
+	return 1;
+}
+shuffled_image_ref_t *relative_image_pointer_shuffle_list_create(BOSNode *node) {
+	assert(node != NULL);
+	shuffled_image_ref_t *retval = g_slice_new(shuffled_image_ref_t);
+	retval->node = bostree_node_weak_ref(node);
+	retval->viewed = FALSE;
+	return retval;
 }
 BOSNode *relative_image_pointer(ptrdiff_t movement) {/*{{{*/
 	// Obtain a pointer to the image that is +movement away from the current image
@@ -1794,10 +1832,10 @@ BOSNode *relative_image_pointer(ptrdiff_t movement) {/*{{{*/
 	if(option_shuffle) {
 #if 0
 		// Output some debug info
-		GList *aa = g_list_find(shuffled_images_list, current_file_node);
+		GList *aa = g_list_find_custom(shuffled_images_list, current_file_node, (GCompareFunc)relative_image_pointer_shuffle_list_cmp);
 		g_print("Current shuffle list: ");
 		for(GList *e = g_list_first(shuffled_images_list); e; e = e->next) {
-			BOSNode *n = bostree_node_weak_unref(file_tree, bostree_node_weak_ref(e->data));
+			BOSNode *n = bostree_node_weak_unref(file_tree, bostree_node_weak_ref(LIST_SHUFFLED_IMAGE(e)->node));
 			if(n) {
 				if(e == aa) {
 					g_print("*%02d* ", bostree_rank(n)+1);
@@ -1814,7 +1852,7 @@ BOSNode *relative_image_pointer(ptrdiff_t movement) {/*{{{*/
 #endif
 
 		// First, check if the relative movement is already possible within the existing list
-		GList *current_shuffled_image = g_list_find(shuffled_images_list, current_file_node);
+		GList *current_shuffled_image = g_list_find_custom(shuffled_images_list, current_file_node, (GCompareFunc)relative_image_pointer_shuffle_list_cmp);
 		if(!current_shuffled_image) {
 			current_shuffled_image = g_list_last(shuffled_images_list);
 
@@ -1835,44 +1873,65 @@ BOSNode *relative_image_pointer(ptrdiff_t movement) {/*{{{*/
 			movement++;
 		}
 
-		// The list isn't long enough to provide us with the desired image. Expand it:
-		while(movement != 0) {
-			BOSNode *next_candidate, *chosen_candidate;
-			// We select one random list element and then choose the sequentially next
-			// until we find one that has not been chosen yet. Walking sequentially
-			// after chosing one random integer index still generates a
-			// equidistributed permutation.
-			// This is O(n^2), since we must in the worst case lookup n-1 elements
-			// in a list of already chosen ones, but I think that this still is a
-			// better choice than to store an additional boolean in each file_t,
-			// which would make this O(n).
-			next_candidate = chosen_candidate = bostree_select(file_tree, g_random_int_range(0, count));
-			if(!next_candidate) {
-				// All images have gone.
-				return current_file_node;
-			}
-			while(g_list_find(shuffled_images_list, next_candidate)) {
-				next_candidate = bostree_next_node(next_candidate);
+		// The list isn't long enough to provide us with the desired image.
+		if(shuffled_images_list_length < bostree_node_count(file_tree)) {
+			// If not all images have been viewed, expand it
+			while(movement != 0) {
+				BOSNode *next_candidate, *chosen_candidate;
+				// We select one random list element and then choose the sequentially next
+				// until we find one that has not been chosen yet. Walking sequentially
+				// after chosing one random integer index still generates a
+				// equidistributed permutation.
+				// This is O(n^2), since we must in the worst case lookup n-1 elements
+				// in a list of already chosen ones, but I think that this still is a
+				// better choice than to store an additional boolean in each file_t,
+				// which would make this O(n).
+				next_candidate = chosen_candidate = bostree_select(file_tree, g_random_int_range(0, count));
 				if(!next_candidate) {
-					next_candidate = bostree_select(file_tree, 0);
+					// All images have gone.
+					return current_file_node;
 				}
-				if(next_candidate == chosen_candidate) {
-					// All images have been visited, restart over
-					g_list_free_full(shuffled_images_list, (GDestroyNotify)relative_image_pointer_shuffle_list_unref_fn);
-					shuffled_images_list = g_list_append(NULL, bostree_node_weak_ref(chosen_candidate));
-					return chosen_candidate;
+				while(g_list_find_custom(shuffled_images_list, next_candidate, (GCompareFunc)relative_image_pointer_shuffle_list_cmp)) {
+					next_candidate = bostree_next_node(next_candidate);
+					if(!next_candidate) {
+						next_candidate = bostree_select(file_tree, 0);
+					}
+					if(next_candidate == chosen_candidate) {
+						// This ought not happen :/
+						g_warn_if_reached();
+						current_shuffled_image = NULL;
+						movement = 0;
+					}
 				}
-			}
 
-			if(movement > 0) {
-				shuffled_images_list = g_list_append(shuffled_images_list, bostree_node_weak_ref(next_candidate));
-				movement--;
-				current_shuffled_image = g_list_last(shuffled_images_list);
+				if(movement > 0) {
+					shuffled_images_list = g_list_append(shuffled_images_list, relative_image_pointer_shuffle_list_create(next_candidate));
+					movement--;
+					shuffled_images_list_length++;
+					current_shuffled_image = g_list_last(shuffled_images_list);
+				}
+				else if(movement < 0) {
+					shuffled_images_list = g_list_prepend(shuffled_images_list, relative_image_pointer_shuffle_list_create(next_candidate));
+					movement++;
+					shuffled_images_list_length++;
+					current_shuffled_image = g_list_first(shuffled_images_list);
+				}
 			}
-			else {
-				shuffled_images_list = g_list_prepend(shuffled_images_list, bostree_node_weak_ref(next_candidate));
-				movement++;
-				current_shuffled_image = g_list_first(shuffled_images_list);
+		}
+		else {
+			// If all images have been used, wrap around the list's end
+			while(movement) {
+				current_shuffled_image = movement > 0 ? g_list_first(shuffled_images_list) : g_list_last(shuffled_images_list);
+				movement = movement > 0 ? movement - 1 : movement + 1;
+
+				while(((int)movement > 0) && g_list_next(current_shuffled_image)) {
+					current_shuffled_image = g_list_next(current_shuffled_image);
+					movement--;
+				}
+				while(((int)movement < 0) && g_list_previous(current_shuffled_image)) {
+					current_shuffled_image = g_list_previous(current_shuffled_image);
+					movement++;
+				}
 			}
 		}
 
@@ -1884,21 +1943,27 @@ BOSNode *relative_image_pointer(ptrdiff_t movement) {/*{{{*/
 				return current_file_node;
 			}
 			g_list_free_full(shuffled_images_list, (GDestroyNotify)relative_image_pointer_shuffle_list_unref_fn);
-			shuffled_images_list = g_list_append(NULL, bostree_node_weak_ref(chosen_candidate));
+			shuffled_images_list = g_list_append(NULL, relative_image_pointer_shuffle_list_create(chosen_candidate));
+			shuffled_images_visited_count = 0;
+			shuffled_images_list_length = 1;
 			return chosen_candidate;
 		}
 
 		// We found an image. Dereference the weak reference, and walk the list until a valid reference
-		// if found if it is invalid, removing all invalid references along the way.
-		BOSNode *image = bostree_node_weak_unref(file_tree, bostree_node_weak_ref(current_shuffled_image->data));
+		// is found if it is invalid, removing all invalid references along the way.
+		BOSNode *image = bostree_node_weak_unref(file_tree, bostree_node_weak_ref(LIST_SHUFFLED_IMAGE(current_shuffled_image)->node));
 		while(!image && shuffled_images_list) {
 			GList *new_shuffled_image = g_list_next(current_shuffled_image);
-			bostree_node_weak_unref(file_tree, current_shuffled_image->data);
+			shuffled_images_list_length--;
+			if(LIST_SHUFFLED_IMAGE(current_shuffled_image)->viewed) {
+				shuffled_images_visited_count--;
+			}
+			relative_image_pointer_shuffle_list_unref_fn(LIST_SHUFFLED_IMAGE(current_shuffled_image));
 			shuffled_images_list = g_list_delete_link(shuffled_images_list, current_shuffled_image);
 
 			current_shuffled_image = new_shuffled_image ? new_shuffled_image : g_list_last(shuffled_images_list);
 			if(current_shuffled_image) {
-				image = bostree_node_weak_unref(file_tree, bostree_node_weak_ref(current_shuffled_image->data));
+				image = bostree_node_weak_unref(file_tree, bostree_node_weak_ref(LIST_SHUFFLED_IMAGE(current_shuffled_image)->node));
 			}
 			else {
 				// All images have gone. This _is_ a problem, and should not
