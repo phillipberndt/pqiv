@@ -125,6 +125,8 @@ pqiv (wip)
    flickering status messages
  * Remove the "Image is still loading" message if --hide-info-box is set
  * Added [libav](https://www.ffmpeg.org/) backend for video support
+ * Added --end-of-files-action=action to allow users to control what happens
+   once all images have been viewed
 
 pqiv 2.3.5
  * Fix parameters in pqivrc that are handled by a callback

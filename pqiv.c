@@ -314,6 +314,7 @@ gboolean option_addl_from_stdin = FALSE;
 double option_fading_duration = .5;
 gint option_max_depth = -1;
 gboolean option_browse = FALSE;
+enum { QUIT, WAIT, WRAP, WRAP_NO_RESHUFFLE } option_end_of_files_action = WRAP;
 
 double fading_current_alpha_stage = 0;
 gint64 fading_initial_time;
@@ -321,6 +322,7 @@ gint64 fading_initial_time;
 gboolean options_keyboard_alias_set_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error);
 gboolean option_window_position_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error);
 gboolean option_scale_level_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error);
+gboolean option_end_of_files_action_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error);
 gboolean option_sort_key_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error);
 void load_images_handle_parameter(char *param, load_images_state_t state, gint depth);
 
@@ -360,6 +362,7 @@ GOptionEntry options[] = {
 
 	{ "browse", 0, 0, G_OPTION_ARG_NONE, &option_browse, "For each command line argument, additionally load all images from the image's directory", NULL },
 	{ "disable-scaling", 0, G_OPTION_FLAG_NO_ARG, G_OPTION_ARG_CALLBACK, (gpointer)&option_scale_level_callback, "Disable scaling of images", NULL },
+	{ "end-of-files-action", 0, 0, G_OPTION_ARG_CALLBACK, (gpointer)&option_end_of_files_action_callback, "Action to take after all images have been viewed. (`quit', `wait', `wrap', `wrap-no-reshuffle')", "ACTION" },
 	{ "fade-duration", 0, 0, G_OPTION_ARG_DOUBLE, &option_fading_duration, "Adjust fades' duration", "SECONDS" },
 	{ "low-memory", 0, 0, G_OPTION_ARG_NONE, &option_lowmem, "Try to keep memory usage to a minimum", NULL },
 	{ "max-depth", 0, 0, G_OPTION_ARG_INT, &option_max_depth, "Descend at most LEVELS levels of directories below the command line arguments", "LEVELS" },
@@ -457,6 +460,25 @@ gboolean option_scale_level_callback(const gchar *option_name, const gchar *valu
 	}
 	else {
 		option_scale = 0;
+	}
+	return TRUE;
+}/*}}}*/
+gboolean option_end_of_files_action_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error) {/*{{{*/
+	if(strcmp(value, "quit") == 0) {
+		option_end_of_files_action = QUIT;
+	}
+	else if(strcmp(value, "wait") == 0) {
+		option_end_of_files_action = WAIT;
+	}
+	else if(strcmp(value, "wrap") == 0) {
+		option_end_of_files_action = WRAP;
+	}
+	else if(strcmp(value, "wrap-no-reshuffle") == 0) {
+		option_end_of_files_action = WRAP_NO_RESHUFFLE;
+	}
+	else {
+		g_set_error(error, G_OPTION_ERROR, G_OPTION_ERROR_FAILED, "Unexpected argument value for the --end-of-files-action option. Allowed values are: quit, wait, wrap (default) and wrap-no-reshuffle.");
+		return FALSE;
 	}
 	return TRUE;
 }/*}}}*/
@@ -1367,10 +1389,12 @@ gboolean image_loaded_handler(gconstpointer node) {/*{{{*/
 			if(!LIST_SHUFFLED_IMAGE(current_shuffled_image)->viewed) {
 				LIST_SHUFFLED_IMAGE(current_shuffled_image)->viewed = 1;
 				if(++shuffled_images_visited_count == bostree_node_count(file_tree)) {
-					g_list_free_full(shuffled_images_list, (GDestroyNotify)relative_image_pointer_shuffle_list_unref_fn);
-					shuffled_images_list = NULL;
-					shuffled_images_visited_count = 0;
-					shuffled_images_list_length = 0;
+					if(option_end_of_files_action == WRAP) {
+						g_list_free_full(shuffled_images_list, (GDestroyNotify)relative_image_pointer_shuffle_list_unref_fn);
+						shuffled_images_list = NULL;
+						shuffled_images_visited_count = 0;
+						shuffled_images_list_length = 0;
+					}
 				}
 			}
 		}
@@ -2005,6 +2029,19 @@ void relative_image_movement(ptrdiff_t movement) {/*{{{*/
 	D_LOCK(file_tree);
 	BOSNode *target = bostree_node_weak_ref(relative_image_pointer(movement));
 	D_UNLOCK(file_tree);
+
+	// Check if this movement is allowed
+	if((option_shuffle && shuffled_images_visited_count == bostree_node_count(file_tree)) ||
+		   (!option_shuffle && movement > 0 && bostree_rank(target) < bostree_rank(current_file_node))) {
+		if(option_end_of_files_action == QUIT) {
+			bostree_node_weak_unref(file_tree, target);
+			gtk_main_quit();
+		}
+		else if(option_end_of_files_action == WAIT) {
+			bostree_node_weak_unref(file_tree, target);
+			return;
+		}
+	}
 
 	absolute_image_movement(target);
 }/*}}}*/

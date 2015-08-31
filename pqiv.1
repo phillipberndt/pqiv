@@ -28,6 +28,31 @@ Set the interval for the slideshow mode
 .B --disable-scaling
 Disable scaling of images
 .TP
+.B --end-of-files-action=ACTION
+Control what to to after all images have been viewed. Valid options are
+.I quit
+to make pqiv exit after the last image has been viewed,
+.I wait
+to wait for new images to arrive,
+.I wrap
+to jump again to the first image and
+.I wrap-no-reshuffle
+to jump again to the first image, but in
+.I --shuffle
+mode, repeat the images in the same order as they were seen last time.
+Note that
+.I wait
+only makes sense if used with
+.I --watch-directories
+or
+.I --lazy-load
+and if either
+.I --shuffle
+is enabled or
+.I --sort
+is not: Elsewise, new images might get sorted before the last image, which
+would be ignored by pqiv. Only images that come after the last one count.
+.TP
 .B -f, --fullscreen
 Start in fullscreen mode
 .TP
