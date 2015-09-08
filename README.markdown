@@ -40,6 +40,7 @@ Features
  * Preloads the next image in the background
  * Fade between images
  * Optional PDF/eps/ps support (useful e.g. for scientific plots)
+ * Optional video format support (e.g. for webm animations)
 
 
 Installation
@@ -119,7 +120,7 @@ Known bugs
 Changelog
 ---------
 
-pqiv (wip)
+pqiv 2.4
  * Added --sort-key=mtime to sort by modification time instead of file name
  * Delay the "Image is still loading" message for half a second to avoid
    flickering status messages
@@ -127,11 +128,10 @@ pqiv (wip)
  * Added [libav](https://www.ffmpeg.org/) backend for video support
  * Added --end-of-files-action=action to allow users to control what happens
    once all images have been viewed
+ * Fix various minor memory allocation issues / possible race conditions
 
 pqiv 2.3.5
  * Fix parameters in pqivrc that are handled by a callback
-
-pqiv 2.3.4
  * Fix reference counting if an image fails to load
  * Properly reload multi-page files if they change on disk while being viewed
  * Properly handle if a user closes pqiv while the image loader is still active
