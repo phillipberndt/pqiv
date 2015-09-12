@@ -19,6 +19,7 @@ BACKENDS=gdkpixbuf
 # Load config.make (created by configure)
 ifeq ($(wildcard config.make),config.make)
 	include config.make
+	HEADERS+=config.make
 endif
 
 # pkg-config lines for the main program
