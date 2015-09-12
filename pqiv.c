@@ -2032,7 +2032,7 @@ void relative_image_movement(ptrdiff_t movement) {/*{{{*/
 
 	// Check if this movement is allowed
 	if((option_shuffle && shuffled_images_visited_count == bostree_node_count(file_tree)) ||
-		   (!option_shuffle && movement > 0 && bostree_rank(target) < bostree_rank(current_file_node))) {
+		   (!option_shuffle && movement > 0 && bostree_rank(target) <= bostree_rank(current_file_node))) {
 		if(option_end_of_files_action == QUIT) {
 			bostree_node_weak_unref(file_tree, target);
 			gtk_main_quit();
