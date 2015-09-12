@@ -120,6 +120,9 @@ Known bugs
 Changelog
 ---------
 
+pqiv (wip)
+ * Fix --end-of-files-action=quit if only one file is present
+
 pqiv 2.4
  * Added --sort-key=mtime to sort by modification time instead of file name
  * Delay the "Image is still loading" message for half a second to avoid
