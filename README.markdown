@@ -122,6 +122,7 @@ Changelog
 
 pqiv (wip)
  * Fix --end-of-files-action=quit if only one file is present
+ * Fixed libav backend's pkg-config dependency list (by @onodera-punpun)
 
 pqiv 2.4
  * Added --sort-key=mtime to sort by modification time instead of file name
