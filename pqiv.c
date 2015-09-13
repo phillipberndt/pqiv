@@ -1261,11 +1261,13 @@ void image_file_updated_callback(GFileMonitor *monitor, GFile *file, GFile *othe
 		// periodically exchange images using scp. There might be a race condition if a user
 		// is not aware that he should first move the new images to a folder and then remove
 		// the old ones. Therefore, if there is only one image remaining, pqiv does nothing.
+		// But as new images are added (if --watch-directories is set), the old one should
+		// be removed eventually. Hence, force_reload is still set on the deleted image.
 		//
 		// If anyone ever complains about this it would be best to add an option to entirely
 		// disable this functionality.
+		FILE(node)->force_reload = TRUE;
 		if(bostree_node_count(file_tree) > 1) {
-			FILE(node)->force_reload = TRUE;
 			queue_image_load(node);
 		}
 	}
@@ -2043,7 +2045,11 @@ void relative_image_movement(ptrdiff_t movement) {/*{{{*/
 		}
 	}
 
-	absolute_image_movement(target);
+	// Only perform the movement if the file actually changed.
+	// Important for slideshows if only one file was available and said file has been deleted.
+	if(movement == 0 || target != current_file_node) {
+		absolute_image_movement(target);
+	}
 }/*}}}*/
 BOSNode *directory_image_movement_find_different_directory(BOSNode *current, int direction) {/*{{{*/
 	// Return a reference to the first image with a different directory than current
