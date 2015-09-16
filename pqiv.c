@@ -2050,6 +2050,15 @@ void relative_image_movement(ptrdiff_t movement) {/*{{{*/
 	if(movement == 0 || target != current_file_node) {
 		absolute_image_movement(target);
 	}
+	else {
+		// If a slideshow called relative_image_movement, it has already stopped the slideshow
+		// callback at this point. It might be that target == current_file_node because the
+		// old slideshow cycle ended, and the new one started off with the same image.
+		// Reinitialize the slideshow in that case.
+		if(slideshow_timeout_id == 0) {
+			slideshow_timeout_id = gdk_threads_add_timeout(option_slideshow_interval * 1000, slideshow_timeout_callback, NULL);
+		}
+	}
 }/*}}}*/
 BOSNode *directory_image_movement_find_different_directory(BOSNode *current, int direction) {/*{{{*/
 	// Return a reference to the first image with a different directory than current
