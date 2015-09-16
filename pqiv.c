@@ -422,6 +422,7 @@ BOSNode *relative_image_pointer(ptrdiff_t movement);
 void file_tree_free_helper(BOSNode *node);
 gint relative_image_pointer_shuffle_list_cmp(shuffled_image_ref_t *ref, BOSNode *node);
 void relative_image_pointer_shuffle_list_unref_fn(shuffled_image_ref_t *ref);
+gboolean slideshow_timeout_callback(gpointer user_data);
 // }}}
 /* Command line handling, creation of the image list {{{ */
 gboolean options_keyboard_alias_set_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error) {/*{{{*/
