@@ -1996,6 +1996,7 @@ BOSNode *relative_image_pointer(ptrdiff_t movement) {/*{{{*/
 				// All images have gone. This _is_ a problem, and should not
 				// happen. pqiv will likely exit. But return the current image,
 				// just to be sure that nothing breaks.
+				g_warn_if_reached();
 				return current_file_node;
 			}
 		}
