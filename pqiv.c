@@ -1931,6 +1931,15 @@ BOSNode *relative_image_pointer(ptrdiff_t movement) {/*{{{*/
 					}
 				}
 
+				// If this is the start of a cycle and the current image has
+				// been selected again by chance, jump one image ahead.
+				if((shuffled_images_list == NULL || shuffled_images_list->data == NULL) && next_candidate == current_file_node && bostree_node_count(file_tree) > 1) {
+					next_candidate = bostree_next_node(next_candidate);
+					if(!next_candidate) {
+						next_candidate = bostree_select(file_tree, 0);
+					}
+				}
+
 				if(movement > 0) {
 					shuffled_images_list = g_list_append(shuffled_images_list, relative_image_pointer_shuffle_list_create(next_candidate));
 					movement--;
