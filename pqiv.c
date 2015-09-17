@@ -2053,6 +2053,8 @@ void relative_image_movement(ptrdiff_t movement) {/*{{{*/
 		absolute_image_movement(target);
 	}
 	else {
+		bostree_node_weak_unref(file_tree, target);
+
 		// If a slideshow called relative_image_movement, it has already stopped the slideshow
 		// callback at this point. It might be that target == current_file_node because the
 		// old slideshow cycle ended, and the new one started off with the same image.
