@@ -305,6 +305,7 @@ gboolean option_sort = FALSE;
 enum { NAME, MTIME } option_sort_key = NAME;
 gboolean option_shuffle = FALSE;
 gboolean option_reverse_cursor_keys = FALSE;
+gboolean option_reverse_scroll = FALSE;
 gboolean option_transparent_background = FALSE;
 gboolean option_watch_directories = FALSE;
 gboolean option_fading = FALSE;
@@ -366,6 +367,7 @@ GOptionEntry options[] = {
 	{ "fade-duration", 0, 0, G_OPTION_ARG_DOUBLE, &option_fading_duration, "Adjust fades' duration", "SECONDS" },
 	{ "low-memory", 0, 0, G_OPTION_ARG_NONE, &option_lowmem, "Try to keep memory usage to a minimum", NULL },
 	{ "max-depth", 0, 0, G_OPTION_ARG_INT, &option_max_depth, "Descend at most LEVELS levels of directories below the command line arguments", "LEVELS" },
+	{ "reverse-scroll", 0, 0, G_OPTION_ARG_NONE, &option_reverse_scroll, "Reverse the meaning of scroll wheel", NULL },
 	{ "shuffle", 0, 0, G_OPTION_ARG_NONE, &option_shuffle, "Shuffle files", NULL },
 	{ "sort-key", 0, 0, G_OPTION_ARG_CALLBACK, (gpointer)&option_sort_key_callback, "Key to use for sorting", "PROPERTY" },
 	{ "watch-directories", 0, 0, G_OPTION_ARG_NONE, &option_watch_directories, "Watch directories for new files", NULL },
@@ -3731,10 +3733,20 @@ gboolean window_scroll_callback(GtkWidget *widget, GdkEventScroll *event, gpoint
 	   };
 	 */
 	if(event->direction == GDK_SCROLL_UP) {
-		relative_image_movement(1);
+		if(option_reverse_scroll == FALSE) {
+			relative_image_movement(1);
+		}
+		else {
+			relative_image_movement(-1);
+		}
 	}
 	else if(event->direction == GDK_SCROLL_DOWN) {
-		relative_image_movement(-1);
+		if(option_reverse_scroll == FALSE) {
+			relative_image_movement(-1);
+		}
+		else {
+			relative_image_movement(1);
+		}
 	}
 
 
