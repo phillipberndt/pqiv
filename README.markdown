@@ -121,6 +121,9 @@ Changelog
 ---------
 
 pqiv (wip)
+ * Add --reverse-scroll option (by @onodera-punpun)
+
+pqiv 2.4.1
  * Fix --end-of-files-action=quit if only one file is present
  * Fixed libav backend's pkg-config dependency list (by @onodera-punpun)
  * Enable image format support in the libav backend
