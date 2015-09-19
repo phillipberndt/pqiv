@@ -305,6 +305,7 @@ gboolean option_sort = FALSE;
 enum { NAME, MTIME } option_sort_key = NAME;
 gboolean option_shuffle = FALSE;
 gboolean option_reverse_cursor_keys = FALSE;
+gboolean option_reverse_scroll = FALSE;
 gboolean option_transparent_background = FALSE;
 gboolean option_watch_directories = FALSE;
 gboolean option_fading = FALSE;
@@ -344,6 +345,7 @@ GOptionEntry options[] = {
 	{ "sort", 'n', 0, G_OPTION_ARG_NONE, &option_sort, "Sort files in natural order", NULL },
 	{ "window-position", 'P', 0, G_OPTION_ARG_CALLBACK, (gpointer)&option_window_position_callback, "Set initial window position (`x,y' or `off' to not position the window at all)", "POSITION" },
 	{ "reverse-cursor-keys", 'R', 0, G_OPTION_ARG_NONE, &option_reverse_cursor_keys, "Reverse the meaning of the cursor keys", NULL },
+	{ "reverse-scroll", 'S', 0, G_OPTION_ARG_NONE, &option_reverse_scroll, "Reverse the meaning of scroll wheel", NULL },
 	{ "additional-from-stdin", 'r', 0, G_OPTION_ARG_NONE, &option_addl_from_stdin, "Read additional filenames/folders from stdin", NULL },
 	{ "slideshow", 's', 0, G_OPTION_ARG_NONE, &option_start_with_slideshow_mode, "Activate slideshow mode", NULL },
 	{ "scale-images-up", 't', G_OPTION_FLAG_NO_ARG, G_OPTION_ARG_CALLBACK, (gpointer)&option_scale_level_callback, "Scale images up to fill the whole screen", NULL },
@@ -3731,10 +3733,20 @@ gboolean window_scroll_callback(GtkWidget *widget, GdkEventScroll *event, gpoint
 	   };
 	 */
 	if(event->direction == GDK_SCROLL_UP) {
-		relative_image_movement(1);
+		if(option_reverse_scroll == FALSE) {
+			relative_image_movement(1);
+		}
+		else {
+			relative_image_movement(-1);
+		}
 	}
 	else if(event->direction == GDK_SCROLL_DOWN) {
-		relative_image_movement(-1);
+		if(option_reverse_scroll == FALSE) {
+			relative_image_movement(-1);
+		}
+		else {
+			relative_image_movement(1);
+		}
 	}
 
 
