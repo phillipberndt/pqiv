@@ -135,7 +135,7 @@ install: pqiv$(EXECUTABLE_EXTENSION)
 	mkdir -p $(DESTDIR)$(PREFIX)/bin
 	install pqiv$(EXECUTABLE_EXTENSION) $(DESTDIR)$(PREFIX)/bin/pqiv$(EXECUTABLE_EXTENSION)
 	-mkdir -p $(DESTDIR)$(MANDIR)/man1
-	-install pqiv.1 $(DESTDIR)$(MANDIR)/man1/pqiv.1
+	-install --mode=644 pqiv.1 $(DESTDIR)$(MANDIR)/man1/pqiv.1
 
 uninstall:
 	rm -f $(DESTDIR)$(PREFIX)/bin/pqiv$(EXECUTABLE_EXTENSION)
