@@ -231,6 +231,9 @@ gboolean main_window_in_fullscreen = FALSE;
 GdkRectangle screen_geometry = { 0, 0, 0, 0 };
 gboolean screen_supports_fullscreen = TRUE;
 
+// If a WM indicates no moveresize support that's a hint it's a tiling WM
+gboolean wm_supports_moveresize = TRUE;
+
 cairo_pattern_t *background_checkerboard_pattern = NULL;
 
 gboolean gui_initialized = FALSE;
@@ -3345,6 +3348,7 @@ gboolean window_key_press_callback(GtkWidget *widget, GdkEventKey *event, gpoint
 				scale_override = TRUE;
 			}
 			invalidate_current_scaled_image_surface();
+			current_image_drawn = FALSE;
 			if(main_window_in_fullscreen) {
 				gtk_widget_queue_draw(GTK_WIDGET(main_window));
 			}
@@ -3353,6 +3357,9 @@ gboolean window_key_press_callback(GtkWidget *widget, GdkEventKey *event, gpoint
 				calculate_current_image_transformed_size(&image_width, &image_height);
 
 				gtk_window_resize(main_window, current_scale_level * image_width, current_scale_level * image_height);
+				if(!wm_supports_moveresize) {
+					queue_draw();
+				}
 			}
 			update_info_text(NULL);
 			break;
@@ -3383,6 +3390,7 @@ gboolean window_key_press_callback(GtkWidget *widget, GdkEventKey *event, gpoint
 				scale_override = TRUE;
 			}
 			invalidate_current_scaled_image_surface();
+			current_image_drawn = FALSE;
 			if(main_window_in_fullscreen) {
 				gtk_widget_queue_draw(GTK_WIDGET(main_window));
 			}
@@ -3393,6 +3401,9 @@ gboolean window_key_press_callback(GtkWidget *widget, GdkEventKey *event, gpoint
 				image_height = abs(image_height);
 
 				gtk_window_resize(main_window, current_scale_level * image_width, current_scale_level * image_height);
+				if(!wm_supports_moveresize) {
+					queue_draw();
+				}
 			}
 			update_info_text(NULL);
 			break;
@@ -3850,9 +3861,11 @@ void window_screen_window_manager_changed_callback(gpointer user_data) {/*{{{*/
 		#if GTK_MAJOR_VERSION >= 3
 			if(GDK_IS_X11_SCREEN(screen)) {
 				screen_supports_fullscreen = gdk_x11_screen_supports_net_wm_hint(screen, gdk_x11_xatom_to_atom(gdk_x11_get_xatom_by_name("_NET_WM_STATE_FULLSCREEN")));
+				wm_supports_moveresize = gdk_x11_screen_supports_net_wm_hint(screen, gdk_x11_xatom_to_atom(gdk_x11_get_xatom_by_name("_NET_MOVERESIZE_WINDOW")));
 			}
 		#else
 			screen_supports_fullscreen = gdk_x11_screen_supports_net_wm_hint(screen, gdk_x11_xatom_to_atom(gdk_x11_get_xatom_by_name("_NET_WM_STATE_FULLSCREEN")));
+			wm_supports_moveresize = gdk_x11_screen_supports_net_wm_hint(screen, gdk_x11_xatom_to_atom(gdk_x11_get_xatom_by_name("_NET_MOVERESIZE_WINDOW")));
 		#endif
 	#endif
 }/*}}}*/
