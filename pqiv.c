@@ -229,7 +229,7 @@ gint main_window_width = 10;
 gint main_window_height = 10;
 gboolean main_window_in_fullscreen = FALSE;
 GdkRectangle screen_geometry = { 0, 0, 0, 0 };
-gboolean screen_supports_fullscreen = TRUE;
+gboolean wm_supports_fullscreen = TRUE;
 
 // If a WM indicates no moveresize support that's a hint it's a tiling WM
 gboolean wm_supports_moveresize = TRUE;
@@ -2746,7 +2746,7 @@ void window_fullscreen() {
 	gtk_window_set_geometry_hints(main_window, NULL, NULL, 0);
 
 	#ifndef _WIN32
-		if(!screen_supports_fullscreen) {
+		if(!wm_supports_fullscreen) {
 			// WM does not support _NET_WM_ACTION_FULLSCREEN or no WM present
 			main_window_in_fullscreen = TRUE;
 			gtk_window_move(main_window, screen_geometry.x, screen_geometry.y);
@@ -2760,7 +2760,7 @@ void window_fullscreen() {
 }
 void window_unfullscreen() {
 	#ifndef _WIN32
-		if(!screen_supports_fullscreen) {
+		if(!wm_supports_fullscreen) {
 			// WM does not support _NET_WM_ACTION_FULLSCREEN or no WM present
 			main_window_in_fullscreen = FALSE;
 			window_state_out_of_fullscreen_actions();
@@ -3860,11 +3860,11 @@ void window_screen_window_manager_changed_callback(gpointer user_data) {/*{{{*/
 
 		#if GTK_MAJOR_VERSION >= 3
 			if(GDK_IS_X11_SCREEN(screen)) {
-				screen_supports_fullscreen = gdk_x11_screen_supports_net_wm_hint(screen, gdk_x11_xatom_to_atom(gdk_x11_get_xatom_by_name("_NET_WM_STATE_FULLSCREEN")));
+				wm_supports_fullscreen = gdk_x11_screen_supports_net_wm_hint(screen, gdk_x11_xatom_to_atom(gdk_x11_get_xatom_by_name("_NET_WM_STATE_FULLSCREEN")));
 				wm_supports_moveresize = gdk_x11_screen_supports_net_wm_hint(screen, gdk_x11_xatom_to_atom(gdk_x11_get_xatom_by_name("_NET_MOVERESIZE_WINDOW")));
 			}
 		#else
-			screen_supports_fullscreen = gdk_x11_screen_supports_net_wm_hint(screen, gdk_x11_xatom_to_atom(gdk_x11_get_xatom_by_name("_NET_WM_STATE_FULLSCREEN")));
+			wm_supports_fullscreen = gdk_x11_screen_supports_net_wm_hint(screen, gdk_x11_xatom_to_atom(gdk_x11_get_xatom_by_name("_NET_WM_STATE_FULLSCREEN")));
 			wm_supports_moveresize = gdk_x11_screen_supports_net_wm_hint(screen, gdk_x11_xatom_to_atom(gdk_x11_get_xatom_by_name("_NET_MOVERESIZE_WINDOW")));
 		#endif
 	#endif
