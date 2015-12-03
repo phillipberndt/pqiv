@@ -12,7 +12,7 @@ void initialize_file_type_handlers() {
 	for(char **backend=(char **)&available_backends[0]; *backend; backend++) {
 		gchar *backend_candidate = g_strdup_printf("pqiv-backend-%s.so", *backend);
 
-		GModule *backend_module = g_module_open(backend_candidate, 0);
+		GModule *backend_module = g_module_open(backend_candidate, G_MODULE_BIND_LOCAL);
 		if(backend_module) {
 			gchar *backend_initializer = g_strdup_printf("file_type_%s_initializer", *backend);
 
