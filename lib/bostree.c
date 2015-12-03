@@ -388,6 +388,7 @@ void bostree_remove(BOSTree *tree, BOSNode *node) {
 */
 BOSNode *bostree_node_weak_ref(BOSNode *node) {
 	assert(node->weak_ref_count > 0);
+	assert(node->weak_ref_count < 127);
 	node->weak_ref_count++;
 	return node;
 }
@@ -529,7 +530,8 @@ unsigned int bostree_rank(BOSNode *node) {
 static void _bostree_print_helper(BOSNode *node, unsigned int indent, unsigned int level) {
 	printf("\033[%d;%dH", level + 1, indent);
 	fsync(0);
-	printf("%s(%d,%d,%d)", (char *)node->key, node->left_child_count, node->right_child_count, node->depth);
+	printf("%s(%d,%d,%d)\n", (char *)node->key, node->left_child_count, node->right_child_count, node->depth);
+	fsync(0);
 
 	if(node->left_child_node != NULL) {
 		_bostree_print_helper(node->left_child_node, indent - (2 << node->depth), level + 1);

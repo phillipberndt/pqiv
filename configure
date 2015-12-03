@@ -25,6 +25,10 @@ BACKENDS=
 ENFORCED_BACKENDS=
 DISABLED_BACKENDS=
 BACKENDS_BUILD=static
+DEBUG_DEFS=
+
+# For development, you can set default settings here
+[ -x ./configure-dev ] && . ./configure-dev
 
 # Help and options
 help() {
@@ -278,6 +282,7 @@ ${CCFLAGS:+CCFLAGS=$CCFLAGS}
 ${MANDIR:+MANDIR=$MANDIR}
 ${BACKENDS:+BACKENDS=$BACKENDS}
 ${CC:+CC=$CC}
+${DEBUG_DEFS}
 EOF
 echo
 echo "Done. Run \`$MAKE install' to install pqiv."
