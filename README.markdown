@@ -117,6 +117,12 @@ Known bugs
   information, or use a fake xrand (like
   [mine](https://github.com/phillipberndt/fakexrandr), for example)
 
+* **Loading postscript files failes with `Error #12288; Unknown output format`**:
+  This issue happens if your poppler and spectre libraries are linked against
+  different versions of libcms and pqiv pulls in both. Compile using
+  `--backends-build=shared` in the `shared-backends` branch to circumvent
+  this for now.
+
 Changelog
 ---------
 
