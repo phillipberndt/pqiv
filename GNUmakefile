@@ -138,7 +138,7 @@ pqiv$(EXECUTABLE_EXTENSION): $(OBJECTS)
 	$(SILENT_CCLD) $(CROSS)$(CC) $(CPPFLAGS) -o $@ $+ $(LDLIBS_REAL) $(LDFLAGS_REAL)
 
 ifeq ($(BACKENDS_BUILD), shared)
-backends/%.o: backends/%.c
+backends/%.o: backends/%.c $(HEADERS)
 	$(SILENT_CC) $(CROSS)$(CC) $(CPPFLAGS) -c -o $@ $(CFLAGS_REAL) $(BACKENDS_BUILD_CFLAGS_$*) $<
 
 backends/pqiv-backend-%.so: backends/%.o
