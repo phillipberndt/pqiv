@@ -241,6 +241,7 @@ if [ $? != 0 ]; then
 fi
 
 if $PKG_CONFIG --exists "$LIBS_GTK3"; then
+	LIBS="${LIBS_GTK3}"
 	echo "ok"
 else
 	if $PKG_CONFIG --exists "$LIBS_GTK2"; then
@@ -255,6 +256,7 @@ else
 		fi
 		echo "ok, found GTK 2"
 		GTK_VERSION=2
+		LIBS="${LIBS_GTK2}"
 	else
 		echo "failed."
 		echo
@@ -285,5 +287,28 @@ ${CC:+CC=$CC}
 ${DEBUG_DEFS}
 EOF
 echo
+
+# Check for lcms bug
+#
+if [ "${BACKENDS_BUILD}" = "static" -a "${BACKENDS/poppler//}" != "${BACKENDS}" -a "${BACKENDS/spectre//}" != "${BACKENDS}" ]; then
+	DIR=`tempdir`
+	cd $DIR
+	echo -e "#include <poppler.h>\n#include <libspectre/spectre.h>\nint main() { poppler_get_version(); spectre_status_to_string(SPECTRE_STATUS_SUCCESS); }" > test.c
+	${CROSS}${CC:-cc} ${CFLAGS} test.c ${LDFLAGS} $($PKG_CONFIG --libs --cflags ${LIBS}) -o test >/dev/null 2>&1
+	if [ -e test ]; then
+		if [ "$(ldd test | grep -E "liblcms[0-9]?.so" | wc -l)" -gt 1 ]; then
+			echo 2>&1
+			echo "WARNING: You enabled both the spectre and poppler backends, and chose static linking." >&2
+			echo "Your system uses two different versions of liblcms that are known to interfere:" 2>&1
+			ldd test | grep -E "liblcms[0-9]?.so" >&2
+			echo "Recompile using --backends-build=shared if you experience problems." 2>&1
+			echo 2>&1
+		fi
+	fi
+	rm -f test.c test
+	cd ..
+	rmdir $DIR
+fi
+
 echo "Done. Run \`$MAKE install' to install pqiv."
 exit 0
