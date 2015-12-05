@@ -130,6 +130,7 @@ Changelog
 pqiv (wip)
  * Add --reverse-scroll option (by @onodera-punpun)
  * Added a configure option to build the backends as shared libraries
+ * Added --watch-files to make the file change action configurable
 
 pqiv 2.4.1
  * Fix --end-of-files-action=quit if only one file is present

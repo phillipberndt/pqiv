@@ -167,28 +167,42 @@ Bind the external COMMAND to key 1. Likewise, you can use -2 to -9 for those key
 Extended usage:
 
 .po 7
-
 .TP
 .I Show command output in a window
 Prefix the command with 
 .RI `>'
 to display it's output in an overlay window.
-
 .TP
 .I Pipe the image through a filter
 Prefix the command with 
 .RI `|' 
 to write the image to the program's stdin and read an image from its stdout.
 The output is not cached, so reloading the image will revert to the old state.
-
 .po 0
 
+.TP
 .B --watch-directories
 Watch directories (given on the command line) for new images and add them as
 they appear. Note that the yellow info box does not update automatically, but
 only when the window needs to be redrawn anyway. This option uses GIO's
 GFileMonitor internally. Depending on which system you use, GIO might internally
 poll regularly for changes, i.e. create some load. (In Linux, inotify is used.)
+
+.TP
+.B --watch-files=VALUE
+Watch files for changes. The default value is
+.I on
+which means that if the current image is changed on disk, it is reloaded.
+This also applies if the image is deleted. In this case, pqiv jumps to the
+next image. This can be circumvented by specifying
+.I changes-only
+If you intend to delete all files from a directory in conjunction with
+.I --watch-directories
+then you'll need this to prevent pqiv from quitting, because it will first
+notice that the current image was deleted and unload it, and only then try
+to load the other ones. The third value for this option
+is
+.I off
 
 .PP
 You can use the file

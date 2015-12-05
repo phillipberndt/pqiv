@@ -319,6 +319,7 @@ double option_fading_duration = .5;
 gint option_max_depth = -1;
 gboolean option_browse = FALSE;
 enum { QUIT, WAIT, WRAP, WRAP_NO_RESHUFFLE } option_end_of_files_action = WRAP;
+enum { ON, OFF, CHANGES_ONLY } option_watch_files = ON;
 
 double fading_current_alpha_stage = 0;
 gint64 fading_initial_time;
@@ -327,6 +328,7 @@ gboolean options_keyboard_alias_set_callback(const gchar *option_name, const gch
 gboolean option_window_position_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error);
 gboolean option_scale_level_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error);
 gboolean option_end_of_files_action_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error);
+gboolean option_watch_files_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error);
 gboolean option_sort_key_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error);
 void load_images_handle_parameter(char *param, load_images_state_t state, gint depth);
 
@@ -374,6 +376,7 @@ GOptionEntry options[] = {
 	{ "shuffle", 0, 0, G_OPTION_ARG_NONE, &option_shuffle, "Shuffle files", NULL },
 	{ "sort-key", 0, 0, G_OPTION_ARG_CALLBACK, (gpointer)&option_sort_key_callback, "Key to use for sorting", "PROPERTY" },
 	{ "watch-directories", 0, 0, G_OPTION_ARG_NONE, &option_watch_directories, "Watch directories for new files", NULL },
+	{ "watch-files", 0, 0, G_OPTION_ARG_CALLBACK, (gpointer)&option_watch_files_callback, "Watch files for changes on disk (`on`, `off', `changes-only', i.e. do nothing on deletetion)", "VALUE" },
 
 	{ NULL, 0, 0, 0, NULL, NULL, NULL }
 };
@@ -466,6 +469,22 @@ gboolean option_scale_level_callback(const gchar *option_name, const gchar *valu
 	}
 	else {
 		option_scale = 0;
+	}
+	return TRUE;
+}/*}}}*/
+gboolean option_watch_files_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error) {/*{{{*/
+	if(strcmp(value, "off") == 0) {
+		option_watch_files = OFF;
+	}
+	else if(strcmp(value, "on") == 0) {
+		option_watch_files = ON;
+	}
+	else if(strcmp(value, "changes-only") == 0) {
+		option_watch_files = CHANGES_ONLY;
+	}
+	else {
+		g_set_error(error, G_OPTION_ERROR, G_OPTION_ERROR_FAILED, "Unexpected argument value for the --watch-files option. Allowed values are: on, off and changes-only.");
+		return FALSE;
 	}
 	return TRUE;
 }/*}}}*/
@@ -1251,6 +1270,10 @@ gboolean image_animation_timeout_callback(gpointer user_data) {/*{{{*/
 void image_file_updated_callback(GFileMonitor *monitor, GFile *file, GFile *other_file, GFileMonitorEvent event_type, gpointer user_data) {/*{{{*/
 	BOSNode *node = (BOSNode *)user_data;
 
+	if(option_watch_files == OFF) {
+		return;
+	}
+
 	D_LOCK(file_tree);
 	if(event_type == G_FILE_MONITOR_EVENT_CHANGES_DONE_HINT) {
 		FILE(node)->force_reload = TRUE;
@@ -1270,11 +1293,13 @@ void image_file_updated_callback(GFileMonitor *monitor, GFile *file, GFile *othe
 		// But as new images are added (if --watch-directories is set), the old one should
 		// be removed eventually. Hence, force_reload is still set on the deleted image.
 		//
-		// If anyone ever complains about this it would be best to add an option to entirely
-		// disable this functionality.
-		FILE(node)->force_reload = TRUE;
-		if(bostree_node_count(file_tree) > 1) {
-			queue_image_load(node);
+		// There's another race if a user deletes all files at once. --watch-files=ignore
+		// has been added for such situations, to disable this functionality
+		if(option_watch_files == ON) {
+			FILE(node)->force_reload = TRUE;
+			if(bostree_node_count(file_tree) > 1) {
+				queue_image_load(node);
+			}
 		}
 	}
 	D_UNLOCK(file_tree);
