@@ -65,6 +65,9 @@
 	#define PQIV_VERSION_DEBUG ""
 #endif
 
+// TODO Add stdin interface for actions
+// TODO Add actions useful for scripts: Jump to specific image, add image, remove image
+
 // GTK 2 does not define keyboard aliases the way we do
 #if GTK_MAJOR_VERSION < 3 // {{{
 
@@ -3225,6 +3228,250 @@ gboolean set_scale_level_to_fit_callback(gpointer user_data) {
 	return FALSE;
 }
 /*}}}*/
+void action(pqiv_action_t action, pqiv_action_parameter_t parameter) {/*{{{*/
+	switch(action) {
+		case ACTION_SHIFT_Y:
+			if(!CURRENT_FILE->is_loaded) return;
+			current_shift_y += parameter.pdouble;
+			gtk_widget_queue_draw(GTK_WIDGET(main_window));
+			update_info_text(NULL);
+			break;
+
+		case ACTION_SHIFT_X:
+			if(!CURRENT_FILE->is_loaded) return;
+			current_shift_x += parameter.pdouble;
+			gtk_widget_queue_draw(GTK_WIDGET(main_window));
+			update_info_text(NULL);
+			break;
+
+		case ACTION_SET_SLIDESHOW_INTERVAL_RELATIVE:
+		case ACTION_SET_SLIDESHOW_INTERVAL_ABSOLUTE:
+			if(action == ACTION_SET_SLIDESHOW_INTERVAL_ABSOLUTE) {
+				option_slideshow_interval = fmax(parameter.pdouble, 1e-3);
+			}
+			else {
+				option_slideshow_interval = fmax(1., option_slideshow_interval + parameter.pdouble);
+			}
+			if(slideshow_timeout_id > 0) {
+				g_source_remove(slideshow_timeout_id);
+				slideshow_timeout_id = gdk_threads_add_timeout(option_slideshow_interval * 1000, slideshow_timeout_callback, NULL);
+			}
+			gchar *info_text = g_strdup_printf("Slideshow interval set to %d seconds", (int)option_slideshow_interval);
+			update_info_text(info_text);
+			gtk_widget_queue_draw(GTK_WIDGET(main_window));
+			g_free(info_text);
+			break;
+
+		case ACTION_SET_SCALE_LEVEL_RELATIVE:
+		case ACTION_SET_SCALE_LEVEL_ABSOLUTE:
+			if(!CURRENT_FILE->is_loaded) return;
+			if(action == ACTION_SET_SCALE_LEVEL_ABSOLUTE) {
+				current_scale_level = parameter.pdouble;
+			}
+			else {
+				current_scale_level *= parameter.pdouble;
+			}
+			current_scale_level = round(current_scale_level * 100.) / 100.;
+			if((option_scale == 1 && current_scale_level > 1) || option_scale == 0) {
+				scale_override = TRUE;
+			}
+			invalidate_current_scaled_image_surface();
+			current_image_drawn = FALSE;
+			if(main_window_in_fullscreen) {
+				gtk_widget_queue_draw(GTK_WIDGET(main_window));
+			}
+			else {
+				int image_width, image_height;
+				calculate_current_image_transformed_size(&image_width, &image_height);
+
+				gtk_window_resize(main_window, current_scale_level * image_width, current_scale_level * image_height);
+				if(!wm_supports_moveresize) {
+					queue_draw();
+				}
+			}
+			update_info_text(NULL);
+			break;
+
+		case ACTION_TOGGLE_SCALING_MODE:
+			if(!CURRENT_FILE->is_loaded) return;
+			if(parameter.pint == 0) {
+				if(++option_scale > 2) {
+					option_scale = 0;
+				}
+			}
+			else {
+				option_scale = (parameter.pint - 1) % 3;
+			}
+			current_image_drawn = FALSE;
+			current_shift_x = 0;
+			current_shift_y = 0;
+			set_scale_level_for_screen();
+			main_window_adjust_for_image();
+			invalidate_current_scaled_image_surface();
+			gtk_widget_queue_draw(GTK_WIDGET(main_window));
+			switch(option_scale) {
+				case 0: update_info_text("Scaling disabled"); break;
+				case 1: update_info_text("Automatic scaledown enabled"); break;
+				case 2: update_info_text("Automatic scaling enabled"); break;
+			}
+			break;
+
+		case ACTION_TOGGLE_SHUFFLE_MODE:
+			if(parameter.pint == 0) {
+				option_shuffle = !option_shuffle;
+			}
+			else {
+				option_shuffle = parameter.pint == 1;
+			}
+			preload_adjacent_images();
+			update_info_text(option_shuffle ? "Shuffle mode enabled" : "Shuffle mode disabled");
+			gtk_widget_queue_draw(GTK_WIDGET(main_window));
+			break;
+
+		case ACTION_RELOAD:
+			if(!CURRENT_FILE->is_loaded) return;
+			CURRENT_FILE->force_reload = TRUE;
+			update_info_text("Reloading image..");
+			queue_image_load(relative_image_pointer(0));
+			break;
+
+		case ACTION_RESET_SCALE_LEVEL:
+			if(!CURRENT_FILE->is_loaded) return;
+			current_image_drawn = FALSE;
+			scale_override = FALSE;
+			set_scale_level_for_screen();
+			main_window_adjust_for_image();
+			invalidate_current_scaled_image_surface();
+			gtk_widget_queue_draw(GTK_WIDGET(main_window));
+			update_info_text(NULL);
+			break;
+
+		case ACTION_TOGGLE_FULLSCREEN:
+			if(main_window_in_fullscreen == FALSE) {
+				window_fullscreen();
+			}
+			else {
+				window_unfullscreen();
+			}
+			break;
+
+		case ACTION_FLIP_HORIZONTALLY:
+			if(!CURRENT_FILE->is_loaded) return;
+			{
+				int image_width, image_height;
+				calculate_current_image_transformed_size(&image_width, &image_height);
+
+				cairo_matrix_t transformation = { -1., 0., 0., 1., image_width, 0 };
+				transform_current_image(&transformation);
+			}
+			update_info_text("Image flipped horizontally");
+			break;
+
+		case ACTION_FLIP_VERTICALLY:
+			if(!CURRENT_FILE->is_loaded) return;
+			{
+				int image_width, image_height;
+				calculate_current_image_transformed_size(&image_width, &image_height);
+
+				cairo_matrix_t transformation = { 1., 0., 0., -1., 0, image_height };
+				transform_current_image(&transformation);
+			}
+			update_info_text("Image flipped vertically");
+			break;
+
+		case ACTION_ROTATE_LEFT:
+			if(!CURRENT_FILE->is_loaded) return;
+			{
+				int image_width, image_height;
+				calculate_current_image_transformed_size(&image_width, &image_height);
+
+				cairo_matrix_t transformation = { 0., -1., 1., 0., 0, image_width };
+				transform_current_image(&transformation);
+			}
+			update_info_text("Image rotated left");
+			break;
+
+		case ACTION_ROTATE_RIGHT:
+			if(!CURRENT_FILE->is_loaded) return;
+			{
+				int image_width, image_height;
+				calculate_current_image_transformed_size(&image_width, &image_height);
+
+				cairo_matrix_t transformation = { 0., 1., -1., 0., image_height, 0. };
+				transform_current_image(&transformation);
+			}
+			update_info_text("Image rotated right");
+			break;
+
+		case ACTION_TOGGLE_INFO_BOX:
+			option_hide_info_box = !option_hide_info_box;
+			update_info_text(NULL);
+			gtk_widget_queue_draw(GTK_WIDGET(main_window));
+			break;
+
+		case ACTION_JUMP_DIALOG:
+			do_jump_dialog();
+			break;
+
+		case ACTION_TOGGLE_SLIDESHOW:
+			{
+				int image_width, image_height;
+				calculate_current_image_transformed_size(&image_width, &image_height);
+
+				cairo_matrix_t transformation = { 0., -1., 1., 0., 0, image_width };
+				transform_current_image(&transformation);
+			}
+			update_info_text("Image rotated left");
+			break;
+
+		case ACTION_HARDLINK_CURRENT_IMAGE:
+			if(!CURRENT_FILE->is_loaded) return;
+			hardlink_current_image();
+			gtk_widget_queue_draw(GTK_WIDGET(main_window));
+			break;
+
+		case ACTION_MOVE_DIRECTORY:
+			directory_image_movement(parameter.pint);
+			break;
+
+		case ACTION_MOVE_FILE:
+			relative_image_movement(parameter.pint);
+			break;
+
+		case ACTION_QUIT:
+			gtk_widget_destroy(GTK_WIDGET(main_window));
+			break;
+
+		case ACTION_COMMAND:
+			if(!CURRENT_FILE->is_loaded) return;
+			{
+				char *command = parameter.pcharptr;
+				if(command == NULL) {
+					break;
+				}
+				else if (
+					((CURRENT_FILE->file_flags & FILE_FLAGS_MEMORY_IMAGE) != 0 && command[0] != '|')
+					|| ((CURRENT_FILE->file_flags & FILE_FLAGS_ANIMATION) != 0 && command[0] == '|')) {
+
+					update_info_text("Command incompatible with current file type");
+					gtk_widget_queue_draw(GTK_WIDGET(main_window));
+				}
+				else {
+					gchar *info = g_strdup_printf("Executing command %s", command);
+					update_info_text(info);
+					g_free(info);
+					gtk_widget_queue_draw(GTK_WIDGET(main_window));
+
+					#if GLIB_CHECK_VERSION(2, 32, 0)
+						g_thread_new("image-filter", apply_external_image_filter_thread, command);
+					#else
+						g_thread_create(apply_external_image_filter_thread, command, FALSE, NULL);
+					#endif
+				}
+			}
+			break;
+	}
+}/*}}}*/
 gboolean window_configure_callback(GtkWidget *widget, GdkEventConfigure *event, gpointer user_data) {/*{{{*/
 	/*
 	 * struct GdkEventConfigure {
@@ -3302,305 +3549,145 @@ gboolean window_key_press_callback(GtkWidget *widget, GdkEventKey *event, gpoint
 		event->keyval = keyboard_aliases[event->keyval];
 	}
 
-	// If the current image is not loaded, only allow stuff unrelated to the current image
-	if(!CURRENT_FILE->is_loaded && (
-		event->keyval != GDK_KEY_space &&
-		event->keyval != GDK_KEY_Page_Up &&
-		event->keyval != GDK_KEY_KP_Page_Up &&
-		event->keyval != GDK_KEY_Page_Down &&
-		event->keyval != GDK_KEY_KP_Page_Down &&
-		event->keyval != GDK_KEY_BackSpace &&
-		event->keyval != GDK_KEY_j &&
-		event->keyval != GDK_KEY_J &&
-		event->keyval != GDK_KEY_i &&
-		event->keyval != GDK_KEY_I &&
-		event->keyval != GDK_KEY_s &&
-		event->keyval != GDK_KEY_S &&
-		event->keyval != GDK_KEY_Q &&
-		event->keyval != GDK_KEY_q &&
-		event->keyval != GDK_KEY_f &&
-		event->keyval != GDK_KEY_F)) {
-		return FALSE;
-	}
+	// TODO Move definitions into a prefix tree
 
 	switch(event->keyval) {
 		case GDK_KEY_Up:
 		case GDK_KEY_KP_Up:
-			current_shift_y += (event->state & GDK_CONTROL_MASK ? 50 : 10) * (option_reverse_cursor_keys ? -1 : 1);
-			gtk_widget_queue_draw(GTK_WIDGET(main_window));
-			update_info_text(NULL);
+			action(ACTION_SHIFT_Y, (pqiv_action_parameter_t)((event->state & GDK_CONTROL_MASK ? 50 : 10) * (option_reverse_cursor_keys ? -1 : 1)));
 			break;
 
 		case GDK_KEY_Down:
 		case GDK_KEY_KP_Down:
-			current_shift_y -= (event->state & GDK_CONTROL_MASK ? 50 : 10) * (option_reverse_cursor_keys ? -1 : 1);
-			gtk_widget_queue_draw(GTK_WIDGET(main_window));
-			update_info_text(NULL);
+			action(ACTION_SHIFT_Y, (pqiv_action_parameter_t)(-1 * (event->state & GDK_CONTROL_MASK ? 50 : 10) * (option_reverse_cursor_keys ? -1 : 1)));
 			break;
 
 		case GDK_KEY_Left:
 		case GDK_KEY_KP_Left:
-			current_shift_x += (event->state & GDK_CONTROL_MASK ? 50 : 10) * (option_reverse_cursor_keys ? -1 : 1);
-			gtk_widget_queue_draw(GTK_WIDGET(main_window));
-			update_info_text(NULL);
+			action(ACTION_SHIFT_X, (pqiv_action_parameter_t)((event->state & GDK_CONTROL_MASK ? 50 : 10) * (option_reverse_cursor_keys ? -1 : 1)));
 			break;
 
 		case GDK_KEY_Right:
 		case GDK_KEY_KP_Right:
-			current_shift_x -= (event->state & GDK_CONTROL_MASK ? 50 : 10) * (option_reverse_cursor_keys ? -1 : 1);
-			gtk_widget_queue_draw(GTK_WIDGET(main_window));
-			update_info_text(NULL);
+			action(ACTION_SHIFT_X, (pqiv_action_parameter_t)(-(event->state & GDK_CONTROL_MASK ? 50 : 10) * (option_reverse_cursor_keys ? -1 : 1)));
 			break;
 
 		case GDK_KEY_plus:
 		case GDK_KEY_KP_Add:
 			if(event->state & GDK_CONTROL_MASK) {
-				option_slideshow_interval = (double)((int)option_slideshow_interval + 1);
-				if(slideshow_timeout_id > 0) {
-					g_source_remove(slideshow_timeout_id);
-					slideshow_timeout_id = gdk_threads_add_timeout(option_slideshow_interval * 1000, slideshow_timeout_callback, NULL);
-				}
-				gchar *info_text = g_strdup_printf("Slideshow interval set to %d seconds", (int)option_slideshow_interval);
-				update_info_text(info_text);
-				gtk_widget_queue_draw(GTK_WIDGET(main_window));
-				g_free(info_text);
+				action(ACTION_SET_SLIDESHOW_INTERVAL_RELATIVE, (pqiv_action_parameter_t)(1.));
 				break;
 			}
 
-			current_scale_level *= 1.1;
-			current_scale_level = round(current_scale_level * 100.) / 100.;
-			if((option_scale == 1 && current_scale_level > 1) || option_scale == 0) {
-				scale_override = TRUE;
-			}
-			invalidate_current_scaled_image_surface();
-			current_image_drawn = FALSE;
-			if(main_window_in_fullscreen) {
-				gtk_widget_queue_draw(GTK_WIDGET(main_window));
-			}
-			else {
-				int image_width, image_height;
-				calculate_current_image_transformed_size(&image_width, &image_height);
-
-				gtk_window_resize(main_window, current_scale_level * image_width, current_scale_level * image_height);
-				if(!wm_supports_moveresize) {
-					queue_draw();
-				}
-			}
-			update_info_text(NULL);
+			action(ACTION_SET_SCALE_LEVEL_RELATIVE, (pqiv_action_parameter_t)( 1.1));
 			break;
 
 		case GDK_KEY_minus:
 		case GDK_KEY_KP_Subtract:
 			if(event->state & GDK_CONTROL_MASK) {
-				if(option_slideshow_interval >= 2.) {
-					option_slideshow_interval = (double)((int)option_slideshow_interval - 1);
-				}
-				if(slideshow_timeout_id > 0) {
-					g_source_remove(slideshow_timeout_id);
-					slideshow_timeout_id = gdk_threads_add_timeout(option_slideshow_interval * 1000, slideshow_timeout_callback, NULL);
-				}
-				gchar *info_text = g_strdup_printf("Slideshow interval set to %d seconds", (int)option_slideshow_interval);
-				update_info_text(info_text);
-				gtk_widget_queue_draw(GTK_WIDGET(main_window));
-				g_free(info_text);
+				action(ACTION_SET_SLIDESHOW_INTERVAL_RELATIVE, (pqiv_action_parameter_t)( -1.));
 				break;
 			}
 
-			if(current_scale_level <= 0.01) {
-				break;
-			}
-			current_scale_level /= 1.1;
-			current_scale_level = round(current_scale_level * 100.) / 100.;
-			if((option_scale == 1 && current_scale_level > 1) || option_scale == 0) {
-				scale_override = TRUE;
-			}
-			invalidate_current_scaled_image_surface();
-			current_image_drawn = FALSE;
-			if(main_window_in_fullscreen) {
-				gtk_widget_queue_draw(GTK_WIDGET(main_window));
-			}
-			else {
-				int image_width, image_height;
-				calculate_current_image_transformed_size(&image_width, &image_height);
-				image_width = abs(image_width);
-				image_height = abs(image_height);
-
-				gtk_window_resize(main_window, current_scale_level * image_width, current_scale_level * image_height);
-				if(!wm_supports_moveresize) {
-					queue_draw();
-				}
-			}
-			update_info_text(NULL);
+			action(ACTION_SET_SCALE_LEVEL_RELATIVE, (pqiv_action_parameter_t)( 0.9));
 			break;
 
 		case GDK_KEY_T:
 		case GDK_KEY_t:
-			if(++option_scale > 2) {
-				option_scale = 0;
-			}
-			current_image_drawn = FALSE;
-			current_shift_x = 0;
-			current_shift_y = 0;
-			set_scale_level_for_screen();
-			main_window_adjust_for_image();
-			invalidate_current_scaled_image_surface();
-			gtk_widget_queue_draw(GTK_WIDGET(main_window));
-			switch(option_scale) {
-				case 0: update_info_text("Scaling disabled"); break;
-				case 1: update_info_text("Automatic scaledown enabled"); break;
-				case 2: update_info_text("Automatic scaling enabled"); break;
-			}
+			action(ACTION_TOGGLE_SCALING_MODE, (pqiv_action_parameter_t)( 0));
 			break;
 
 		case GDK_KEY_r:
 		case GDK_KEY_R:
 			if(event->state & GDK_CONTROL_MASK) {
-				option_shuffle = !option_shuffle;
-				preload_adjacent_images();
-				update_info_text(option_shuffle ? "Shuffle mode enabled" : "Shuffle mode disabled");
-				gtk_widget_queue_draw(GTK_WIDGET(main_window));
+				action(ACTION_TOGGLE_SHUFFLE_MODE, (pqiv_action_parameter_t)( 0));
 				break;
 			}
 
-			CURRENT_FILE->force_reload = TRUE;
-			update_info_text("Reloading image..");
-			queue_image_load(relative_image_pointer(0));
+			action(ACTION_RELOAD, (pqiv_action_parameter_t)( 0));
 			break;
 
 		case GDK_KEY_0:
-			current_image_drawn = FALSE;
-			scale_override = FALSE;
-			set_scale_level_for_screen();
-			main_window_adjust_for_image();
-			invalidate_current_scaled_image_surface();
-			gtk_widget_queue_draw(GTK_WIDGET(main_window));
-			update_info_text(NULL);
+			action(ACTION_RESET_SCALE_LEVEL, (pqiv_action_parameter_t)( 0));
 			break;
 
 		case GDK_KEY_F:
 		case GDK_KEY_f:
-			if(main_window_in_fullscreen == FALSE) {
-				window_fullscreen();
-			}
-			else {
-				window_unfullscreen();
-			}
+			action(ACTION_TOGGLE_FULLSCREEN, (pqiv_action_parameter_t)( 0));
 			break;
 
 		case GDK_KEY_H:
 		case GDK_KEY_h:
-			{
-				int image_width, image_height;
-				calculate_current_image_transformed_size(&image_width, &image_height);
-
-				cairo_matrix_t transformation = { -1., 0., 0., 1., image_width, 0 };
-				transform_current_image(&transformation);
-			}
-			update_info_text("Image flipped horizontally");
+			action(ACTION_FLIP_HORIZONTALLY, (pqiv_action_parameter_t)( 0));
 			break;
 
 		case GDK_KEY_V:
 		case GDK_KEY_v:
-			{
-				int image_width, image_height;
-				calculate_current_image_transformed_size(&image_width, &image_height);
-
-				cairo_matrix_t transformation = { 1., 0., 0., -1., 0, image_height };
-				transform_current_image(&transformation);
-			}
-			update_info_text("Image flipped vertically");
+			action(ACTION_FLIP_VERTICALLY, (pqiv_action_parameter_t)( 0));
 			break;
 
 		case GDK_KEY_L:
 		case GDK_KEY_l:
-			{
-				int image_width, image_height;
-				calculate_current_image_transformed_size(&image_width, &image_height);
-
-				cairo_matrix_t transformation = { 0., -1., 1., 0., 0, image_width };
-				transform_current_image(&transformation);
-			}
-			update_info_text("Image rotated left");
+			action(ACTION_ROTATE_LEFT, (pqiv_action_parameter_t)( 0));
 			break;
 
 		case GDK_KEY_K:
 		case GDK_KEY_k:
-			{
-				int image_width, image_height;
-				calculate_current_image_transformed_size(&image_width, &image_height);
-
-				cairo_matrix_t transformation = { 0., 1., -1., 0., image_height, 0. };
-				transform_current_image(&transformation);
-			}
-			update_info_text("Image rotated right");
+			action(ACTION_ROTATE_RIGHT, (pqiv_action_parameter_t)( 0));
 			break;
 
 		case GDK_KEY_i:
 		case GDK_KEY_I:
-			option_hide_info_box = !option_hide_info_box;
-			update_info_text(NULL);
-			gtk_widget_queue_draw(GTK_WIDGET(main_window));
+			action(ACTION_TOGGLE_INFO_BOX, (pqiv_action_parameter_t)( 0));
 			break;
 
 		case GDK_KEY_j:
 		case GDK_KEY_J:
-			do_jump_dialog();
+			action(ACTION_JUMP_DIALOG, (pqiv_action_parameter_t)( 0));
 			break;
 
 		case GDK_KEY_s:
 		case GDK_KEY_S:
-			if(slideshow_timeout_id >= 0) {
-				if(slideshow_timeout_id > 0) {
-					g_source_remove(slideshow_timeout_id);
-				}
-				slideshow_timeout_id = -1;
-				update_info_text("Slideshow disabled");
-			}
-			else {
-				slideshow_timeout_id = gdk_threads_add_timeout(option_slideshow_interval * 1000, slideshow_timeout_callback, NULL);
-				update_info_text("Slideshow enabled");
-			}
-			gtk_widget_queue_draw(GTK_WIDGET(main_window));
+			action(ACTION_TOGGLE_SLIDESHOW, (pqiv_action_parameter_t)( 0));
 			break;
 
 		case GDK_KEY_a:
 		case GDK_KEY_A:
-			hardlink_current_image();
-			gtk_widget_queue_draw(GTK_WIDGET(main_window));
+			action(ACTION_HARDLINK_CURRENT_IMAGE, (pqiv_action_parameter_t)( 0));
 			break;
 
 		case GDK_KEY_BackSpace:
 			if(event->state & GDK_CONTROL_MASK) {
-				directory_image_movement(-1);
+				action(ACTION_MOVE_DIRECTORY, (pqiv_action_parameter_t)( -1));
 			}
 			else {
-				relative_image_movement(-1);
+				action(ACTION_MOVE_FILE, (pqiv_action_parameter_t)( -1));
 			}
 			break;
 
 		case GDK_KEY_space:
 			if(event->state & GDK_CONTROL_MASK) {
-				directory_image_movement(1);
+				action(ACTION_MOVE_DIRECTORY, (pqiv_action_parameter_t)( 1));
 			}
 			else {
-				relative_image_movement(1);
+				action(ACTION_MOVE_FILE, (pqiv_action_parameter_t)( 1));
 			}
 			break;
 
 		case GDK_KEY_Page_Up:
 		case GDK_KEY_KP_Page_Up:
-			relative_image_movement(10);
+			action(ACTION_MOVE_FILE, (pqiv_action_parameter_t)( 10));
 			break;
 
 		case GDK_KEY_Page_Down:
 		case GDK_KEY_KP_Page_Down:
-			relative_image_movement(-10);
+			action(ACTION_MOVE_FILE, (pqiv_action_parameter_t)( -10));
 			break;
 
 		case GDK_KEY_Q:
 		case GDK_KEY_q:
 		case GDK_KEY_Escape:
-			gtk_widget_destroy(GTK_WIDGET(main_window));
+			action(ACTION_QUIT, (pqiv_action_parameter_t)( 0));
 			break;
 
 		case GDK_KEY_1:
@@ -3616,30 +3703,7 @@ gboolean window_key_press_callback(GtkWidget *widget, GdkEventKey *event, gpoint
 
 				gchar *command = external_image_filter_commands[event->keyval - GDK_KEY_1];
 
-				if(command == NULL) {
-					break;
-				}
-				else if (
-					((CURRENT_FILE->file_flags & FILE_FLAGS_MEMORY_IMAGE) != 0 && command[0] != '|')
-					|| ((CURRENT_FILE->file_flags & FILE_FLAGS_ANIMATION) != 0 && command[0] == '|')) {
-
-					gchar *info = g_strdup_printf("Command %d incompatible with current file type", event->keyval - GDK_KEY_1 + 1);
-					update_info_text(info);
-					g_free(info);
-					gtk_widget_queue_draw(GTK_WIDGET(main_window));
-				}
-				else {
-					gchar *info = g_strdup_printf("Executing command %d", event->keyval - GDK_KEY_1 + 1);
-					update_info_text(info);
-					g_free(info);
-					gtk_widget_queue_draw(GTK_WIDGET(main_window));
-
-					#if GLIB_CHECK_VERSION(2, 32, 0)
-						g_thread_new("image-filter", apply_external_image_filter_thread, command);
-					#else
-						g_thread_create(apply_external_image_filter_thread, command, FALSE, NULL);
-					#endif
-				}
+				action(ACTION_COMMAND, (pqiv_action_parameter_t)( command));
 			}
 			break;
 	}
@@ -3743,13 +3807,13 @@ gboolean window_button_release_callback(GtkWidget *widget, GdkEventButton *event
 	}
 
 	if(event->button == GDK_BUTTON_PRIMARY) {
-		relative_image_movement(-1);
+		action(ACTION_MOVE_FILE, (pqiv_action_parameter_t)( -1));
 	}
 	else if(event->button == GDK_BUTTON_MIDDLE) {
-		gtk_main_quit();
+		action(ACTION_QUIT, (pqiv_action_parameter_t)( 0));
 	}
 	else if(event->button == GDK_BUTTON_SECONDARY) {
-		relative_image_movement(1);
+		action(ACTION_MOVE_FILE, (pqiv_action_parameter_t)( 1));
 	}
 	return FALSE;
 }/*}}}*/
@@ -3770,18 +3834,18 @@ gboolean window_scroll_callback(GtkWidget *widget, GdkEventScroll *event, gpoint
 	 */
 	if(event->direction == GDK_SCROLL_UP) {
 		if(option_reverse_scroll == FALSE) {
-			relative_image_movement(1);
+			action(ACTION_MOVE_FILE, (pqiv_action_parameter_t)1);
 		}
 		else {
-			relative_image_movement(-1);
+			action(ACTION_MOVE_FILE, (pqiv_action_parameter_t)-1);
 		}
 	}
 	else if(event->direction == GDK_SCROLL_DOWN) {
 		if(option_reverse_scroll == FALSE) {
-			relative_image_movement(-1);
+			action(ACTION_MOVE_FILE, (pqiv_action_parameter_t)-1);
 		}
 		else {
-			relative_image_movement(1);
+			action(ACTION_MOVE_FILE, (pqiv_action_parameter_t)1);
 		}
 	}
 

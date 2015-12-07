@@ -178,4 +178,38 @@ extern file_type_handler_t file_type_handlers[];
 
 /* }}} */
 
+// The means to control pqiv remotely {{{
+typedef enum {
+	ACTION_SHIFT_Y,
+	ACTION_SHIFT_X,
+	ACTION_SET_SLIDESHOW_INTERVAL_RELATIVE,
+	ACTION_SET_SLIDESHOW_INTERVAL_ABSOLUTE,
+	ACTION_SET_SCALE_LEVEL_RELATIVE,
+	ACTION_SET_SCALE_LEVEL_ABSOLUTE,
+	ACTION_TOGGLE_SCALING_MODE,
+	ACTION_TOGGLE_SHUFFLE_MODE,
+	ACTION_RELOAD,
+	ACTION_RESET_SCALE_LEVEL,
+	ACTION_TOGGLE_FULLSCREEN,
+	ACTION_FLIP_HORIZONTALLY,
+	ACTION_FLIP_VERTICALLY,
+	ACTION_ROTATE_LEFT,
+	ACTION_ROTATE_RIGHT,
+	ACTION_TOGGLE_INFO_BOX,
+	ACTION_JUMP_DIALOG,
+	ACTION_TOGGLE_SLIDESHOW,
+	ACTION_HARDLINK_CURRENT_IMAGE,
+	ACTION_MOVE_DIRECTORY,
+	ACTION_MOVE_FILE,
+	ACTION_QUIT,
+	ACTION_COMMAND
+} pqiv_action_t;
+typedef union {
+	int pint;
+	double pdouble;
+	char *pcharptr;
+} pqiv_action_parameter_t;
+void action(pqiv_action_t action, pqiv_action_parameter_t parameter);
+// }}}
+
 #endif
