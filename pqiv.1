@@ -187,22 +187,23 @@ they appear. Note that the yellow info box does not update automatically, but
 only when the window needs to be redrawn anyway. This option uses GIO's
 GFileMonitor internally. Depending on which system you use, GIO might internally
 poll regularly for changes, i.e. create some load. (In Linux, inotify is used.)
+If you intend to regularly delete all files from a directory and replace them with
+other images, note the comment in the documentation for \fB--watch-files\fR as well.
 
 .TP
 .B --watch-files=VALUE
 Watch files for changes. The default value is
-.I on
-which means that if the current image is changed on disk, it is reloaded.
-This also applies if the image is deleted. In this case, pqiv jumps to the
-next image. This can be circumvented by specifying
-.I changes-only
+\fIon\fR, which means that pqiv will monitor if any
+\fUloaded\fR image, i.e. the current image and the two adjacent images unless
+\fB--low-memory\fR is used as well, change on disk or are deleted. If this happens,
+pqiv will try to reload the image, and jump to the next image if this fails. To
+disable this deature completely, use \fIoff\fR. The third possible value for
+this option is \fIchanges-only\fR, which means that pqiv will reload files that
+changed on disk, but ignore if a file is deleted.
 If you intend to delete all files from a directory in conjunction with
-.I --watch-directories
-then you'll need this to prevent pqiv from quitting, because it will first
-notice that the current image was deleted and unload it, and only then try
-to load the other ones. The third value for this option
-is
-.I off
+\fB--watch-directories\fR, then you'll need this to prevent pqiv from quitting:
+It would otherwise first notice that the current image was deleted and unload
+it, and only then try to load the other ones.
 
 .PP
 You can use the file
