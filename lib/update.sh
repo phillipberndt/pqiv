@@ -1,7 +1,7 @@
 #!/bin/sh
 for FILE in \
-	"http://sourcefrog.net/projects/natsort/strnatcmp.c" \
-	"http://sourcefrog.net/projects/natsort/strnatcmp.h" \
+	"https://raw.githubusercontent.com/sourcefrog/natsort/master/strnatcmp.c" \
+	"https://raw.githubusercontent.com/sourcefrog/natsort/master/strnatcmp.h" \
 	"https://raw.github.com/phillipberndt/bostree/master/bostree.c" \
 	"https://raw.github.com/phillipberndt/bostree/master/bostree.h"; do
 
