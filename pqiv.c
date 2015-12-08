@@ -67,6 +67,8 @@
 
 // TODO Add stdin interface for actions
 // TODO Add actions useful for scripts: Jump to specific image, add image, remove image
+// TODO Add option to output key bindings
+// TODO Add option to alter key bindings
 
 // GTK 2 does not define keyboard aliases the way we do
 #if GTK_MAJOR_VERSION < 3 // {{{
@@ -404,6 +406,22 @@ const char *long_description_text = ("Keyboard & Mouse bindings:\n"
 "  CTRL +/-                           Change slideshow interval\n"
 "  a                                  Hardlink current image to ./.pqiv-select\n"
 );
+
+
+#define KEY_BINDING_VALUE(is_mouse, state, keycode) (((is_mouse & 1) << 31) | ((state & 7) << 28) | (keycode & 0xfffffff))
+typedef struct key_binding key_binding_t;
+struct key_binding {
+	pqiv_action_t action;
+	pqiv_action_parameter_t parameter;
+
+	struct key_binding *next_action;    // For assinging multiple actions to one key
+	GHashTable *next_key_bindings; // For key sequences
+};
+GHashTable *key_bindings;
+struct {
+	key_binding_t *key_binding;
+	gint timeout_id;
+} active_key_binding;
 
 typedef struct {
 	gint depth;
@@ -3228,8 +3246,11 @@ gboolean set_scale_level_to_fit_callback(gpointer user_data) {
 	return FALSE;
 }
 /*}}}*/
-void action(pqiv_action_t action, pqiv_action_parameter_t parameter) {/*{{{*/
-	switch(action) {
+void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
+	switch(action_id) {
+		case ACTION_NOP:
+			break;
+
 		case ACTION_SHIFT_Y:
 			if(!CURRENT_FILE->is_loaded) return;
 			current_shift_y += parameter.pdouble;
@@ -3246,7 +3267,7 @@ void action(pqiv_action_t action, pqiv_action_parameter_t parameter) {/*{{{*/
 
 		case ACTION_SET_SLIDESHOW_INTERVAL_RELATIVE:
 		case ACTION_SET_SLIDESHOW_INTERVAL_ABSOLUTE:
-			if(action == ACTION_SET_SLIDESHOW_INTERVAL_ABSOLUTE) {
+			if(action_id == ACTION_SET_SLIDESHOW_INTERVAL_ABSOLUTE) {
 				option_slideshow_interval = fmax(parameter.pdouble, 1e-3);
 			}
 			else {
@@ -3265,7 +3286,7 @@ void action(pqiv_action_t action, pqiv_action_parameter_t parameter) {/*{{{*/
 		case ACTION_SET_SCALE_LEVEL_RELATIVE:
 		case ACTION_SET_SCALE_LEVEL_ABSOLUTE:
 			if(!CURRENT_FILE->is_loaded) return;
-			if(action == ACTION_SET_SCALE_LEVEL_ABSOLUTE) {
+			if(action_id == ACTION_SET_SCALE_LEVEL_ABSOLUTE) {
 				current_scale_level = parameter.pdouble;
 			}
 			else {
@@ -3442,6 +3463,14 @@ void action(pqiv_action_t action, pqiv_action_parameter_t parameter) {/*{{{*/
 			gtk_widget_destroy(GTK_WIDGET(main_window));
 			break;
 
+		case ACTION_NUMERIC_COMMAND:
+			{
+
+				gchar *command = external_image_filter_commands[parameter.pint];
+				action(ACTION_COMMAND, (pqiv_action_parameter_t)( command));
+			}
+			break;
+
 		case ACTION_COMMAND:
 			if(!CURRENT_FILE->is_loaded) return;
 			{
@@ -3528,187 +3557,53 @@ gboolean window_configure_callback(GtkWidget *widget, GdkEventConfigure *event, 
 
 	return FALSE;
 }/*}}}*/
-gboolean window_key_press_callback(GtkWidget *widget, GdkEventKey *event, gpointer user_data) {/*{{{*/
-	/*
-	   struct GdkEventKey {
-	   GdkEventType type;
-	   GdkWindow *window;
-	   gint8 send_event;
-	   guint32 time;
-	   guint state;
-	   guint keyval;
-	   gint length;
-	   gchar *string;
-	   guint16 hardware_keycode;
-	   guint8 group;
-	   guint is_modifier : 1;
-	   };
-	 */
+void handle_input_event(guint key_binding_value);
+gboolean handle_input_event_timeout_callback(gpointer user_data) {/*{{{*/
+	handle_input_event(0);
+	active_key_binding.key_binding = NULL;
+	return FALSE;
+}/*}}}*/
+void handle_input_event(guint key_binding_value) {/*{{{*/
+	key_binding_t *binding = NULL;
 
+	if(active_key_binding.key_binding) {
+		g_source_remove(active_key_binding.timeout_id);
+		if(active_key_binding.key_binding->next_key_bindings) {
+			binding = g_hash_table_lookup(active_key_binding.key_binding->next_key_bindings, GINT_TO_POINTER(key_binding_value));
+		}
+		if(!binding) {
+			for(key_binding_t *binding = active_key_binding.key_binding; binding; binding = binding->next_action) {
+				action(binding->action, binding->parameter);
+			}
+		}
+		active_key_binding.key_binding = NULL;
+	}
+
+	if(!key_binding_value) {
+		return;
+	}
+
+	if(!binding) {
+			binding = g_hash_table_lookup(key_bindings, GINT_TO_POINTER(key_binding_value));
+	}
+
+	if(binding) {
+		if(binding->next_key_bindings) {
+			active_key_binding.key_binding = binding;
+			active_key_binding.timeout_id = gdk_threads_add_timeout(400, handle_input_event_timeout_callback, NULL);
+		}
+		else {
+			for(; binding; binding = binding->next_action) {
+				action(binding->action, binding->parameter);
+			}
+		}
+	}
+}/*}}}*/
+gboolean window_key_press_callback(GtkWidget *widget, GdkEventKey *event, gpointer user_data) {/*{{{*/
 	if(event->keyval < 128 && keyboard_aliases[event->keyval] != 0) {
 		event->keyval = keyboard_aliases[event->keyval];
 	}
-
-	// TODO Move definitions into a prefix tree
-
-	switch(event->keyval) {
-		case GDK_KEY_Up:
-		case GDK_KEY_KP_Up:
-			action(ACTION_SHIFT_Y, (pqiv_action_parameter_t)((event->state & GDK_CONTROL_MASK ? 50 : 10) * (option_reverse_cursor_keys ? -1 : 1)));
-			break;
-
-		case GDK_KEY_Down:
-		case GDK_KEY_KP_Down:
-			action(ACTION_SHIFT_Y, (pqiv_action_parameter_t)(-1 * (event->state & GDK_CONTROL_MASK ? 50 : 10) * (option_reverse_cursor_keys ? -1 : 1)));
-			break;
-
-		case GDK_KEY_Left:
-		case GDK_KEY_KP_Left:
-			action(ACTION_SHIFT_X, (pqiv_action_parameter_t)((event->state & GDK_CONTROL_MASK ? 50 : 10) * (option_reverse_cursor_keys ? -1 : 1)));
-			break;
-
-		case GDK_KEY_Right:
-		case GDK_KEY_KP_Right:
-			action(ACTION_SHIFT_X, (pqiv_action_parameter_t)(-(event->state & GDK_CONTROL_MASK ? 50 : 10) * (option_reverse_cursor_keys ? -1 : 1)));
-			break;
-
-		case GDK_KEY_plus:
-		case GDK_KEY_KP_Add:
-			if(event->state & GDK_CONTROL_MASK) {
-				action(ACTION_SET_SLIDESHOW_INTERVAL_RELATIVE, (pqiv_action_parameter_t)(1.));
-				break;
-			}
-
-			action(ACTION_SET_SCALE_LEVEL_RELATIVE, (pqiv_action_parameter_t)( 1.1));
-			break;
-
-		case GDK_KEY_minus:
-		case GDK_KEY_KP_Subtract:
-			if(event->state & GDK_CONTROL_MASK) {
-				action(ACTION_SET_SLIDESHOW_INTERVAL_RELATIVE, (pqiv_action_parameter_t)( -1.));
-				break;
-			}
-
-			action(ACTION_SET_SCALE_LEVEL_RELATIVE, (pqiv_action_parameter_t)( 0.9));
-			break;
-
-		case GDK_KEY_T:
-		case GDK_KEY_t:
-			action(ACTION_TOGGLE_SCALING_MODE, (pqiv_action_parameter_t)( 0));
-			break;
-
-		case GDK_KEY_r:
-		case GDK_KEY_R:
-			if(event->state & GDK_CONTROL_MASK) {
-				action(ACTION_TOGGLE_SHUFFLE_MODE, (pqiv_action_parameter_t)( 0));
-				break;
-			}
-
-			action(ACTION_RELOAD, (pqiv_action_parameter_t)( 0));
-			break;
-
-		case GDK_KEY_0:
-			action(ACTION_RESET_SCALE_LEVEL, (pqiv_action_parameter_t)( 0));
-			break;
-
-		case GDK_KEY_F:
-		case GDK_KEY_f:
-			action(ACTION_TOGGLE_FULLSCREEN, (pqiv_action_parameter_t)( 0));
-			break;
-
-		case GDK_KEY_H:
-		case GDK_KEY_h:
-			action(ACTION_FLIP_HORIZONTALLY, (pqiv_action_parameter_t)( 0));
-			break;
-
-		case GDK_KEY_V:
-		case GDK_KEY_v:
-			action(ACTION_FLIP_VERTICALLY, (pqiv_action_parameter_t)( 0));
-			break;
-
-		case GDK_KEY_L:
-		case GDK_KEY_l:
-			action(ACTION_ROTATE_LEFT, (pqiv_action_parameter_t)( 0));
-			break;
-
-		case GDK_KEY_K:
-		case GDK_KEY_k:
-			action(ACTION_ROTATE_RIGHT, (pqiv_action_parameter_t)( 0));
-			break;
-
-		case GDK_KEY_i:
-		case GDK_KEY_I:
-			action(ACTION_TOGGLE_INFO_BOX, (pqiv_action_parameter_t)( 0));
-			break;
-
-		case GDK_KEY_j:
-		case GDK_KEY_J:
-			action(ACTION_JUMP_DIALOG, (pqiv_action_parameter_t)( 0));
-			break;
-
-		case GDK_KEY_s:
-		case GDK_KEY_S:
-			action(ACTION_TOGGLE_SLIDESHOW, (pqiv_action_parameter_t)( 0));
-			break;
-
-		case GDK_KEY_a:
-		case GDK_KEY_A:
-			action(ACTION_HARDLINK_CURRENT_IMAGE, (pqiv_action_parameter_t)( 0));
-			break;
-
-		case GDK_KEY_BackSpace:
-			if(event->state & GDK_CONTROL_MASK) {
-				action(ACTION_MOVE_DIRECTORY, (pqiv_action_parameter_t)( -1));
-			}
-			else {
-				action(ACTION_MOVE_FILE, (pqiv_action_parameter_t)( -1));
-			}
-			break;
-
-		case GDK_KEY_space:
-			if(event->state & GDK_CONTROL_MASK) {
-				action(ACTION_MOVE_DIRECTORY, (pqiv_action_parameter_t)( 1));
-			}
-			else {
-				action(ACTION_MOVE_FILE, (pqiv_action_parameter_t)( 1));
-			}
-			break;
-
-		case GDK_KEY_Page_Up:
-		case GDK_KEY_KP_Page_Up:
-			action(ACTION_MOVE_FILE, (pqiv_action_parameter_t)( 10));
-			break;
-
-		case GDK_KEY_Page_Down:
-		case GDK_KEY_KP_Page_Down:
-			action(ACTION_MOVE_FILE, (pqiv_action_parameter_t)( -10));
-			break;
-
-		case GDK_KEY_Q:
-		case GDK_KEY_q:
-		case GDK_KEY_Escape:
-			action(ACTION_QUIT, (pqiv_action_parameter_t)( 0));
-			break;
-
-		case GDK_KEY_1:
-		case GDK_KEY_2:
-		case GDK_KEY_3:
-		case GDK_KEY_4:
-		case GDK_KEY_5:
-		case GDK_KEY_6:
-		case GDK_KEY_7:
-		case GDK_KEY_8:
-		case GDK_KEY_9:
-			{
-
-				gchar *command = external_image_filter_commands[event->keyval - GDK_KEY_1];
-
-				action(ACTION_COMMAND, (pqiv_action_parameter_t)( command));
-			}
-			break;
-	}
-
-
+	handle_input_event(KEY_BINDING_VALUE(0, event->state, event->keyval));
 	return FALSE;
 }/*}}}*/
 void window_center_mouse() {/*{{{*/
@@ -3805,16 +3700,7 @@ gboolean window_button_release_callback(GtkWidget *widget, GdkEventButton *event
 		// Do nothing if the button was pressed for a long time or if not in fullscreen
 		return FALSE;
 	}
-
-	if(event->button == GDK_BUTTON_PRIMARY) {
-		action(ACTION_MOVE_FILE, (pqiv_action_parameter_t)( -1));
-	}
-	else if(event->button == GDK_BUTTON_MIDDLE) {
-		action(ACTION_QUIT, (pqiv_action_parameter_t)( 0));
-	}
-	else if(event->button == GDK_BUTTON_SECONDARY) {
-		action(ACTION_MOVE_FILE, (pqiv_action_parameter_t)( 1));
-	}
+	handle_input_event(KEY_BINDING_VALUE(1, event->state, event->button));
 	return FALSE;
 }/*}}}*/
 gboolean window_scroll_callback(GtkWidget *widget, GdkEventScroll *event, gpointer user_data) {/*{{{*/
@@ -4116,6 +4002,97 @@ gboolean initialize_gui_or_quit_callback(gpointer user_data) {/*{{{*/
 
 	return FALSE;
 }/*}}}*/
+void initialize_key_bindings() {/*{{{*/
+	key_bindings = g_hash_table_new((GHashFunc)g_direct_hash, (GEqualFunc)g_direct_equal);
+
+	#define BIND_KEY(key, is_mouse, state, action_id, parameter_value) { \
+		key_binding_t *nkb = g_slice_new(key_binding_t); \
+		nkb->action = action_id; \
+		nkb->parameter = (pqiv_action_parameter_t)(parameter_value); \
+		nkb->next_action = NULL; \
+		nkb->next_key_bindings = NULL; \
+		g_hash_table_insert(key_bindings, GINT_TO_POINTER(KEY_BINDING_VALUE(is_mouse, state, key)), nkb); \
+	}
+
+	BIND_KEY(GDK_KEY_Up           , 0 , 0                , ACTION_SHIFT_Y                         , 10);
+	BIND_KEY(GDK_KEY_KP_Up        , 0 , 0                , ACTION_SHIFT_Y                         , 10);
+	BIND_KEY(GDK_KEY_Up           , 0 , GDK_CONTROL_MASK , ACTION_SHIFT_Y                         , 50);
+	BIND_KEY(GDK_KEY_KP_Up        , 0 , GDK_CONTROL_MASK , ACTION_SHIFT_Y                         , 50);
+	BIND_KEY(GDK_KEY_Down         , 0 , 0                , ACTION_SHIFT_Y                         , -10);
+	BIND_KEY(GDK_KEY_KP_Down      , 0 , 0                , ACTION_SHIFT_Y                         , -10);
+	BIND_KEY(GDK_KEY_Down         , 0 , GDK_CONTROL_MASK , ACTION_SHIFT_Y                         , -50);
+	BIND_KEY(GDK_KEY_KP_Down      , 0 , GDK_CONTROL_MASK , ACTION_SHIFT_Y                         , -50);
+	BIND_KEY(GDK_KEY_plus         , 0 , GDK_CONTROL_MASK , ACTION_SET_SLIDESHOW_INTERVAL_RELATIVE , 1.);
+	BIND_KEY(GDK_KEY_KP_Add       , 0 , GDK_CONTROL_MASK , ACTION_SET_SLIDESHOW_INTERVAL_RELATIVE , 1.);
+	BIND_KEY(GDK_KEY_plus         , 0 , 0                , ACTION_SET_SCALE_LEVEL_RELATIVE        , 1.1);
+	BIND_KEY(GDK_KEY_KP_Add       , 0 , 0                , ACTION_SET_SCALE_LEVEL_RELATIVE        , 1.1);
+	BIND_KEY(GDK_KEY_minus        , 0 , GDK_CONTROL_MASK , ACTION_SET_SLIDESHOW_INTERVAL_RELATIVE , -1.);
+	BIND_KEY(GDK_KEY_KP_Subtract  , 0 , GDK_CONTROL_MASK , ACTION_SET_SLIDESHOW_INTERVAL_RELATIVE , -1.);
+	BIND_KEY(GDK_KEY_minus        , 0 , 0                , ACTION_SET_SCALE_LEVEL_RELATIVE        , 0.9);
+	BIND_KEY(GDK_KEY_KP_Subtract  , 0 , 0                , ACTION_SET_SCALE_LEVEL_RELATIVE        , 0.9);
+	BIND_KEY(GDK_KEY_T            , 0 , 0                , ACTION_TOGGLE_SCALING_MODE             , 0);
+	BIND_KEY(GDK_KEY_t            , 0 , 0                , ACTION_TOGGLE_SCALING_MODE             , 0);
+	BIND_KEY(GDK_KEY_R            , 0 , GDK_CONTROL_MASK , ACTION_TOGGLE_SHUFFLE_MODE             , 0);
+	BIND_KEY(GDK_KEY_r            , 0 , GDK_CONTROL_MASK , ACTION_TOGGLE_SHUFFLE_MODE             , 0);
+	BIND_KEY(GDK_KEY_R            , 0 , 0                , ACTION_RELOAD                          , 0);
+	BIND_KEY(GDK_KEY_r            , 0 , 0                , ACTION_RELOAD                          , 0);
+	BIND_KEY(GDK_KEY_0            , 0 , 0                , ACTION_RESET_SCALE_LEVEL               , 0);
+	BIND_KEY(GDK_KEY_f            , 0 , 0                , ACTION_TOGGLE_FULLSCREEN               , 0);
+	BIND_KEY(GDK_KEY_F            , 0 , 0                , ACTION_TOGGLE_FULLSCREEN               , 0);
+	BIND_KEY(GDK_KEY_h            , 0 , 0                , ACTION_FLIP_HORIZONTALLY               , 0);
+	BIND_KEY(GDK_KEY_H            , 0 , 0                , ACTION_FLIP_HORIZONTALLY               , 0);
+	BIND_KEY(GDK_KEY_v            , 0 , 0                , ACTION_FLIP_HORIZONTALLY               , 0);
+	BIND_KEY(GDK_KEY_V            , 0 , 0                , ACTION_FLIP_VERTICALLY                 , 0);
+	BIND_KEY(GDK_KEY_l            , 0 , 0                , ACTION_ROTATE_LEFT                     , 0);
+	BIND_KEY(GDK_KEY_L            , 0 , 0                , ACTION_ROTATE_LEFT                     , 0);
+	BIND_KEY(GDK_KEY_k            , 0 , 0                , ACTION_ROTATE_RIGHT                    , 0);
+	BIND_KEY(GDK_KEY_K            , 0 , 0                , ACTION_ROTATE_RIGHT                    , 0);
+	BIND_KEY(GDK_KEY_i            , 0 , 0                , ACTION_TOGGLE_INFO_BOX                 , 0);
+	BIND_KEY(GDK_KEY_I            , 0 , 0                , ACTION_TOGGLE_INFO_BOX                 , 0);
+	BIND_KEY(GDK_KEY_j            , 0 , 0                , ACTION_JUMP_DIALOG                     , 0);
+	BIND_KEY(GDK_KEY_J            , 0 , 0                , ACTION_JUMP_DIALOG                     , 0);
+	BIND_KEY(GDK_KEY_s            , 0 , 0                , ACTION_TOGGLE_SLIDESHOW                , 0);
+	BIND_KEY(GDK_KEY_S            , 0 , 0                , ACTION_TOGGLE_SLIDESHOW                , 0);
+	BIND_KEY(GDK_KEY_a            , 0 , 0                , ACTION_HARDLINK_CURRENT_IMAGE          , 0);
+	BIND_KEY(GDK_KEY_A            , 0 , 0                , ACTION_HARDLINK_CURRENT_IMAGE          , 0);
+	BIND_KEY(GDK_KEY_BackSpace    , 0 , GDK_CONTROL_MASK , ACTION_MOVE_DIRECTORY                  , -1);
+	BIND_KEY(GDK_KEY_BackSpace    , 0 , 0                , ACTION_MOVE_FILE                       , -1);
+	BIND_KEY(GDK_KEY_space        , 0 , GDK_CONTROL_MASK , ACTION_MOVE_DIRECTORY                  , 1);
+	BIND_KEY(GDK_KEY_space        , 0 , 0                , ACTION_MOVE_FILE                       , 1);
+	BIND_KEY(GDK_KEY_Page_Up      , 0 , GDK_CONTROL_MASK , ACTION_MOVE_FILE                       , 10);
+	BIND_KEY(GDK_KEY_KP_Page_Up   , 0 , GDK_CONTROL_MASK , ACTION_MOVE_FILE                       , 10);
+	BIND_KEY(GDK_KEY_Page_Down    , 0 , 0                , ACTION_MOVE_FILE                       , -10);
+	BIND_KEY(GDK_KEY_KP_Page_Down , 0 , 0                , ACTION_MOVE_FILE                       , -10);
+	BIND_KEY(GDK_KEY_q            , 0 , 0                , ACTION_QUIT                            , 0);
+	BIND_KEY(GDK_KEY_Q            , 0 , 0                , ACTION_QUIT                            , 0);
+	BIND_KEY(GDK_KEY_Escape       , 0 , 0                , ACTION_QUIT                            , 0);
+	BIND_KEY(GDK_KEY_1            , 0 , 0                , ACTION_NUMERIC_COMMAND                 , 1);
+	BIND_KEY(GDK_KEY_2            , 0 , 0                , ACTION_NUMERIC_COMMAND                 , 2);
+	BIND_KEY(GDK_KEY_3            , 0 , 0                , ACTION_NUMERIC_COMMAND                 , 3);
+	BIND_KEY(GDK_KEY_4            , 0 , 0                , ACTION_NUMERIC_COMMAND                 , 4);
+	BIND_KEY(GDK_KEY_5            , 0 , 0                , ACTION_NUMERIC_COMMAND                 , 5);
+	BIND_KEY(GDK_KEY_6            , 0 , 0                , ACTION_NUMERIC_COMMAND                 , 6);
+	BIND_KEY(GDK_KEY_7            , 0 , 0                , ACTION_NUMERIC_COMMAND                 , 7);
+	BIND_KEY(GDK_KEY_8            , 0 , 0                , ACTION_NUMERIC_COMMAND                 , 8);
+	BIND_KEY(GDK_KEY_9            , 0 , 0                , ACTION_NUMERIC_COMMAND                 , 9);
+
+	BIND_KEY(GDK_BUTTON_PRIMARY   , 1 , 0                , ACTION_MOVE_FILE                       , -1);
+	BIND_KEY(GDK_BUTTON_MIDDLE    , 1 , 0                , ACTION_QUIT                            , 0);
+	BIND_KEY(GDK_BUTTON_SECONDARY , 1 , 0                , ACTION_QUIT                            , 1);
+
+	// XXX FOR TESTING ONLY; REMOVE THIS BEFORE MERGING TO MASTER!
+	GHashTable *foo = g_hash_table_new((GHashFunc)g_direct_hash, (GEqualFunc)g_direct_equal);
+	((key_binding_t *)g_hash_table_lookup(key_bindings, GINT_TO_POINTER(KEY_BINDING_VALUE(0, 0, GDK_KEY_f))))->next_key_bindings = foo;
+	{
+		key_binding_t *nkb = g_slice_new(key_binding_t);
+		nkb->action = ACTION_MOVE_FILE;
+		nkb->parameter = (pqiv_action_parameter_t)(1);
+		nkb->next_action = NULL;
+		nkb->next_key_bindings = NULL;
+		g_hash_table_insert(foo, GINT_TO_POINTER(KEY_BINDING_VALUE(0, 0, GDK_KEY_q)), nkb);
+	}
+
+}/*}}}*/
 // }}}
 
 gboolean load_images_thread_update_info_text(gpointer user_data) {/*{{{*/
@@ -4182,6 +4159,7 @@ int main(int argc, char *argv[]) {
 	gtk_init(&argc, &argv); // fyi, this generates a MemorySanitizer warning currently
 
 	initialize_file_type_handlers();
+	initialize_key_bindings();
 
 	parse_configuration_file(&argc, &argv);
 	parse_command_line(&argc, argv);

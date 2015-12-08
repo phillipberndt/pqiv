@@ -180,6 +180,7 @@ extern file_type_handler_t file_type_handlers[];
 
 // The means to control pqiv remotely {{{
 typedef enum {
+	ACTION_NOP,
 	ACTION_SHIFT_Y,
 	ACTION_SHIFT_X,
 	ACTION_SET_SLIDESHOW_INTERVAL_RELATIVE,
@@ -202,6 +203,7 @@ typedef enum {
 	ACTION_MOVE_DIRECTORY,
 	ACTION_MOVE_FILE,
 	ACTION_QUIT,
+	ACTION_NUMERIC_COMMAND,
 	ACTION_COMMAND
 } pqiv_action_t;
 typedef union {
