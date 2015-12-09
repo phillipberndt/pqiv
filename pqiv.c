@@ -330,11 +330,13 @@ double fading_current_alpha_stage = 0;
 gint64 fading_initial_time;
 
 gboolean options_keyboard_alias_set_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error);
+gboolean options_bind_key_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error);
 gboolean option_window_position_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error);
 gboolean option_scale_level_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error);
 gboolean option_end_of_files_action_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error);
 gboolean option_watch_files_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error);
 gboolean option_sort_key_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error);
+gboolean help_view_keybindings(const gchar *option_name, const gchar *value, gpointer data, GError **error);
 void load_images_handle_parameter(char *param, load_images_state_t state, gint depth);
 
 struct {
@@ -383,6 +385,9 @@ GOptionEntry options[] = {
 	{ "watch-directories", 0, 0, G_OPTION_ARG_NONE, &option_watch_directories, "Watch directories for new files", NULL },
 	{ "watch-files", 0, 0, G_OPTION_ARG_CALLBACK, (gpointer)&option_watch_files_callback, "Watch files for changes on disk (`on`, `off', `changes-only', i.e. do nothing on deletetion)", "VALUE" },
 
+	{ "view-keybindings", 0, G_OPTION_FLAG_NO_ARG, G_OPTION_ARG_CALLBACK, &help_view_keybindings, "Display the keyboard and mouse bindings and exit", NULL },
+	{ "bind-key", 0, 0, G_OPTION_ARG_CALLBACK, &options_bind_key_callback, "Rebind a key to another action, see manpage for details.", NULL },
+
 	{ NULL, 0, 0, 0, NULL, NULL, NULL }
 };
 
@@ -422,6 +427,38 @@ struct {
 	key_binding_t *key_binding;
 	gint timeout_id;
 } active_key_binding;
+
+const struct {
+	const char *name;
+	enum { PARAMETER_INT, PARAMETER_DOUBLE, PARAMETER_CHARPTR, PARAMETER_NONE } parameter_type;
+} pqiv_action_descriptors[] = {
+	{ "nop", PARAMETER_NONE },
+	{ "shift_y", PARAMETER_INT },
+	{ "shift_x", PARAMETER_INT },
+	{ "set_slideshow_interval_relative", PARAMETER_DOUBLE },
+	{ "set_slideshow_interval_absolute", PARAMETER_DOUBLE },
+	{ "set_scale_level_relative", PARAMETER_DOUBLE },
+	{ "set_scale_level_absolute", PARAMETER_DOUBLE },
+	{ "toggle_scaling_mode", PARAMETER_INT },
+	{ "toggle_shuffle_mode", PARAMETER_INT },
+	{ "reload", PARAMETER_NONE },
+	{ "reset_scale_level", PARAMETER_NONE },
+	{ "toggle_fullscreen", PARAMETER_NONE },
+	{ "flip_horizontally", PARAMETER_NONE },
+	{ "flip_vertically", PARAMETER_NONE },
+	{ "rotate_left", PARAMETER_NONE },
+	{ "rotate_right", PARAMETER_NONE },
+	{ "toggle_info_box", PARAMETER_INT },
+	{ "jump_dialog", PARAMETER_NONE },
+	{ "toggle_slideshow", PARAMETER_INT },
+	{ "hardlink_current_image", PARAMETER_NONE },
+	{ "move_directory", PARAMETER_INT },
+	{ "move_file", PARAMETER_INT },
+	{ "quit", PARAMETER_NONE },
+	{ "numeric_command", PARAMETER_INT },
+	{ "command", PARAMETER_CHARPTR },
+};
+
 
 typedef struct {
 	gint depth;
@@ -463,6 +500,17 @@ gboolean options_keyboard_alias_set_callback(const gchar *option_name, const gch
 	for(size_t i=0; value[i] != 0; i+=2) {
 		keyboard_aliases[(size_t)value[i]] = value[i+1];
 	}
+
+	return TRUE;
+}/*}}}*/
+gboolean options_bind_key_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error) {/*{{{*/
+	// Format for value:
+	//  {key sequence description, special keys as <name>} { {action}({parameter});[...] } [...]
+	//
+	// Special names are: <Shift>, <Control>, <Alt> (GDK_MOD1_MASK), <Mouse-%d> and any other must be fed to gdk_keyval_from_name
+	// String parameters must be given in quotes
+	// To set an error:
+	// g_set_error(error, G_OPTION_ERROR, G_OPTION_ERROR_FAILED, "The argument to the alias option must have a multiple of two characters: Every odd one is mapped to the even one following it.");
 
 	return TRUE;
 }/*}}}*/
@@ -3253,14 +3301,14 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 
 		case ACTION_SHIFT_Y:
 			if(!CURRENT_FILE->is_loaded) return;
-			current_shift_y += parameter.pdouble;
+			current_shift_y += parameter.pint;
 			gtk_widget_queue_draw(GTK_WIDGET(main_window));
 			update_info_text(NULL);
 			break;
 
 		case ACTION_SHIFT_X:
 			if(!CURRENT_FILE->is_loaded) return;
-			current_shift_x += parameter.pdouble;
+			current_shift_x += parameter.pint;
 			gtk_widget_queue_draw(GTK_WIDGET(main_window));
 			update_info_text(NULL);
 			break;
@@ -4002,6 +4050,56 @@ gboolean initialize_gui_or_quit_callback(gpointer user_data) {/*{{{*/
 
 	return FALSE;
 }/*}}}*/
+void help_view_keybindings_helper(gpointer key, gpointer value, gpointer user_data) {/*{{{*/
+	guint key_binding_value = GPOINTER_TO_INT(key);
+	gboolean is_mouse = (key_binding_value >> 31) & 1;
+	guint state = (key_binding_value >> 28) & 7;
+	guint keycode = key_binding_value & 0xfffffff;
+	key_binding_t *key_binding = (key_binding_t *)value;
+
+	gchar *str_key;
+	gchar modifier[255];
+	snprintf(modifier, 255, "%s%s%s", state & GDK_SHIFT_MASK ? "<Shift>" : "", state & GDK_CONTROL_MASK ? "<Control>" : "", state & GDK_MOD1_MASK ? "<Alt>" : "");
+	if(is_mouse) {
+		str_key = g_strdup_printf("%s%s<Mouse-%d> ", user_data ? (gchar*)user_data : "", modifier, keycode);
+	}
+	else {
+		char *keyval_name = gdk_keyval_name(keycode);
+		str_key = g_strdup_printf("%s%s%s%s%s ", user_data ? (gchar*)user_data : "", modifier, keyval_name[1] == 0 ? "" : "<", keyval_name, keyval_name[1] == 0 ? "" : ">");
+	}
+
+	if(key_binding->next_key_bindings) {
+		g_hash_table_foreach(key_binding->next_key_bindings, help_view_keybindings_helper, str_key);
+	}
+
+	g_print("%30s { ", str_key);
+	for(key_binding_t *current_action = key_binding; current_action; current_action = current_action->next_action) {
+		g_print("%s(", pqiv_action_descriptors[key_binding->action].name);
+		switch(pqiv_action_descriptors[key_binding->action].parameter_type) {
+			case PARAMETER_NONE:
+				g_print("); ");
+				break;
+			case PARAMETER_INT:
+				g_print("%d); ", current_action->parameter.pint);
+				break;
+			case PARAMETER_DOUBLE:
+				g_print("%f); ", current_action->parameter.pdouble);
+				break;
+			case PARAMETER_CHARPTR:
+				g_print("\"%s\"); ", current_action->parameter.pcharptr);
+				break;
+		}
+	}
+	g_print("} \n");
+
+	g_free(str_key);
+}/*}}}*/
+gboolean help_view_keybindings(const gchar *option_name, const gchar *value, gpointer data, GError **error) {/*{{{*/
+	g_print("pqiv key bindings:\n\n");
+	g_hash_table_foreach(key_bindings, help_view_keybindings_helper, (gpointer)"");
+	exit(0);
+	return FALSE;
+}/*}}}*/
 void initialize_key_bindings() {/*{{{*/
 	key_bindings = g_hash_table_new((GHashFunc)g_direct_hash, (GEqualFunc)g_direct_equal);
 
@@ -4022,6 +4120,14 @@ void initialize_key_bindings() {/*{{{*/
 	BIND_KEY(GDK_KEY_KP_Down      , 0 , 0                , ACTION_SHIFT_Y                         , -10);
 	BIND_KEY(GDK_KEY_Down         , 0 , GDK_CONTROL_MASK , ACTION_SHIFT_Y                         , -50);
 	BIND_KEY(GDK_KEY_KP_Down      , 0 , GDK_CONTROL_MASK , ACTION_SHIFT_Y                         , -50);
+	BIND_KEY(GDK_KEY_Left          , 0 , 0                , ACTION_SHIFT_X                         , 10);
+	BIND_KEY(GDK_KEY_KP_Left       , 0 , 0                , ACTION_SHIFT_X                         , 10);
+	BIND_KEY(GDK_KEY_Left          , 0 , GDK_CONTROL_MASK , ACTION_SHIFT_X                         , 50);
+	BIND_KEY(GDK_KEY_KP_Left       , 0 , GDK_CONTROL_MASK , ACTION_SHIFT_X                         , 50);
+	BIND_KEY(GDK_KEY_Right         , 0 , 0                , ACTION_SHIFT_X                         , -10);
+	BIND_KEY(GDK_KEY_KP_Right      , 0 , 0                , ACTION_SHIFT_X                         , -10);
+	BIND_KEY(GDK_KEY_Right         , 0 , GDK_CONTROL_MASK , ACTION_SHIFT_X                         , -50);
+	BIND_KEY(GDK_KEY_KP_Right      , 0 , GDK_CONTROL_MASK , ACTION_SHIFT_X                         , -50);
 	BIND_KEY(GDK_KEY_plus         , 0 , GDK_CONTROL_MASK , ACTION_SET_SLIDESHOW_INTERVAL_RELATIVE , 1.);
 	BIND_KEY(GDK_KEY_KP_Add       , 0 , GDK_CONTROL_MASK , ACTION_SET_SLIDESHOW_INTERVAL_RELATIVE , 1.);
 	BIND_KEY(GDK_KEY_plus         , 0 , 0                , ACTION_SET_SCALE_LEVEL_RELATIVE        , 1.1);
@@ -4078,20 +4184,7 @@ void initialize_key_bindings() {/*{{{*/
 
 	BIND_KEY(GDK_BUTTON_PRIMARY   , 1 , 0                , ACTION_MOVE_FILE                       , -1);
 	BIND_KEY(GDK_BUTTON_MIDDLE    , 1 , 0                , ACTION_QUIT                            , 0);
-	BIND_KEY(GDK_BUTTON_SECONDARY , 1 , 0                , ACTION_QUIT                            , 1);
-
-	// XXX FOR TESTING ONLY; REMOVE THIS BEFORE MERGING TO MASTER!
-	GHashTable *foo = g_hash_table_new((GHashFunc)g_direct_hash, (GEqualFunc)g_direct_equal);
-	((key_binding_t *)g_hash_table_lookup(key_bindings, GINT_TO_POINTER(KEY_BINDING_VALUE(0, 0, GDK_KEY_f))))->next_key_bindings = foo;
-	{
-		key_binding_t *nkb = g_slice_new(key_binding_t);
-		nkb->action = ACTION_MOVE_FILE;
-		nkb->parameter = (pqiv_action_parameter_t)(1);
-		nkb->next_action = NULL;
-		nkb->next_key_bindings = NULL;
-		g_hash_table_insert(foo, GINT_TO_POINTER(KEY_BINDING_VALUE(0, 0, GDK_KEY_q)), nkb);
-	}
-
+	BIND_KEY(GDK_BUTTON_SECONDARY , 1 , 0                , ACTION_MOVE_FILE                       , 1);
 }/*}}}*/
 // }}}
 

@@ -206,6 +206,7 @@ typedef enum {
 	ACTION_NUMERIC_COMMAND,
 	ACTION_COMMAND
 } pqiv_action_t;
+
 typedef union {
 	int pint;
 	double pdouble;
