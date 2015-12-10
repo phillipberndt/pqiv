@@ -386,7 +386,7 @@ GOptionEntry options[] = {
 	{ "watch-files", 0, 0, G_OPTION_ARG_CALLBACK, (gpointer)&option_watch_files_callback, "Watch files for changes on disk (`on`, `off', `changes-only', i.e. do nothing on deletetion)", "VALUE" },
 
 	{ "view-keybindings", 0, G_OPTION_FLAG_NO_ARG, G_OPTION_ARG_CALLBACK, &help_view_keybindings, "Display the keyboard and mouse bindings and exit", NULL },
-	{ "bind-key", 0, 0, G_OPTION_ARG_CALLBACK, &options_bind_key_callback, "Rebind a key to another action, see manpage for details.", NULL },
+	{ "bind-key", 0, 0, G_OPTION_ARG_CALLBACK, &options_bind_key_callback, "Rebind a key to another action, see manpage for details.", "KEY BINDING" },
 
 	{ NULL, 0, 0, 0, NULL, NULL, NULL }
 };
@@ -3614,10 +3614,19 @@ gboolean handle_input_event_timeout_callback(gpointer user_data) {/*{{{*/
 void handle_input_event(guint key_binding_value) {/*{{{*/
 	key_binding_t *binding = NULL;
 
+	gboolean is_mouse = (key_binding_value >> 31) & 1;
+	guint state = (key_binding_value >> 28) & 7;
+	guint keycode = key_binding_value & 0xfffffff;
+
 	if(active_key_binding.key_binding) {
 		g_source_remove(active_key_binding.timeout_id);
 		if(active_key_binding.key_binding->next_key_bindings) {
 			binding = g_hash_table_lookup(active_key_binding.key_binding->next_key_bindings, GINT_TO_POINTER(key_binding_value));
+
+			if(!binding && !is_mouse && state & GDK_SHIFT_MASK && gdk_keyval_is_upper(keycode)) {
+				guint alternate_value = KEY_BINDING_VALUE(is_mouse, state & !GDK_SHIFT_MASK, gdk_keyval_to_lower(keycode));
+				binding = g_hash_table_lookup(active_key_binding.key_binding->next_key_bindings, GINT_TO_POINTER(alternate_value));
+			}
 		}
 		if(!binding) {
 			for(key_binding_t *binding = active_key_binding.key_binding; binding; binding = binding->next_action) {
@@ -3633,6 +3642,11 @@ void handle_input_event(guint key_binding_value) {/*{{{*/
 
 	if(!binding) {
 			binding = g_hash_table_lookup(key_bindings, GINT_TO_POINTER(key_binding_value));
+
+			if(!binding && !is_mouse && state & GDK_SHIFT_MASK && gdk_keyval_is_upper(keycode)) {
+				guint alternate_value = KEY_BINDING_VALUE(is_mouse, state & !GDK_SHIFT_MASK, gdk_keyval_to_lower(keycode));
+				binding = g_hash_table_lookup(key_bindings, GINT_TO_POINTER(alternate_value));
+			}
 	}
 
 	if(binding) {
@@ -4136,31 +4150,19 @@ void initialize_key_bindings() {/*{{{*/
 	BIND_KEY(GDK_KEY_KP_Subtract  , 0 , GDK_CONTROL_MASK , ACTION_SET_SLIDESHOW_INTERVAL_RELATIVE , -1.);
 	BIND_KEY(GDK_KEY_minus        , 0 , 0                , ACTION_SET_SCALE_LEVEL_RELATIVE        , 0.9);
 	BIND_KEY(GDK_KEY_KP_Subtract  , 0 , 0                , ACTION_SET_SCALE_LEVEL_RELATIVE        , 0.9);
-	BIND_KEY(GDK_KEY_T            , 0 , 0                , ACTION_TOGGLE_SCALING_MODE             , 0);
 	BIND_KEY(GDK_KEY_t            , 0 , 0                , ACTION_TOGGLE_SCALING_MODE             , 0);
-	BIND_KEY(GDK_KEY_R            , 0 , GDK_CONTROL_MASK , ACTION_TOGGLE_SHUFFLE_MODE             , 0);
 	BIND_KEY(GDK_KEY_r            , 0 , GDK_CONTROL_MASK , ACTION_TOGGLE_SHUFFLE_MODE             , 0);
-	BIND_KEY(GDK_KEY_R            , 0 , 0                , ACTION_RELOAD                          , 0);
 	BIND_KEY(GDK_KEY_r            , 0 , 0                , ACTION_RELOAD                          , 0);
 	BIND_KEY(GDK_KEY_0            , 0 , 0                , ACTION_RESET_SCALE_LEVEL               , 0);
 	BIND_KEY(GDK_KEY_f            , 0 , 0                , ACTION_TOGGLE_FULLSCREEN               , 0);
-	BIND_KEY(GDK_KEY_F            , 0 , 0                , ACTION_TOGGLE_FULLSCREEN               , 0);
 	BIND_KEY(GDK_KEY_h            , 0 , 0                , ACTION_FLIP_HORIZONTALLY               , 0);
-	BIND_KEY(GDK_KEY_H            , 0 , 0                , ACTION_FLIP_HORIZONTALLY               , 0);
-	BIND_KEY(GDK_KEY_v            , 0 , 0                , ACTION_FLIP_HORIZONTALLY               , 0);
-	BIND_KEY(GDK_KEY_V            , 0 , 0                , ACTION_FLIP_VERTICALLY                 , 0);
+	BIND_KEY(GDK_KEY_v            , 0 , 0                , ACTION_FLIP_VERTICALLY                 , 0);
 	BIND_KEY(GDK_KEY_l            , 0 , 0                , ACTION_ROTATE_LEFT                     , 0);
-	BIND_KEY(GDK_KEY_L            , 0 , 0                , ACTION_ROTATE_LEFT                     , 0);
 	BIND_KEY(GDK_KEY_k            , 0 , 0                , ACTION_ROTATE_RIGHT                    , 0);
-	BIND_KEY(GDK_KEY_K            , 0 , 0                , ACTION_ROTATE_RIGHT                    , 0);
 	BIND_KEY(GDK_KEY_i            , 0 , 0                , ACTION_TOGGLE_INFO_BOX                 , 0);
-	BIND_KEY(GDK_KEY_I            , 0 , 0                , ACTION_TOGGLE_INFO_BOX                 , 0);
 	BIND_KEY(GDK_KEY_j            , 0 , 0                , ACTION_JUMP_DIALOG                     , 0);
-	BIND_KEY(GDK_KEY_J            , 0 , 0                , ACTION_JUMP_DIALOG                     , 0);
 	BIND_KEY(GDK_KEY_s            , 0 , 0                , ACTION_TOGGLE_SLIDESHOW                , 0);
-	BIND_KEY(GDK_KEY_S            , 0 , 0                , ACTION_TOGGLE_SLIDESHOW                , 0);
 	BIND_KEY(GDK_KEY_a            , 0 , 0                , ACTION_HARDLINK_CURRENT_IMAGE          , 0);
-	BIND_KEY(GDK_KEY_A            , 0 , 0                , ACTION_HARDLINK_CURRENT_IMAGE          , 0);
 	BIND_KEY(GDK_KEY_BackSpace    , 0 , GDK_CONTROL_MASK , ACTION_MOVE_DIRECTORY                  , -1);
 	BIND_KEY(GDK_KEY_BackSpace    , 0 , 0                , ACTION_MOVE_FILE                       , -1);
 	BIND_KEY(GDK_KEY_space        , 0 , GDK_CONTROL_MASK , ACTION_MOVE_DIRECTORY                  , 1);
@@ -4170,7 +4172,6 @@ void initialize_key_bindings() {/*{{{*/
 	BIND_KEY(GDK_KEY_Page_Down    , 0 , 0                , ACTION_MOVE_FILE                       , -10);
 	BIND_KEY(GDK_KEY_KP_Page_Down , 0 , 0                , ACTION_MOVE_FILE                       , -10);
 	BIND_KEY(GDK_KEY_q            , 0 , 0                , ACTION_QUIT                            , 0);
-	BIND_KEY(GDK_KEY_Q            , 0 , 0                , ACTION_QUIT                            , 0);
 	BIND_KEY(GDK_KEY_Escape       , 0 , 0                , ACTION_QUIT                            , 0);
 	BIND_KEY(GDK_KEY_1            , 0 , 0                , ACTION_NUMERIC_COMMAND                 , 1);
 	BIND_KEY(GDK_KEY_2            , 0 , 0                , ACTION_NUMERIC_COMMAND                 , 2);
