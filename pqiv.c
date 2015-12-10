@@ -30,6 +30,7 @@
 #include <sys/types.h>
 #include <unistd.h>
 #include <assert.h>
+#include <locale.h>
 
 #ifdef _WIN32
 	#ifndef _WIN32_WINNT
@@ -4097,7 +4098,7 @@ void help_view_keybindings_helper(gpointer key, gpointer value, gpointer user_da
 				g_print("%d); ", current_action->parameter.pint);
 				break;
 			case PARAMETER_DOUBLE:
-				g_print("%f); ", current_action->parameter.pdouble);
+				g_print("%g); ", current_action->parameter.pdouble);
 				break;
 			case PARAMETER_CHARPTR:
 				g_print("\"%s\"); ", current_action->parameter.pcharptr);
@@ -4110,7 +4111,14 @@ void help_view_keybindings_helper(gpointer key, gpointer value, gpointer user_da
 }/*}}}*/
 gboolean help_view_keybindings(const gchar *option_name, const gchar *value, gpointer data, GError **error) {/*{{{*/
 	g_print("pqiv key bindings:\n\n");
+	gchar *old_locale = g_strdup(setlocale(LC_NUMERIC, NULL));
+	setlocale(LC_NUMERIC, "C");
+
 	g_hash_table_foreach(key_bindings, help_view_keybindings_helper, (gpointer)"");
+
+	setlocale(LC_NUMERIC, old_locale);
+	g_free(old_locale);
+
 	exit(0);
 	return FALSE;
 }/*}}}*/
