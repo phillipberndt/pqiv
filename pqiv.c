@@ -3654,8 +3654,13 @@ void window_center_mouse() {/*{{{*/
 	#if GTK_MAJOR_VERSION < 3
 		gdk_display_warp_pointer(display, screen, screen_geometry.x + screen_geometry.width / 2., screen_geometry.y + screen_geometry.height / 2.);
 	#else
-		GdkDevice *device = gdk_device_manager_get_client_pointer(gdk_display_get_device_manager(display));
+		#if GTK_MAJOR_VERSION == 3 && GTK_MINOR_VERSION < 20
+			GdkDevice *device = gdk_device_manager_get_client_pointer(gdk_display_get_device_manager(display));
+		#else
+			GdkDevice *device = gdk_seat_get_pointer(gdk_display_get_default_seat(display));
+		#endif
 		gdk_device_warp(device, screen, screen_geometry.x + screen_geometry.width / 2., screen_geometry.y + screen_geometry.height / 2.);
+
 	#endif
 }/*}}}*/
 gboolean window_motion_notify_callback(GtkWidget *widget, GdkEventMotion *event, gpointer user_data) {/*{{{*/
