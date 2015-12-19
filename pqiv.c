@@ -382,11 +382,11 @@ GOptionEntry options[] = {
 };
 
 const char *long_description_text = ("Keyboard & Mouse bindings:\n"
-"  Backspace, Button 3, Scroll        Previous image\n"
+"  Backspace, Button 1, Scroll        Previous image\n"
 "  PgUp/PgDown                        Jump 10 images forwards/backwards\n"
 "  Escape, q, Button 2                Quit\n"
 "  Cursor keys, Drag & Drop           Move (CTRL to move faster)\n"
-"  Space, Button 1, Scroll            Next image\n"
+"  Space, Button 3, Scroll            Next image\n"
 "  CTRL Space/Backspace               Move to first image in next/previous directory\n"
 "  f                                  Toggle fullscreen\n"
 "  j                                  Jump to an image (Shows a selection box)\n"
