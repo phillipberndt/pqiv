@@ -414,7 +414,7 @@ const char *long_description_text = ("Keyboard & Mouse bindings:\n"
 );
 
 
-#define KEY_BINDING_VALUE(is_mouse, state, keycode) (((is_mouse & 1) << 31) | ((state & 7) << 28) | (keycode & 0xfffffff))
+#define KEY_BINDING_VALUE(is_mouse, state, keycode) ((guint)(((is_mouse & 1) << 31) | ((state & 7) << 28) | (keycode & 0xfffffff)))
 typedef struct key_binding key_binding_t;
 struct key_binding {
 	pqiv_action_t action;
@@ -3619,14 +3619,18 @@ void handle_input_event(guint key_binding_value) {/*{{{*/
 	guint state = (key_binding_value >> 28) & 7;
 	guint keycode = key_binding_value & 0xfffffff;
 
+	// Filter unwanted state variables out
+	state &= (GDK_SHIFT_MASK & GDK_CONTROL_MASK & GDK_MOD1_MASK & GDK_MOD2_MASK & GDK_MOD3_MASK & GDK_MOD4_MASK & GDK_MOD5_MASK);
+	key_binding_value = KEY_BINDING_VALUE(is_mouse, state, keycode);
+
 	if(active_key_binding.key_binding) {
 		g_source_remove(active_key_binding.timeout_id);
 		if(active_key_binding.key_binding->next_key_bindings) {
-			binding = g_hash_table_lookup(active_key_binding.key_binding->next_key_bindings, GINT_TO_POINTER(key_binding_value));
+			binding = g_hash_table_lookup(active_key_binding.key_binding->next_key_bindings, GUINT_TO_POINTER(key_binding_value));
 
 			if(!binding && !is_mouse && state & GDK_SHIFT_MASK && gdk_keyval_is_upper(keycode)) {
 				guint alternate_value = KEY_BINDING_VALUE(is_mouse, state & !GDK_SHIFT_MASK, gdk_keyval_to_lower(keycode));
-				binding = g_hash_table_lookup(active_key_binding.key_binding->next_key_bindings, GINT_TO_POINTER(alternate_value));
+				binding = g_hash_table_lookup(active_key_binding.key_binding->next_key_bindings, GUINT_TO_POINTER(alternate_value));
 			}
 		}
 		if(!binding) {
@@ -3642,11 +3646,11 @@ void handle_input_event(guint key_binding_value) {/*{{{*/
 	}
 
 	if(!binding) {
-			binding = g_hash_table_lookup(key_bindings, GINT_TO_POINTER(key_binding_value));
+			binding = g_hash_table_lookup(key_bindings, GUINT_TO_POINTER(key_binding_value));
 
 			if(!binding && !is_mouse && state & GDK_SHIFT_MASK && gdk_keyval_is_upper(keycode)) {
 				guint alternate_value = KEY_BINDING_VALUE(is_mouse, state & !GDK_SHIFT_MASK, gdk_keyval_to_lower(keycode));
-				binding = g_hash_table_lookup(key_bindings, GINT_TO_POINTER(alternate_value));
+				binding = g_hash_table_lookup(key_bindings, GUINT_TO_POINTER(alternate_value));
 			}
 	}
 
@@ -4071,7 +4075,7 @@ gboolean initialize_gui_or_quit_callback(gpointer user_data) {/*{{{*/
 	return FALSE;
 }/*}}}*/
 void help_view_keybindings_helper(gpointer key, gpointer value, gpointer user_data) {/*{{{*/
-	guint key_binding_value = GPOINTER_TO_INT(key);
+	guint key_binding_value = GPOINTER_TO_UINT(key);
 	gboolean is_mouse = (key_binding_value >> 31) & 1;
 	guint state = (key_binding_value >> 28) & 7;
 	guint keycode = key_binding_value & 0xfffffff;
@@ -4136,7 +4140,7 @@ void initialize_key_bindings() {/*{{{*/
 		nkb->parameter = (pqiv_action_parameter_t)(parameter_value); \
 		nkb->next_action = NULL; \
 		nkb->next_key_bindings = NULL; \
-		g_hash_table_insert(key_bindings, GINT_TO_POINTER(KEY_BINDING_VALUE(is_mouse, state, key)), nkb); \
+		g_hash_table_insert(key_bindings, GUINT_TO_POINTER(KEY_BINDING_VALUE(is_mouse, state, key)), nkb); \
 	}
 
 	BIND_KEY(GDK_KEY_Up           , 0 , 0                , ACTION_SHIFT_Y                         , 10);
@@ -4147,14 +4151,14 @@ void initialize_key_bindings() {/*{{{*/
 	BIND_KEY(GDK_KEY_KP_Down      , 0 , 0                , ACTION_SHIFT_Y                         , -10);
 	BIND_KEY(GDK_KEY_Down         , 0 , GDK_CONTROL_MASK , ACTION_SHIFT_Y                         , -50);
 	BIND_KEY(GDK_KEY_KP_Down      , 0 , GDK_CONTROL_MASK , ACTION_SHIFT_Y                         , -50);
-	BIND_KEY(GDK_KEY_Left          , 0 , 0                , ACTION_SHIFT_X                         , 10);
-	BIND_KEY(GDK_KEY_KP_Left       , 0 , 0                , ACTION_SHIFT_X                         , 10);
-	BIND_KEY(GDK_KEY_Left          , 0 , GDK_CONTROL_MASK , ACTION_SHIFT_X                         , 50);
-	BIND_KEY(GDK_KEY_KP_Left       , 0 , GDK_CONTROL_MASK , ACTION_SHIFT_X                         , 50);
-	BIND_KEY(GDK_KEY_Right         , 0 , 0                , ACTION_SHIFT_X                         , -10);
-	BIND_KEY(GDK_KEY_KP_Right      , 0 , 0                , ACTION_SHIFT_X                         , -10);
-	BIND_KEY(GDK_KEY_Right         , 0 , GDK_CONTROL_MASK , ACTION_SHIFT_X                         , -50);
-	BIND_KEY(GDK_KEY_KP_Right      , 0 , GDK_CONTROL_MASK , ACTION_SHIFT_X                         , -50);
+	BIND_KEY(GDK_KEY_Left         , 0 , 0                , ACTION_SHIFT_X                         , 10);
+	BIND_KEY(GDK_KEY_KP_Left      , 0 , 0                , ACTION_SHIFT_X                         , 10);
+	BIND_KEY(GDK_KEY_Left         , 0 , GDK_CONTROL_MASK , ACTION_SHIFT_X                         , 50);
+	BIND_KEY(GDK_KEY_KP_Left      , 0 , GDK_CONTROL_MASK , ACTION_SHIFT_X                         , 50);
+	BIND_KEY(GDK_KEY_Right        , 0 , 0                , ACTION_SHIFT_X                         , -10);
+	BIND_KEY(GDK_KEY_KP_Right     , 0 , 0                , ACTION_SHIFT_X                         , -10);
+	BIND_KEY(GDK_KEY_Right        , 0 , GDK_CONTROL_MASK , ACTION_SHIFT_X                         , -50);
+	BIND_KEY(GDK_KEY_KP_Right     , 0 , GDK_CONTROL_MASK , ACTION_SHIFT_X                         , -50);
 	BIND_KEY(GDK_KEY_plus         , 0 , GDK_CONTROL_MASK , ACTION_SET_SLIDESHOW_INTERVAL_RELATIVE , 1.);
 	BIND_KEY(GDK_KEY_KP_Add       , 0 , GDK_CONTROL_MASK , ACTION_SET_SLIDESHOW_INTERVAL_RELATIVE , 1.);
 	BIND_KEY(GDK_KEY_plus         , 0 , 0                , ACTION_SET_SCALE_LEVEL_RELATIVE        , 1.1);
