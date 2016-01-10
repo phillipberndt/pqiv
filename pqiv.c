@@ -925,7 +925,7 @@ void load_images_handle_parameter(char *param, load_images_state_t state, gint d
 	else {
 		// If the browse option is enabled, add the containing directory's images instead of the parameter itself
 		gchar *original_parameter = NULL;
-		if(state == PARAMETER && option_browse && g_file_test(param, G_FILE_TEST_IS_SYMLINK | G_FILE_TEST_IS_REGULAR) == TRUE && option_max_depth != 0) {
+		if(state == PARAMETER && option_browse && g_file_test(param, G_FILE_TEST_IS_SYMLINK | G_FILE_TEST_IS_REGULAR) == TRUE) {
 			// Handle the actual parameter first, such that it is displayed
 			// first (unless sorting is enabled)
 			load_images_handle_parameter(param, BROWSE_ORIGINAL_PARAMETER, 0);
