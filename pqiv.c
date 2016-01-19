@@ -2383,6 +2383,7 @@ void apply_external_image_filter(gchar *external_filter) {/*{{{*/
 					if(option_sort) {
 						new_image->sort_name = g_strdup_printf("%s;%s", CURRENT_FILE->sort_name, argv[2]);
 					}
+					new_image->file_name = g_strdup("-");
 					new_image->file_type = &file_type_handlers[0];
 					new_image->file_flags = FILE_FLAGS_MEMORY_IMAGE;
 					new_image->file_data = g_bytes_new_take(image_data, image_data_length);
