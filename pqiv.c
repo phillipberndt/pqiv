@@ -382,11 +382,11 @@ GOptionEntry options[] = {
 };
 
 const char *long_description_text = ("Keyboard & Mouse bindings:\n"
-"  Backspace, Button 1, Scroll        Previous image\n"
+"  Backspace, Button 1, Scroll, p     Previous image\n"
 "  PgUp/PgDown                        Jump 10 images forwards/backwards\n"
 "  Escape, q, Button 2                Quit\n"
 "  Cursor keys, Drag & Drop           Move (CTRL to move faster)\n"
-"  Space, Button 3, Scroll            Next image\n"
+"  Space, Button 3, Scroll, n         Next image\n"
 "  CTRL Space/Backspace               Move to first image in next/previous directory\n"
 "  f                                  Toggle fullscreen\n"
 "  j                                  Jump to an image (Shows a selection box)\n"
@@ -3315,6 +3315,10 @@ gboolean window_key_press_callback(GtkWidget *widget, GdkEventKey *event, gpoint
 		event->keyval != GDK_KEY_J &&
 		event->keyval != GDK_KEY_i &&
 		event->keyval != GDK_KEY_I &&
+		event->keyval != GDK_KEY_n &&
+		event->keyval != GDK_KEY_N &&
+		event->keyval != GDK_KEY_p &&
+		event->keyval != GDK_KEY_P &&
 		event->keyval != GDK_KEY_s &&
 		event->keyval != GDK_KEY_S &&
 		event->keyval != GDK_KEY_Q &&
@@ -3571,6 +3575,8 @@ gboolean window_key_press_callback(GtkWidget *widget, GdkEventKey *event, gpoint
 			break;
 
 		case GDK_KEY_BackSpace:
+		case GDK_KEY_p:
+		case GDK_KEY_P:
 			if(event->state & GDK_CONTROL_MASK) {
 				directory_image_movement(-1);
 			}
@@ -3580,6 +3586,8 @@ gboolean window_key_press_callback(GtkWidget *widget, GdkEventKey *event, gpoint
 			break;
 
 		case GDK_KEY_space:
+		case GDK_KEY_n:
+		case GDK_KEY_N:
 			if(event->state & GDK_CONTROL_MASK) {
 				directory_image_movement(1);
 			}
