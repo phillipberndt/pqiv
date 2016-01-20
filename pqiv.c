@@ -348,7 +348,7 @@ struct {
 // Hint: Only types G_OPTION_ARG_NONE, G_OPTION_ARG_STRING, G_OPTION_ARG_DOUBLE/INTEGER and G_OPTION_ARG_CALLBACK are
 // implemented for option parsing.
 GOptionEntry options[] = {
-	{ "keyboard-alias", 'a', 0, G_OPTION_ARG_CALLBACK, (gpointer)&options_keyboard_alias_set_callback, "Define n as a keyboard alias for f", "nfnf.." },
+	{ "keyboard-alias", 'a', G_OPTION_FLAG_HIDDEN, G_OPTION_ARG_CALLBACK, (gpointer)&options_keyboard_alias_set_callback, "Define n as a keyboard alias for f", "nfnf.." },
 	{ "transparent-background", 'c', 0, G_OPTION_ARG_NONE, &option_transparent_background, "Borderless transparent window", NULL },
 	{ "slideshow-interval", 'd', 0, G_OPTION_ARG_DOUBLE, &option_slideshow_interval, "Set slideshow interval", "n" },
 	{ "fullscreen", 'f', 0, G_OPTION_ARG_NONE, &option_start_fullscreen, "Start in fullscreen mode", NULL },
@@ -357,7 +357,7 @@ GOptionEntry options[] = {
 	{ "lazy-load", 'l', 0, G_OPTION_ARG_NONE, &option_lazy_load, "Display the main window as soon as possible", NULL },
 	{ "sort", 'n', 0, G_OPTION_ARG_NONE, &option_sort, "Sort files in natural order", NULL },
 	{ "window-position", 'P', 0, G_OPTION_ARG_CALLBACK, (gpointer)&option_window_position_callback, "Set initial window position (`x,y' or `off' to not position the window at all)", "POSITION" },
-	{ "reverse-cursor-keys", 'R', 0, G_OPTION_ARG_NONE, &option_reverse_cursor_keys, "Reverse the meaning of the cursor keys", NULL },
+	{ "reverse-cursor-keys", 'R', G_OPTION_FLAG_HIDDEN, G_OPTION_ARG_NONE, &option_reverse_cursor_keys, "Reverse the meaning of the cursor keys", NULL },
 	{ "additional-from-stdin", 'r', 0, G_OPTION_ARG_NONE, &option_addl_from_stdin, "Read additional filenames/folders from stdin", NULL },
 	{ "slideshow", 's', 0, G_OPTION_ARG_NONE, &option_start_with_slideshow_mode, "Activate slideshow mode", NULL },
 	{ "scale-images-up", 't', G_OPTION_FLAG_NO_ARG, G_OPTION_ARG_CALLBACK, (gpointer)&option_scale_level_callback, "Scale images up to fill the whole screen", NULL },
@@ -380,7 +380,7 @@ GOptionEntry options[] = {
 	{ "fade-duration", 0, 0, G_OPTION_ARG_DOUBLE, &option_fading_duration, "Adjust fades' duration", "SECONDS" },
 	{ "low-memory", 0, 0, G_OPTION_ARG_NONE, &option_lowmem, "Try to keep memory usage to a minimum", NULL },
 	{ "max-depth", 0, 0, G_OPTION_ARG_INT, &option_max_depth, "Descend at most LEVELS levels of directories below the command line arguments", "LEVELS" },
-	{ "reverse-scroll", 0, 0, G_OPTION_ARG_NONE, &option_reverse_scroll, "Reverse the meaning of scroll wheel", NULL },
+	{ "reverse-scroll", 0, G_OPTION_FLAG_HIDDEN, G_OPTION_ARG_NONE, &option_reverse_scroll, "Reverse the meaning of scroll wheel", NULL },
 	{ "shuffle", 0, 0, G_OPTION_ARG_NONE, &option_shuffle, "Shuffle files", NULL },
 	{ "sort-key", 0, 0, G_OPTION_ARG_CALLBACK, (gpointer)&option_sort_key_callback, "Key to use for sorting", "PROPERTY" },
 	{ "watch-directories", 0, 0, G_OPTION_ARG_NONE, &option_watch_directories, "Watch directories for new files", NULL },
@@ -391,28 +391,6 @@ GOptionEntry options[] = {
 
 	{ NULL, 0, 0, 0, NULL, NULL, NULL }
 };
-
-const char *long_description_text = ("Keyboard & Mouse bindings:\n"
-"  Backspace, Button 3, Scroll        Previous image\n"
-"  PgUp/PgDown                        Jump 10 images forwards/backwards\n"
-"  Escape, q, Button 2                Quit\n"
-"  Cursor keys, Drag & Drop           Move (CTRL to move faster)\n"
-"  Space, Button 1, Scroll            Next image\n"
-"  CTRL Space/Backspace               Move to first image in next/previous directory\n"
-"  f                                  Toggle fullscreen\n"
-"  j                                  Jump to an image (Shows a selection box)\n"
-"  r                                  Reload image\n"
-"  CTRL r                             Toggle shuffle mode\n"
-"  +/-/0, Button 3 & Drag             Zoom in/out/reset zoom\n"
-"  t                                  Toggle autoscale\n"
-"  l/k                                Rotate left/right\n"
-"  h/v                                Flip horizontally/vertically\n"
-"  i                                  Toggle info box\n"
-"  s                                  Toggle slideshow mode\n"
-"  CTRL +/-                           Change slideshow interval\n"
-"  a                                  Hardlink current image to ./.pqiv-select\n"
-);
-
 
 #define KEY_BINDING_VALUE(is_mouse, state, keycode) ((guint)(((is_mouse & 1) << 31) | ((state & 7) << 28) | (keycode & 0xfffffff)))
 typedef struct key_binding key_binding_t;
@@ -493,6 +471,9 @@ gboolean slideshow_timeout_callback(gpointer user_data);
 // }}}
 /* Command line handling, creation of the image list {{{ */
 gboolean options_keyboard_alias_set_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error) {/*{{{*/
+	// TODO Deprecated, remove with 2.6
+	g_printerr("Warning: --keyboard-alias is deprecated and will be removed in pqiv 2.6. Use --bind-key instead.\n");
+
 	if(strlen(value) % 2 != 0) {
 		g_set_error(error, G_OPTION_ERROR, G_OPTION_ERROR_FAILED, "The argument to the alias option must have a multiple of two characters: Every odd one is mapped to the even one following it.");
 		return FALSE;
@@ -774,7 +755,6 @@ void parse_configuration_file(int *argc, char **argv[]) {/*{{{*/
 void parse_command_line(int *argc, char *argv[]) {/*{{{*/
 	GOptionContext *parser = g_option_context_new("FILES");
 	g_option_context_set_summary(parser, "A minimalist image viewer\npqiv version " PQIV_VERSION PQIV_VERSION_DEBUG " by Phillip Berndt");
-	g_option_context_set_description(parser, long_description_text);
 	g_option_context_set_help_enabled(parser, TRUE);
 	g_option_context_set_ignore_unknown_options(parser, FALSE);
 	g_option_context_add_main_entries(parser, options, NULL);
@@ -3668,7 +3648,29 @@ void handle_input_event(guint key_binding_value) {/*{{{*/
 }/*}}}*/
 gboolean window_key_press_callback(GtkWidget *widget, GdkEventKey *event, gpointer user_data) {/*{{{*/
 	if(event->keyval < 128 && keyboard_aliases[event->keyval] != 0) {
+		// TODO Deprecated, remove with 2.6
 		event->keyval = keyboard_aliases[event->keyval];
+	}
+	if(option_reverse_cursor_keys) {
+		// TODO Deprecated, remove with 2.6
+		switch(event->keyval) {
+			case GDK_KEY_Up:
+			case GDK_KEY_KP_Up:
+				event->keyval = GDK_KEY_Down;
+				break;
+			case GDK_KEY_Down:
+			case GDK_KEY_KP_Down:
+				event->keyval = GDK_KEY_Up;
+				break;
+			case GDK_KEY_Left:
+			case GDK_KEY_KP_Left:
+				event->keyval = GDK_KEY_Right;
+				break;
+			case GDK_KEY_Right:
+			case GDK_KEY_KP_Right:
+				event->keyval = GDK_KEY_Left;
+				break;
+		}
 	}
 	handle_input_event(KEY_BINDING_VALUE(0, event->state, event->keyval));
 	return FALSE;
@@ -3790,24 +3792,17 @@ gboolean window_scroll_callback(GtkWidget *widget, GdkEventScroll *event, gpoint
 	   gdouble x_root, y_root;
 	   };
 	 */
-	if(event->direction == GDK_SCROLL_UP) {
-		if(option_reverse_scroll == FALSE) {
-			action(ACTION_MOVE_FILE, (pqiv_action_parameter_t)1);
+	if(option_reverse_scroll == TRUE) {
+		// TODO Deprecated, remove with 2.6
+		if(event->direction == GDK_SCROLL_UP) {
+			event->direction = GDK_SCROLL_DOWN;
 		}
-		else {
-			action(ACTION_MOVE_FILE, (pqiv_action_parameter_t)-1);
-		}
-	}
-	else if(event->direction == GDK_SCROLL_DOWN) {
-		if(option_reverse_scroll == FALSE) {
-			action(ACTION_MOVE_FILE, (pqiv_action_parameter_t)-1);
-		}
-		else {
-			action(ACTION_MOVE_FILE, (pqiv_action_parameter_t)1);
+		else if(event->direction == GDK_SCROLL_DOWN) {
+			event->direction = GDK_SCROLL_UP;
 		}
 	}
 
-
+	handle_input_event(KEY_BINDING_VALUE(1, event->state, (event->direction + 1) << 2));
 	return FALSE;
 }/*}}}*/
 void fullscreen_hide_cursor() {/*{{{*/
@@ -4085,7 +4080,12 @@ void help_view_keybindings_helper(gpointer key, gpointer value, gpointer user_da
 	gchar modifier[255];
 	snprintf(modifier, 255, "%s%s%s", state & GDK_SHIFT_MASK ? "<Shift>" : "", state & GDK_CONTROL_MASK ? "<Control>" : "", state & GDK_MOD1_MASK ? "<Alt>" : "");
 	if(is_mouse) {
-		str_key = g_strdup_printf("%s%s<Mouse-%d> ", user_data ? (gchar*)user_data : "", modifier, keycode);
+		if(keycode >> 2 == 0) {
+			str_key = g_strdup_printf("%s%s<Mouse-%d> ", user_data ? (gchar*)user_data : "", modifier, keycode);
+		}
+		else {
+			str_key = g_strdup_printf("%s%s<Mouse-Scroll-%d> ", user_data ? (gchar*)user_data : "", modifier, keycode >> 2);
+		}
 	}
 	else {
 		char *keyval_name = gdk_keyval_name(keycode);
@@ -4203,6 +4203,8 @@ void initialize_key_bindings() {/*{{{*/
 	BIND_KEY(GDK_BUTTON_PRIMARY   , 1 , 0                , ACTION_MOVE_FILE                       , -1);
 	BIND_KEY(GDK_BUTTON_MIDDLE    , 1 , 0                , ACTION_QUIT                            , 0);
 	BIND_KEY(GDK_BUTTON_SECONDARY , 1 , 0                , ACTION_MOVE_FILE                       , 1);
+	BIND_KEY((GDK_SCROLL_UP+1) << 2, 1 , 0               , ACTION_MOVE_FILE                       , 1);
+	BIND_KEY((GDK_SCROLL_DOWN+1) << 2, 1 , 0             , ACTION_MOVE_FILE                       , -1);
 }/*}}}*/
 // }}}
 
@@ -4281,6 +4283,14 @@ int main(int argc, char *argv[]) {
 		current_scale_level = option_initial_scale;
 	}
 	cairo_matrix_init_identity(&current_transformation);
+
+	// TODO Deprecation warnings, remove with 2.6
+	if(option_reverse_cursor_keys) {
+		g_printerr("Warning: --reverse-cursor-keys is deprecated and will be removed in pqiv 2.6. Use --bind-key instead.\n");
+	}
+	if(option_reverse_scroll) {
+		g_printerr("Warning: --reverse-scroll is deprecated and will be removed in pqiv 2.6. Use --bind-key instead.\n");
+	}
 
 	global_argc = argc;
 	global_argv = argv;
