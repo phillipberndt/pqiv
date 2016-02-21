@@ -437,7 +437,6 @@ const struct pqiv_action_descriptor {
 	{ NULL, 0 }
 };
 
-
 typedef struct {
 	gint depth;
 } directory_watch_options_t;
@@ -977,7 +976,7 @@ void load_images_handle_parameter(char *param, load_images_state_t state, gint d
 	else {
 		// If the browse option is enabled, add the containing directory's images instead of the parameter itself
 		gchar *original_parameter = NULL;
-		if(state == PARAMETER && option_browse && g_file_test(param, G_FILE_TEST_IS_SYMLINK | G_FILE_TEST_IS_REGULAR) == TRUE && option_max_depth != 0) {
+		if(state == PARAMETER && option_browse && g_file_test(param, G_FILE_TEST_IS_SYMLINK | G_FILE_TEST_IS_REGULAR) == TRUE) {
 			// Handle the actual parameter first, such that it is displayed
 			// first (unless sorting is enabled)
 			load_images_handle_parameter(param, BROWSE_ORIGINAL_PARAMETER, 0);
@@ -2435,6 +2434,7 @@ void apply_external_image_filter(gchar *external_filter) {/*{{{*/
 					if(option_sort) {
 						new_image->sort_name = g_strdup_printf("%s;%s", CURRENT_FILE->sort_name, argv[2]);
 					}
+					new_image->file_name = g_strdup("-");
 					new_image->file_type = &file_type_handlers[0];
 					new_image->file_flags = FILE_FLAGS_MEMORY_IMAGE;
 					new_image->file_data = g_bytes_new_take(image_data, image_data_length);
