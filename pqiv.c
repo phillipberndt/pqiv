@@ -68,8 +68,6 @@
 
 // TODO Add stdin interface for actions
 // TODO Add actions useful for scripts: Jump to specific image, add image, remove image
-// TODO Add option to output key bindings
-// TODO Add option to alter key bindings
 
 // GTK 2 does not define keyboard aliases the way we do
 #if GTK_MAJOR_VERSION < 3 // {{{
@@ -337,7 +335,7 @@ gboolean option_scale_level_callback(const gchar *option_name, const gchar *valu
 gboolean option_end_of_files_action_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error);
 gboolean option_watch_files_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error);
 gboolean option_sort_key_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error);
-gboolean help_view_keybindings(const gchar *option_name, const gchar *value, gpointer data, GError **error);
+gboolean help_show_key_bindings(const gchar *option_name, const gchar *value, gpointer data, GError **error);
 void load_images_handle_parameter(char *param, load_images_state_t state, gint depth);
 
 struct {
@@ -386,8 +384,8 @@ GOptionEntry options[] = {
 	{ "watch-directories", 0, 0, G_OPTION_ARG_NONE, &option_watch_directories, "Watch directories for new files", NULL },
 	{ "watch-files", 0, 0, G_OPTION_ARG_CALLBACK, (gpointer)&option_watch_files_callback, "Watch files for changes on disk (`on`, `off', `changes-only', i.e. do nothing on deletetion)", "VALUE" },
 
-	{ "view-keybindings", 0, G_OPTION_FLAG_NO_ARG, G_OPTION_ARG_CALLBACK, &help_view_keybindings, "Display the keyboard and mouse bindings and exit", NULL },
-	{ "bind-key", 0, 0, G_OPTION_ARG_CALLBACK, &options_bind_key_callback, "Rebind a key to another action, see manpage for details.", "KEY BINDING" },
+	{ "show-keybindings", 0, G_OPTION_FLAG_NO_ARG, G_OPTION_ARG_CALLBACK, &help_show_key_bindings, "Display the keyboard and mouse bindings and exit", NULL },
+	{ "bind-key", 0, 0, G_OPTION_ARG_CALLBACK, &options_bind_key_callback, "Rebind a key to another action, see manpage and --show-keybindings output for details.", "KEY BINDING" },
 
 	{ NULL, 0, 0, 0, NULL, NULL, NULL }
 };
@@ -407,7 +405,7 @@ struct {
 	gint timeout_id;
 } active_key_binding;
 
-const struct {
+const struct pqiv_action_descriptor {
 	const char *name;
 	enum { PARAMETER_INT, PARAMETER_DOUBLE, PARAMETER_CHARPTR, PARAMETER_NONE } parameter_type;
 } pqiv_action_descriptors[] = {
@@ -436,6 +434,7 @@ const struct {
 	{ "quit", PARAMETER_NONE },
 	{ "numeric_command", PARAMETER_INT },
 	{ "command", PARAMETER_CHARPTR },
+	{ NULL, 0 }
 };
 
 
@@ -468,6 +467,7 @@ void file_tree_free_helper(BOSNode *node);
 gint relative_image_pointer_shuffle_list_cmp(shuffled_image_ref_t *ref, BOSNode *node);
 void relative_image_pointer_shuffle_list_unref_fn(shuffled_image_ref_t *ref);
 gboolean slideshow_timeout_callback(gpointer user_data);
+void parse_key_bindings(const gchar *bindings);
 // }}}
 /* Command line handling, creation of the image list {{{ */
 gboolean options_keyboard_alias_set_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error) {/*{{{*/
@@ -493,6 +493,8 @@ gboolean options_bind_key_callback(const gchar *option_name, const gchar *value,
 	// String parameters must be given in quotes
 	// To set an error:
 	// g_set_error(error, G_OPTION_ERROR, G_OPTION_ERROR_FAILED, "The argument to the alias option must have a multiple of two characters: Every odd one is mapped to the even one following it.");
+	//
+	parse_key_bindings(value);
 
 	return TRUE;
 }/*}}}*/
@@ -4069,7 +4071,7 @@ gboolean initialize_gui_or_quit_callback(gpointer user_data) {/*{{{*/
 
 	return FALSE;
 }/*}}}*/
-void help_view_keybindings_helper(gpointer key, gpointer value, gpointer user_data) {/*{{{*/
+void help_show_key_bindings_helper(gpointer key, gpointer value, gpointer user_data) {/*{{{*/
 	guint key_binding_value = GPOINTER_TO_UINT(key);
 	gboolean is_mouse = (key_binding_value >> 31) & 1;
 	guint state = (key_binding_value >> 28) & 7;
@@ -4093,7 +4095,7 @@ void help_view_keybindings_helper(gpointer key, gpointer value, gpointer user_da
 	}
 
 	if(key_binding->next_key_bindings) {
-		g_hash_table_foreach(key_binding->next_key_bindings, help_view_keybindings_helper, str_key);
+		g_hash_table_foreach(key_binding->next_key_bindings, help_show_key_bindings_helper, str_key);
 	}
 
 	g_print("%30s { ", str_key);
@@ -4101,16 +4103,16 @@ void help_view_keybindings_helper(gpointer key, gpointer value, gpointer user_da
 		g_print("%s(", pqiv_action_descriptors[key_binding->action].name);
 		switch(pqiv_action_descriptors[key_binding->action].parameter_type) {
 			case PARAMETER_NONE:
-				g_print("); ");
+				g_print(") ");
 				break;
 			case PARAMETER_INT:
-				g_print("%d); ", current_action->parameter.pint);
+				g_print("%d) ", current_action->parameter.pint);
 				break;
 			case PARAMETER_DOUBLE:
-				g_print("%g); ", current_action->parameter.pdouble);
+				g_print("%g) ", current_action->parameter.pdouble);
 				break;
 			case PARAMETER_CHARPTR:
-				g_print("\"%s\"); ", current_action->parameter.pcharptr);
+				g_print("%s) ", current_action->parameter.pcharptr);
 				break;
 		}
 	}
@@ -4118,18 +4120,221 @@ void help_view_keybindings_helper(gpointer key, gpointer value, gpointer user_da
 
 	g_free(str_key);
 }/*}}}*/
-gboolean help_view_keybindings(const gchar *option_name, const gchar *value, gpointer data, GError **error) {/*{{{*/
-	g_print("pqiv key bindings:\n\n");
+gboolean help_show_key_bindings(const gchar *option_name, const gchar *value, gpointer data, GError **error) {/*{{{*/
 	gchar *old_locale = g_strdup(setlocale(LC_NUMERIC, NULL));
 	setlocale(LC_NUMERIC, "C");
 
-	g_hash_table_foreach(key_bindings, help_view_keybindings_helper, (gpointer)"");
+	g_hash_table_foreach(key_bindings, help_show_key_bindings_helper, (gpointer)"");
 
 	setlocale(LC_NUMERIC, old_locale);
 	g_free(old_locale);
 
 	exit(0);
 	return FALSE;
+}/*}}}*/
+void parse_key_bindings(const gchar *bindings) {/*{{{*/
+	/*
+	 * This is a simple state machine based parser for the same format that the help function outputs:
+	 *  shortcut { command(parameter); command(parameter); }
+	 *
+	 * The states are
+	 *  0 initial state, expecting keyboard shortcuts or EOF
+	 *  1 keyboard shortcut entering started, expecting more or start of commands
+	 *  2 expecting identifier inside <..>, e.g. <Mouse-1>
+	 *  3 inside command list, e.g. after {. Expecting identifier of command.
+	 *  4 inside command parameters, e.g. after (. Expecting parameter.
+	 *  5 inside command list after state 4, same as 3 except that more commands
+	 *    add to the list instead of overwriting the old binding.
+	 */
+	GHashTable **active_key_bindings_table = &key_bindings;
+
+	int state = 0;
+	const gchar *token_start = NULL;
+	gchar *identifier;
+	ptrdiff_t identifier_length;
+	int keyboard_state = 0;
+	unsigned int keyboard_key_value;
+	key_binding_t *binding = NULL;
+	int parameter_type = 0;
+
+	for(const gchar *scan = bindings; *scan; scan++) {
+		if(*scan == '\n' || *scan == ' ' || *scan == '\t') {
+			if(token_start == scan) token_start++;
+			continue;
+		}
+		switch(state) {
+			case 0: // Expecting key description
+			case 1: // Expecting continuation of key description or start of command
+				switch(*scan) {
+					case '<':
+						token_start = scan + 1;
+						state = 2;
+						break;
+
+					case '{':
+						if(state == 0) {
+							g_printerr("Unallowed { before keyboard binding was given\n");
+							state = -1;
+							break;
+						}
+						token_start = scan + 1;
+						state = 3;
+						break;
+
+					default:
+						keyboard_key_value = KEY_BINDING_VALUE(0, keyboard_state, *scan);
+						#define PARSE_KEY_BINDINGS_BIND(keyboard_key_value) \
+							keyboard_state = 0; \
+							if(!*active_key_bindings_table) { \
+								*active_key_bindings_table = g_hash_table_new((GHashFunc)g_direct_hash, (GEqualFunc)g_direct_equal); \
+							} \
+							binding = g_hash_table_lookup(*active_key_bindings_table, GUINT_TO_POINTER(keyboard_key_value)); \
+							if(!binding) { \
+								binding = g_slice_new0(key_binding_t); \
+								g_hash_table_insert(*active_key_bindings_table, GUINT_TO_POINTER(keyboard_key_value), binding); \
+							} \
+							active_key_bindings_table = &(binding->next_key_bindings);
+						PARSE_KEY_BINDINGS_BIND(keyboard_key_value);
+						state = 1;
+				}
+				break;
+
+			case 2: // Expecting identifier identifying a special key
+				// That's either Shift, Control, Alt, Mouse-%d, Mouse-Scroll-%d or gdk_keyval_name
+				// Closed by `>'
+				if(*scan == '>') {
+					identifier_length = scan - token_start;
+					if(identifier_length == 7 && g_ascii_strncasecmp(token_start, "mouse-", 6) == 0) {
+						// Is Mouse-
+						keyboard_key_value = KEY_BINDING_VALUE(1, keyboard_state, (token_start[6] - '0'));
+						PARSE_KEY_BINDINGS_BIND(keyboard_key_value);
+					}
+					else if(identifier_length == 14 && g_ascii_strncasecmp(token_start, "mouse-scroll-", 13) == 0) {
+						// Is Mouse-Scroll-
+						keyboard_key_value = KEY_BINDING_VALUE(1, keyboard_state, ((token_start[13] - '0') << 2));
+						PARSE_KEY_BINDINGS_BIND(keyboard_key_value);
+					}
+					else if(identifier_length == 5 && g_ascii_strncasecmp(token_start, "shift", 5) == 0) {
+						keyboard_state |= GDK_SHIFT_MASK;
+					}
+					else if(identifier_length == 7 && g_ascii_strncasecmp(token_start, "control", 7) == 0) {
+						keyboard_state |= GDK_CONTROL_MASK;
+					}
+					else if(identifier_length == 3 && g_ascii_strncasecmp(token_start, "alt", 3) == 0) {
+						keyboard_state |= GDK_MOD1_MASK;
+					}
+					else {
+						identifier = g_malloc(identifier_length + 1);
+						memcpy(identifier, token_start, identifier_length);
+						identifier[identifier_length] = 0;
+						guint keyval = gdk_keyval_from_name(identifier);
+						if(keyval == GDK_KEY_VoidSymbol) {
+							g_printerr("Failed to parse key: `%s' is not a known GDK keyval name\n", identifier);
+							state = -1;
+							break;
+						}
+						keyboard_key_value = KEY_BINDING_VALUE(0, keyboard_state, keyval);
+						PARSE_KEY_BINDINGS_BIND(keyboard_key_value);
+						g_free(identifier);
+					}
+					token_start = NULL;
+					state = 1;
+				}
+				break;
+
+			case 3: // Expecting command identifier, ended by `(', or closing parenthesis
+			case 5: // Expecting further commands
+				if(!token_start && *scan == ';') {
+					continue;
+				}
+
+				switch(*scan) {
+					case '(':
+						state = -1;
+
+						identifier_length = scan - token_start;
+						identifier = g_malloc(identifier_length + 1);
+						memcpy(identifier, token_start, identifier_length);
+						identifier[identifier_length] = 0;
+
+						if(binding->action && state == 5) {
+							binding->next_action = g_slice_new0(key_binding_t);
+							binding = binding->next_action;
+						}
+
+						unsigned int action_id = 0;
+						for(const struct pqiv_action_descriptor *descriptor = pqiv_action_descriptors; descriptor->name; descriptor++) {
+							if((ptrdiff_t)strlen(descriptor->name) == identifier_length && g_ascii_strncasecmp(descriptor->name, identifier, identifier_length) == 0) {
+								binding->action = action_id;
+								parameter_type = descriptor->parameter_type;
+								token_start = scan + 1;
+								state = 4;
+								break;
+							}
+							action_id++;
+						}
+
+						if(state != 4) {
+							g_printerr("Unknown action: `%s'\n", identifier);
+						}
+
+						g_free(identifier);
+
+						break;
+
+					case '}':
+						active_key_bindings_table = &key_bindings;
+						binding = NULL;
+						state = 0;
+						break;
+				}
+				break;
+
+			case 4: // Expecting action parameter, ended by `)'
+				if(parameter_type == PARAMETER_CHARPTR && *scan == '\\' && scan[1]) {
+					scan++;
+					continue;
+				}
+
+				if(*scan == ')') {
+					identifier_length = scan - token_start;
+					identifier = g_malloc(identifier_length + 1);
+					memcpy(identifier, token_start, identifier_length);
+					identifier[identifier_length] = 0;
+
+					switch(parameter_type) {
+						case PARAMETER_NONE:
+							break;
+						case PARAMETER_INT:
+							binding->parameter.pint = atoi(identifier);
+							break;
+						case PARAMETER_DOUBLE:
+							binding->parameter.pdouble = atof(identifier);
+							break;
+						case PARAMETER_CHARPTR:
+							binding->parameter.pcharptr = g_strdup(identifier);
+							break;
+					}
+
+					g_free(identifier);
+
+					token_start = scan + 1;
+					state = 5;
+				}
+				break;
+
+			default:
+				g_printerr("Unexpected input: `%c'\n", *scan);
+				g_printerr("Failed to parse key bindings.\n");
+				exit(1);
+				break;
+		}
+	}
+
+	if(state != 0) {
+		g_printerr("Failed to parse key bindings.\n");
+		exit(1);
+	}
 }/*}}}*/
 void initialize_key_bindings() {/*{{{*/
 	key_bindings = g_hash_table_new((GHashFunc)g_direct_hash, (GEqualFunc)g_direct_equal);
