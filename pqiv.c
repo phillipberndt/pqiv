@@ -4112,7 +4112,13 @@ void help_show_key_bindings_helper(gpointer key, gpointer value, gpointer user_d
 				g_print("%g) ", current_action->parameter.pdouble);
 				break;
 			case PARAMETER_CHARPTR:
-				g_print("%s) ", current_action->parameter.pcharptr);
+				for(const char *p = current_action->parameter.pcharptr; *p; p++) {
+					if(*p == ')' || *p == '\\') {
+						g_print("\\");
+					}
+					g_print("%c", *p);
+				}
+				g_print(") ");
 				break;
 		}
 	}
@@ -4156,14 +4162,19 @@ void parse_key_bindings(const gchar *bindings) {/*{{{*/
 	unsigned int keyboard_key_value;
 	key_binding_t *binding = NULL;
 	int parameter_type = 0;
+	const gchar *current_command_start = bindings;
+	gchar *error_message = NULL;
+	const gchar *scan;
 
-	for(const gchar *scan = bindings; *scan; scan++) {
+	for(scan = bindings; *scan; scan++) {
 		if(*scan == '\n' || *scan == ' ' || *scan == '\t') {
 			if(token_start == scan) token_start++;
 			continue;
 		}
 		switch(state) {
 			case 0: // Expecting key description
+				current_command_start = scan;
+
 			case 1: // Expecting continuation of key description or start of command
 				switch(*scan) {
 					case '<':
@@ -4173,7 +4184,7 @@ void parse_key_bindings(const gchar *bindings) {/*{{{*/
 
 					case '{':
 						if(state == 0) {
-							g_printerr("Unallowed { before keyboard binding was given\n");
+							error_message = g_strdup("Unallowed { before keyboard binding was given");
 							state = -1;
 							break;
 						}
@@ -4182,6 +4193,10 @@ void parse_key_bindings(const gchar *bindings) {/*{{{*/
 						break;
 
 					default:
+						if(scan[0] == '\\' && scan[1]) {
+							scan++;
+						}
+
 						keyboard_key_value = KEY_BINDING_VALUE(0, keyboard_state, *scan);
 						#define PARSE_KEY_BINDINGS_BIND(keyboard_key_value) \
 							keyboard_state = 0; \
@@ -4229,7 +4244,7 @@ void parse_key_bindings(const gchar *bindings) {/*{{{*/
 						identifier[identifier_length] = 0;
 						guint keyval = gdk_keyval_from_name(identifier);
 						if(keyval == GDK_KEY_VoidSymbol) {
-							g_printerr("Failed to parse key: `%s' is not a known GDK keyval name\n", identifier);
+							error_message = g_strdup_printf("Failed to parse key: `%s' is not a known GDK keyval name", identifier);
 							state = -1;
 							break;
 						}
@@ -4275,7 +4290,9 @@ void parse_key_bindings(const gchar *bindings) {/*{{{*/
 						}
 
 						if(state != 4) {
-							g_printerr("Unknown action: `%s'\n", identifier);
+							error_message = g_strdup_printf("Unknown action: `%s'", identifier);
+							state = -1;
+							break;
 						}
 
 						g_free(identifier);
@@ -4299,11 +4316,23 @@ void parse_key_bindings(const gchar *bindings) {/*{{{*/
 				if(*scan == ')') {
 					identifier_length = scan - token_start;
 					identifier = g_malloc(identifier_length + 1);
-					memcpy(identifier, token_start, identifier_length);
+					for(int i=0, j=0; j<identifier_length; i++, j++) {
+						if(token_start[j] == '\\') {
+							if(++j > identifier_length) {
+								break;
+							}
+						}
+						identifier[i] = token_start[j];
+					}
 					identifier[identifier_length] = 0;
 
 					switch(parameter_type) {
 						case PARAMETER_NONE:
+							if(identifier_length > 0) {
+								error_message = g_strdup("This function does not expect a parameter");
+								state = -1;
+								break;
+							}
 							break;
 						case PARAMETER_INT:
 							binding->parameter.pint = atoi(identifier);
@@ -4318,21 +4347,40 @@ void parse_key_bindings(const gchar *bindings) {/*{{{*/
 
 					g_free(identifier);
 
+					if(state == -1) {
+						break;
+					}
+
 					token_start = scan + 1;
 					state = 5;
 				}
 				break;
 
 			default:
-				g_printerr("Unexpected input: `%c'\n", *scan);
-				g_printerr("Failed to parse key bindings.\n");
-				exit(1);
+				error_message = g_strdup("Unexpected input");
+				state = -1;
 				break;
+		}
+
+		if(state == -1) {
+			break;
 		}
 	}
 
 	if(state != 0) {
-		g_printerr("Failed to parse key bindings.\n");
+		if(state != -1) {
+			error_message = g_strdup("Unexpected end of key binding definition");
+		}
+
+		g_printerr("Failed to parse key bindings. Error in definition:\n");
+		int error_pos = scan - current_command_start;
+		int print_after = strlen(scan);
+		if(print_after > 20) print_after = 20;
+		g_printerr("%*s\n", error_pos + print_after, current_command_start);
+		for(int i=0; i<error_pos; i++) g_printerr(" ");
+		g_printerr("^-- here\nError was: %s\n\n", error_message);
+		g_free(error_message);
+
 		exit(1);
 	}
 }/*}}}*/
