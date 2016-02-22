@@ -319,6 +319,7 @@ gboolean option_fading = FALSE;
 gboolean option_lazy_load = FALSE;
 gboolean option_lowmem = FALSE;
 gboolean option_addl_from_stdin = FALSE;
+gboolean option_commands_from_stdin = FALSE;
 double option_fading_duration = .5;
 gint option_max_depth = -1;
 gboolean option_browse = FALSE;
@@ -386,6 +387,7 @@ GOptionEntry options[] = {
 
 	{ "show-keybindings", 0, G_OPTION_FLAG_NO_ARG, G_OPTION_ARG_CALLBACK, &help_show_key_bindings, "Display the keyboard and mouse bindings and exit", NULL },
 	{ "bind-key", 0, 0, G_OPTION_ARG_CALLBACK, &options_bind_key_callback, "Rebind a key to another action, see manpage and --show-keybindings output for details.", "KEY BINDING" },
+	{ "commands-from-stdin", 0, 0, G_OPTION_ARG_NONE, &option_commands_from_stdin, "Read commands from stdin", NULL },
 
 	{ NULL, 0, 0, 0, NULL, NULL, NULL }
 };
@@ -4259,14 +4261,13 @@ void parse_key_bindings(const gchar *bindings) {/*{{{*/
 
 			case 3: // Expecting command identifier, ended by `(', or closing parenthesis
 			case 5: // Expecting further commands
-				if(!token_start && *scan == ';') {
+				if(token_start == scan && *scan == ';') {
+					token_start = scan + 1;
 					continue;
 				}
 
 				switch(*scan) {
 					case '(':
-						state = -1;
-
 						identifier_length = scan - token_start;
 						identifier = g_malloc(identifier_length + 1);
 						memcpy(identifier, token_start, identifier_length);
@@ -4277,6 +4278,7 @@ void parse_key_bindings(const gchar *bindings) {/*{{{*/
 							binding = binding->next_action;
 						}
 
+						state = -1;
 						unsigned int action_id = 0;
 						for(const struct pqiv_action_descriptor *descriptor = pqiv_action_descriptors; descriptor->name; descriptor++) {
 							if((ptrdiff_t)strlen(descriptor->name) == identifier_length && g_ascii_strncasecmp(descriptor->name, identifier, identifier_length) == 0) {
@@ -4383,6 +4385,133 @@ void parse_key_bindings(const gchar *bindings) {/*{{{*/
 
 		exit(1);
 	}
+}/*}}}*/
+gboolean perform_string_action(const gchar *string_action) {/*{{{*/
+	const gchar *action_name_start = NULL;
+	const gchar *action_name_end = NULL;
+	const gchar *parameter_start = NULL;
+	const gchar *parameter_end = NULL;
+	const gchar *scan = string_action;
+
+	while(*scan == '\t' || *scan == '\n' || *scan == ' ') scan++;
+	action_name_start = scan;
+	if(!*scan) return TRUE;
+	while(*scan && *scan != '(') scan++;
+	if(*scan != '(') {
+		g_printerr("Invalid command: Missing parenthesis after command specifier.\n");
+		return FALSE;
+	}
+	action_name_end = scan - 1;
+	scan++;
+	while(*scan == '\t' || *scan == '\n' || *scan == ' ') scan++;
+	parameter_start = scan;
+	if(!scan) {
+		g_printerr("Invalid command: Missing parameter list.\n");
+		return FALSE;
+	}
+	while(*scan && *scan != ')') {
+		if(*scan == '\\' && scan[1]) {
+			scan++;
+		}
+		scan++;
+	}
+	parameter_end = scan - 1;
+	if(*scan != ')') {
+		g_printerr("Invalid command: Missing closing parenthesis.\n");
+		return FALSE;
+	}
+	scan++;
+	while(*scan == '\t' || *scan == '\n' || *scan == ' ') scan++;
+
+	ptrdiff_t identifier_length = action_name_end - action_name_start + 1;
+	ptrdiff_t parameter_length = parameter_end - parameter_start + 1;
+
+	gboolean command_found = FALSE;
+	int action_id = 0;
+	for(const struct pqiv_action_descriptor *descriptor = pqiv_action_descriptors; descriptor->name; descriptor++) {
+		if((ptrdiff_t)strlen(descriptor->name) == identifier_length && g_ascii_strncasecmp(descriptor->name, action_name_start, identifier_length) == 0) {
+			command_found = TRUE;
+
+			gchar *parameter = g_malloc(parameter_length + 1);
+			for(int i=0, j=0; j<parameter_length; i++, j++) {
+				if(parameter_start[j] == '\\') {
+					if(++j > parameter_length) {
+						break;
+					}
+				}
+				parameter[i] = parameter_start[j];
+			}
+			parameter[parameter_length] = 0;
+
+			pqiv_action_parameter_t parsed_parameter;
+			switch(descriptor->parameter_type) {
+				case PARAMETER_NONE:
+					if(parameter_length > 0) {
+						g_printerr("Invalid command: This command does not expect a parameter\n");
+						g_free(parameter);
+						return FALSE;
+					}
+					break;
+
+				case PARAMETER_INT:
+					parsed_parameter.pint = atoi(parameter);
+					break;
+
+				case PARAMETER_DOUBLE:
+					parsed_parameter.pdouble = atof(parameter);
+					break;
+
+				case PARAMETER_CHARPTR:
+					parsed_parameter.pcharptr = parameter;
+					break;
+			}
+
+			action(action_id, parsed_parameter);
+			g_free(parameter);
+		}
+		action_id++;
+	}
+	if(!command_found) {
+		g_printerr("Invalid command: Unknown command.\n");
+		return FALSE;
+	}
+
+	if(scan) {
+		return perform_string_action(scan);
+	}
+
+	return TRUE;
+}/*}}}*/
+gboolean read_commands_thread_helper(gpointer command) {/*{{{*/
+	perform_string_action((gchar *)command);
+	g_free(command);
+	return FALSE;
+}/*}}}*/
+gpointer read_commands_thread(gpointer user_data) {/*{{{*/
+		GIOChannel *stdin_reader =
+		#ifdef _WIN32
+			g_io_channel_win32_new_fd(_fileno(stdin));
+		#else
+			g_io_channel_unix_new(STDIN_FILENO);
+		#endif
+
+		gsize line_terminator_pos;
+		gchar *buffer = NULL;
+		const gchar *charset = NULL;
+		if(g_get_charset(&charset)) {
+			g_io_channel_set_encoding(stdin_reader, charset, NULL);
+		}
+
+		while(g_io_channel_read_line(stdin_reader, &buffer, NULL, &line_terminator_pos, NULL) == G_IO_STATUS_NORMAL) {
+			if (buffer == NULL) {
+				continue;
+			}
+
+			buffer[line_terminator_pos] = 0;
+			gdk_threads_add_idle(read_commands_thread_helper, buffer);
+		}
+		g_io_channel_unref(stdin_reader);
+		return NULL;
 }/*}}}*/
 void initialize_key_bindings() {/*{{{*/
 	key_bindings = g_hash_table_new((GHashFunc)g_direct_hash, (GEqualFunc)g_direct_equal);
@@ -4543,6 +4672,18 @@ int main(int argc, char *argv[]) {
 	}
 	if(option_reverse_scroll) {
 		g_printerr("Warning: --reverse-scroll is deprecated and will be removed in pqiv 2.6. Use --bind-key instead.\n");
+	}
+
+	if(option_commands_from_stdin) {
+		if(option_addl_from_stdin) {
+			g_printerr("Error: --additional-from-stdin conflicts with --commands-from-stdin.\n");
+			exit(1);
+		}
+		#if GLIB_CHECK_VERSION(2, 32, 0)
+			g_thread_new("command-reader", read_commands_thread, NULL);
+		#else
+			g_thread_create(read_commands_thread, NULL, FALSE, NULL);
+		#endif
 	}
 
 	global_argc = argc;
