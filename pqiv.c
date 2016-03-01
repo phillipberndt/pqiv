@@ -3468,14 +3468,18 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 			break;
 
 		case ACTION_TOGGLE_SLIDESHOW:
-			{
-				int image_width, image_height;
-				calculate_current_image_transformed_size(&image_width, &image_height);
-
-				cairo_matrix_t transformation = { 0., -1., 1., 0., 0, image_width };
-				transform_current_image(&transformation);
+			if(slideshow_timeout_id >= 0) {
+				if(slideshow_timeout_id > 0) {
+					g_source_remove(slideshow_timeout_id);
+				}
+				slideshow_timeout_id = -1;
+				update_info_text("Slideshow disabled");
 			}
-			update_info_text("Image rotated left");
+			else {
+				slideshow_timeout_id = gdk_threads_add_timeout(option_slideshow_interval * 1000, slideshow_timeout_callback, NULL);
+				update_info_text("Slideshow enabled");
+			}
+			gtk_widget_queue_draw(GTK_WIDGET(main_window));
 			break;
 
 		case ACTION_HARDLINK_CURRENT_IMAGE:
