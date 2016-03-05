@@ -27,6 +27,7 @@
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <sys/types.h>
 #include <unistd.h>
 #include <assert.h>
@@ -431,11 +432,17 @@ const struct pqiv_action_descriptor {
 	{ "jump_dialog", PARAMETER_NONE },
 	{ "toggle_slideshow", PARAMETER_INT },
 	{ "hardlink_current_image", PARAMETER_NONE },
-	{ "move_directory", PARAMETER_INT },
-	{ "move_file", PARAMETER_INT },
+	{ "goto_directory_relative", PARAMETER_INT },
+	{ "goto_file_relative", PARAMETER_INT },
 	{ "quit", PARAMETER_NONE },
 	{ "numeric_command", PARAMETER_INT },
 	{ "command", PARAMETER_CHARPTR },
+	{ "add_file", PARAMETER_CHARPTR },
+	{ "goto_file_byindex", PARAMETER_INT },
+	{ "goto_file_byname", PARAMETER_CHARPTR },
+	{ "remove_file_byindex", PARAMETER_INT },
+	{ "remove_file_byname", PARAMETER_CHARPTR },
+	{ "output_file_list", PARAMETER_NONE },
 	{ NULL, 0 }
 };
 
@@ -454,6 +461,7 @@ gboolean image_loader_load_single(BOSNode *node, gboolean called_from_main);
 gboolean fading_timeout_callback(gpointer user_data);
 void queue_image_load(BOSNode *);
 void unload_image(BOSNode *);
+void remove_image(BOSNode *);
 gboolean initialize_gui_callback(gpointer);
 gboolean initialize_image_loader();
 void fullscreen_hide_cursor();
@@ -463,6 +471,7 @@ void calculate_current_image_transformed_size(int *image_width, int *image_heigh
 cairo_surface_t *get_scaled_image_surface_for_current_image();
 void window_state_into_fullscreen_actions();
 void window_state_out_of_fullscreen_actions();
+BOSNode *image_pointer_by_name(gchar *display_name);
 BOSNode *relative_image_pointer(ptrdiff_t movement);
 void file_tree_free_helper(BOSNode *node);
 gint relative_image_pointer_shuffle_list_cmp(shuffled_image_ref_t *ref, BOSNode *node);
@@ -921,11 +930,24 @@ gboolean load_images_handle_parameter_find_handler(const char *param, load_image
 
 	return FALSE;
 }/*}}}*/
+gpointer load_images_handle_parameter_thread(char *param) {/*{{{*/
+	// Thread version of load_images_handle_parameter
+	// Free()s param after run
+	load_images_handle_parameter(param, PARAMETER, 0);
+	g_free(param);
+	gtk_widget_queue_draw(GTK_WIDGET(main_window));
+	return NULL;
+}/*}}}*/
 void load_images_handle_parameter(char *param, load_images_state_t state, gint depth) {/*{{{*/
 	file_t *file;
 
 	// If the file tree has been invalidated, cancel.
 	if(!file_tree_valid) {
+		return;
+	}
+
+	if(!load_images_file_filter_info) {
+		g_printerr("The image loader has been invalidated; your use case isn't covered. Please file a feature request!\n");
 		return;
 	}
 
@@ -1270,12 +1292,13 @@ void load_images(int *argc, char *argv[]) {/*{{{*/
 		g_io_channel_unref(stdin_reader);
 	}
 
-	// If we do not want to watch directories for changes, we can now drop the variables
-	// we used for loading to free some space
-	if(!option_watch_directories) {
-		// TODO 
+	// If we can be certain that no further images will be loaded, we can now
+	// drop the variables we used for loading to free some space
+	if(!option_watch_directories && !option_commands_from_stdin) {
+		// TODO
 		// g_object_ref_sink(load_images_file_filter);
 		g_free(load_images_file_filter_info);
+		load_images_file_filter_info = NULL;
 		bostree_destroy(directory_tree);
 	}
 
@@ -1842,6 +1865,36 @@ void unload_image(BOSNode *node) {/*{{{*/
 		file->file_monitor = NULL;
 	}
 }/*}}}*/
+void remove_image(BOSNode *node) {/*{{{*/
+	D_LOCK(file_tree);
+
+	node = bostree_node_weak_unref(file_tree, node);
+	if(!node) {
+		D_UNLOCK(file_tree);
+		return;
+	}
+
+	if(node == current_file_node) {
+		// Cheat the image loader into thinking that the file is no longer
+		// available, and force a reload. This is an easy way to use the
+		// mechanism from the loader thread to handle this situation.
+		CURRENT_FILE->force_reload = TRUE;
+		if(CURRENT_FILE->file_name) {
+			CURRENT_FILE->file_name[0] = 0;
+		}
+		if(CURRENT_FILE->file_data) {
+			g_bytes_unref(CURRENT_FILE->file_data);
+			CURRENT_FILE->file_data = NULL;
+		}
+		queue_image_load(current_file_node);
+	}
+	else {
+		unload_image(node);
+		bostree_remove(file_tree, node);
+	}
+
+	D_UNLOCK(file_tree);
+}/*}}}*/
 void preload_adjacent_images() {/*{{{*/
 	if(!option_lowmem) {
 		D_LOCK(file_tree);
@@ -1930,6 +1983,22 @@ shuffled_image_ref_t *relative_image_pointer_shuffle_list_create(BOSNode *node) 
 	retval->viewed = FALSE;
 	return retval;
 }
+BOSNode *image_pointer_by_name(gchar *display_name) {/*{{{*/
+	// Obtain a pointer to the image that has a given display_name
+	// Note that this is only fast (O(log n)) if the file tree is sorted,
+	// elsewise a linear search is used!
+	if(option_sort && option_sort_key == NAME) {
+		return bostree_lookup(file_tree, display_name);
+	}
+	else {
+		for(BOSNode *iter = bostree_select(file_tree, 0); iter; iter = bostree_next_node(iter)) {
+			if(strcasecmp(FILE(iter)->display_name, display_name) == 0) {
+				return iter;
+			}
+		}
+		return NULL;
+	}
+}/*}}}*/
 BOSNode *relative_image_pointer(ptrdiff_t movement) {/*{{{*/
 	// Obtain a pointer to the image that is +movement away from the current image
 	// This function behaves differently depending on whether shuffle mode is
@@ -3488,11 +3557,11 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 			gtk_widget_queue_draw(GTK_WIDGET(main_window));
 			break;
 
-		case ACTION_MOVE_DIRECTORY:
+		case ACTION_GOTO_DIRECTORY_RELATIVE:
 			directory_image_movement(parameter.pint);
 			break;
 
-		case ACTION_MOVE_FILE:
+		case ACTION_GOTO_FILE_RELATIVE:
 			relative_image_movement(parameter.pint);
 			break;
 
@@ -3535,6 +3604,76 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 					#endif
 				}
 			}
+			break;
+
+		case ACTION_ADD_FILE:
+			#if GLIB_CHECK_VERSION(2, 32, 0)
+				g_thread_new("image-loader-from-action", (GThreadFunc)load_images_handle_parameter_thread, g_strdup(parameter.pcharptr));
+			#else
+				g_thread_new((GThreadFunc)load_images_handle_parameter_thread, NULL, FALSE, g_strdup(parameter.pcharptr));
+			#endif
+			break;
+
+		case ACTION_GOTO_FILE_BYINDEX:
+		case ACTION_REMOVE_FILE_BYINDEX:
+			{
+				D_LOCK(file_tree);
+				BOSNode *node = bostree_select(file_tree, parameter.pint);
+				if(node) {
+					node = bostree_node_weak_ref(node);
+				}
+				D_UNLOCK(file_tree);
+
+				if(!node) {
+					g_printerr("Image #%d not found.\n", parameter.pint);
+				}
+				else {
+					if(action_id == ACTION_GOTO_FILE_BYINDEX) {
+						absolute_image_movement(node);
+					}
+					else {
+						remove_image(node);
+						gtk_widget_queue_draw(GTK_WIDGET(main_window));
+					}
+				}
+			}
+
+			break;
+
+		case ACTION_GOTO_FILE_BYNAME:
+		case ACTION_REMOVE_FILE_BYNAME:
+			{
+				D_LOCK(file_tree);
+				BOSNode *node = image_pointer_by_name(parameter.pcharptr);
+				if(node) {
+					node = bostree_node_weak_ref(node);
+				}
+				D_UNLOCK(file_tree);
+
+				if(!node) {
+					g_printerr("Image `%s' not found.\n", parameter.pcharptr);
+				}
+				else {
+					if(action_id == ACTION_GOTO_FILE_BYNAME) {
+						absolute_image_movement(node);
+					}
+					else {
+						remove_image(node);
+						gtk_widget_queue_draw(GTK_WIDGET(main_window));
+					}
+				}
+			}
+			break;
+
+		case ACTION_OUTPUT_FILE_LIST:
+			{
+				D_LOCK(file_tree);
+				for(BOSNode *iter = bostree_select(file_tree, 0); iter; iter = bostree_next_node(iter)) {
+					g_print("%s\n", FILE(iter)->display_name);
+				}
+				D_UNLOCK(file_tree);
+			}
+
 			break;
 	}
 }/*}}}*/
@@ -4566,14 +4705,14 @@ void initialize_key_bindings() {/*{{{*/
 	BIND_KEY(GDK_KEY_j            , 0 , 0                , ACTION_JUMP_DIALOG                     , 0);
 	BIND_KEY(GDK_KEY_s            , 0 , 0                , ACTION_TOGGLE_SLIDESHOW                , 0);
 	BIND_KEY(GDK_KEY_a            , 0 , 0                , ACTION_HARDLINK_CURRENT_IMAGE          , 0);
-	BIND_KEY(GDK_KEY_BackSpace    , 0 , GDK_CONTROL_MASK , ACTION_MOVE_DIRECTORY                  , -1);
-	BIND_KEY(GDK_KEY_BackSpace    , 0 , 0                , ACTION_MOVE_FILE                       , -1);
-	BIND_KEY(GDK_KEY_space        , 0 , GDK_CONTROL_MASK , ACTION_MOVE_DIRECTORY                  , 1);
-	BIND_KEY(GDK_KEY_space        , 0 , 0                , ACTION_MOVE_FILE                       , 1);
-	BIND_KEY(GDK_KEY_Page_Up      , 0 , GDK_CONTROL_MASK , ACTION_MOVE_FILE                       , 10);
-	BIND_KEY(GDK_KEY_KP_Page_Up   , 0 , GDK_CONTROL_MASK , ACTION_MOVE_FILE                       , 10);
-	BIND_KEY(GDK_KEY_Page_Down    , 0 , 0                , ACTION_MOVE_FILE                       , -10);
-	BIND_KEY(GDK_KEY_KP_Page_Down , 0 , 0                , ACTION_MOVE_FILE                       , -10);
+	BIND_KEY(GDK_KEY_BackSpace    , 0 , GDK_CONTROL_MASK , ACTION_GOTO_DIRECTORY_RELATIVE         , -1);
+	BIND_KEY(GDK_KEY_BackSpace    , 0 , 0                , ACTION_GOTO_FILE_RELATIVE              , -1);
+	BIND_KEY(GDK_KEY_space        , 0 , GDK_CONTROL_MASK , ACTION_GOTO_DIRECTORY_RELATIVE         , 1);
+	BIND_KEY(GDK_KEY_space        , 0 , 0                , ACTION_GOTO_FILE_RELATIVE              , 1);
+	BIND_KEY(GDK_KEY_Page_Up      , 0 , GDK_CONTROL_MASK , ACTION_GOTO_FILE_RELATIVE              , 10);
+	BIND_KEY(GDK_KEY_KP_Page_Up   , 0 , GDK_CONTROL_MASK , ACTION_GOTO_FILE_RELATIVE              , 10);
+	BIND_KEY(GDK_KEY_Page_Down    , 0 , 0                , ACTION_GOTO_FILE_RELATIVE              , -10);
+	BIND_KEY(GDK_KEY_KP_Page_Down , 0 , 0                , ACTION_GOTO_FILE_RELATIVE              , -10);
 	BIND_KEY(GDK_KEY_q            , 0 , 0                , ACTION_QUIT                            , 0);
 	BIND_KEY(GDK_KEY_Escape       , 0 , 0                , ACTION_QUIT                            , 0);
 	BIND_KEY(GDK_KEY_1            , 0 , 0                , ACTION_NUMERIC_COMMAND                 , 1);
@@ -4586,11 +4725,11 @@ void initialize_key_bindings() {/*{{{*/
 	BIND_KEY(GDK_KEY_8            , 0 , 0                , ACTION_NUMERIC_COMMAND                 , 8);
 	BIND_KEY(GDK_KEY_9            , 0 , 0                , ACTION_NUMERIC_COMMAND                 , 9);
 
-	BIND_KEY(GDK_BUTTON_PRIMARY   , 1 , 0                , ACTION_MOVE_FILE                       , -1);
+	BIND_KEY(GDK_BUTTON_PRIMARY   , 1 , 0                , ACTION_GOTO_FILE_RELATIVE              , -1);
 	BIND_KEY(GDK_BUTTON_MIDDLE    , 1 , 0                , ACTION_QUIT                            , 0);
-	BIND_KEY(GDK_BUTTON_SECONDARY , 1 , 0                , ACTION_MOVE_FILE                       , 1);
-	BIND_KEY((GDK_SCROLL_UP+1) << 2, 1 , 0               , ACTION_MOVE_FILE                       , 1);
-	BIND_KEY((GDK_SCROLL_DOWN+1) << 2, 1 , 0             , ACTION_MOVE_FILE                       , -1);
+	BIND_KEY(GDK_BUTTON_SECONDARY , 1 , 0                , ACTION_GOTO_FILE_RELATIVE              , 1);
+	BIND_KEY((GDK_SCROLL_UP+1) << 2, 1 , 0               , ACTION_GOTO_FILE_RELATIVE              , 1);
+	BIND_KEY((GDK_SCROLL_DOWN+1) << 2, 1 , 0             , ACTION_GOTO_FILE_RELATIVE              , -1);
 }/*}}}*/
 // }}}
 
