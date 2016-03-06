@@ -371,7 +371,9 @@ GOptionEntry options[] = {
 	{ "command-8", '8', G_OPTION_FLAG_HIDDEN, G_OPTION_ARG_STRING, &external_image_filter_commands[7], NULL, NULL },
 	{ "command-9", '9', G_OPTION_FLAG_HIDDEN, G_OPTION_ARG_STRING, &external_image_filter_commands[8], NULL, NULL },
 
+	{ "bind-key", 0, 0, G_OPTION_ARG_CALLBACK, &options_bind_key_callback, "Rebind a key to another action, see manpage and --show-keybindings output for details.", "KEY BINDING" },
 	{ "browse", 0, 0, G_OPTION_ARG_NONE, &option_browse, "For each command line argument, additionally load all images from the image's directory", NULL },
+	{ "commands-from-stdin", 0, 0, G_OPTION_ARG_NONE, &option_commands_from_stdin, "Read commands from stdin", NULL },
 	{ "disable-scaling", 0, G_OPTION_FLAG_NO_ARG, G_OPTION_ARG_CALLBACK, (gpointer)&option_scale_level_callback, "Disable scaling of images", NULL },
 	{ "end-of-files-action", 0, 0, G_OPTION_ARG_CALLBACK, (gpointer)&option_end_of_files_action_callback, "Action to take after all images have been viewed. (`quit', `wait', `wrap', `wrap-no-reshuffle')", "ACTION" },
 	{ "fade-duration", 0, 0, G_OPTION_ARG_DOUBLE, &option_fading_duration, "Adjust fades' duration", "SECONDS" },
@@ -379,13 +381,10 @@ GOptionEntry options[] = {
 	{ "max-depth", 0, 0, G_OPTION_ARG_INT, &option_max_depth, "Descend at most LEVELS levels of directories below the command line arguments", "LEVELS" },
 	{ "reverse-scroll", 0, G_OPTION_FLAG_HIDDEN, G_OPTION_ARG_NONE, &option_reverse_scroll, "Reverse the meaning of scroll wheel", NULL },
 	{ "shuffle", 0, 0, G_OPTION_ARG_NONE, &option_shuffle, "Shuffle files", NULL },
+	{ "show-bindings", 0, G_OPTION_FLAG_NO_ARG, G_OPTION_ARG_CALLBACK, &help_show_key_bindings, "Display the keyboard and mouse bindings and exit", NULL },
 	{ "sort-key", 0, 0, G_OPTION_ARG_CALLBACK, (gpointer)&option_sort_key_callback, "Key to use for sorting", "PROPERTY" },
 	{ "watch-directories", 0, 0, G_OPTION_ARG_NONE, &option_watch_directories, "Watch directories for new files", NULL },
 	{ "watch-files", 0, 0, G_OPTION_ARG_CALLBACK, (gpointer)&option_watch_files_callback, "Watch files for changes on disk (`on`, `off', `changes-only', i.e. do nothing on deletetion)", "VALUE" },
-
-	{ "show-keybindings", 0, G_OPTION_FLAG_NO_ARG, G_OPTION_ARG_CALLBACK, &help_show_key_bindings, "Display the keyboard and mouse bindings and exit", NULL },
-	{ "bind-key", 0, 0, G_OPTION_ARG_CALLBACK, &options_bind_key_callback, "Rebind a key to another action, see manpage and --show-keybindings output for details.", "KEY BINDING" },
-	{ "commands-from-stdin", 0, 0, G_OPTION_ARG_NONE, &option_commands_from_stdin, "Read commands from stdin", NULL },
 
 	{ NULL, 0, 0, 0, NULL, NULL, NULL }
 };
@@ -425,9 +424,9 @@ const struct pqiv_action_descriptor {
 	{ "flip_vertically", PARAMETER_NONE },
 	{ "rotate_left", PARAMETER_NONE },
 	{ "rotate_right", PARAMETER_NONE },
-	{ "toggle_info_box", PARAMETER_INT },
+	{ "toggle_info_box", PARAMETER_NONE },
 	{ "jump_dialog", PARAMETER_NONE },
-	{ "toggle_slideshow", PARAMETER_INT },
+	{ "toggle_slideshow", PARAMETER_NONE },
 	{ "hardlink_current_image", PARAMETER_NONE },
 	{ "goto_directory_relative", PARAMETER_INT },
 	{ "goto_file_relative", PARAMETER_INT },
