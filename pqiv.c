@@ -67,9 +67,6 @@
 	#define PQIV_VERSION_DEBUG ""
 #endif
 
-// TODO Add stdin interface for actions
-// TODO Add actions useful for scripts: Jump to specific image, add image, remove image
-
 // GTK 2 does not define keyboard aliases the way we do
 #if GTK_MAJOR_VERSION < 3 // {{{
 
