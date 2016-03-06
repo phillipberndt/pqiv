@@ -40,6 +40,7 @@ Features
  * Preloads the next image in the background
  * Fade between images
  * Optional PDF/eps/ps support (useful e.g. for scientific plots)
+ * Optional video format support (e.g. for webm animations)
 
 
 Installation
@@ -65,10 +66,11 @@ and optionally also
  * MagickWand (any version, for additional image formats like psd)
  * ffmpeg / libav (for video support, only included if explicitly compiled in)
 
-The backends are currently statically linked into the code, so all backend
+The backends are per default linked statically into the code, so all backend
 related build-time dependencies are also run-time dependencies. If you need
 a shared version of the backends, for example for separate packaging of
-the binaries, let me know. It's quite easy to implement that.
+the binaries, use the `--backends-build=shared` option. This is only supported
+on Linux platforms currently.
 
 There are experimental, nightly [static builds available for
 download](http://page.mi.fu-berlin.de/pberndt/pqiv-builds/) for Windows and
@@ -116,20 +118,38 @@ Known bugs
   information, or use a fake xrand (like
   [mine](https://github.com/phillipberndt/fakexrandr), for example)
 
+* **Loading postscript files failes with `Error #12288; Unknown output format`**:
+  This issue happens if your poppler and spectre libraries are linked against
+  different versions of libcms. libcms and libcms2 will both be used, but
+  interfere with each other. Compile using `--backends-build=shared` to
+  circumvent this issue.
+
 Changelog
 ---------
 
 pqiv (wip)
+ * Add --reverse-scroll option (by @onodera-punpun)
+ * Added a configure option to build the backends as shared libraries
+ * Added --watch-files to make the file change action configurable
+ * Fixed segfault on reloading of images created by pipe-command output
+
+pqiv 2.4.1
+ * Fix --end-of-files-action=quit if only one file is present
+ * Fixed libav backend's pkg-config dependency list (by @onodera-punpun)
+ * Enable image format support in the libav backend
+
+pqiv 2.4
  * Added --sort-key=mtime to sort by modification time instead of file name
  * Delay the "Image is still loading" message for half a second to avoid
    flickering status messages
  * Remove the "Image is still loading" message if --hide-info-box is set
  * Added [libav](https://www.ffmpeg.org/) backend for video support
+ * Added --end-of-files-action=action to allow users to control what happens
+   once all images have been viewed
+ * Fix various minor memory allocation issues / possible race conditions
 
 pqiv 2.3.5
  * Fix parameters in pqivrc that are handled by a callback
-
-pqiv 2.3.4
  * Fix reference counting if an image fails to load
  * Properly reload multi-page files if they change on disk while being viewed
  * Properly handle if a user closes pqiv while the image loader is still active

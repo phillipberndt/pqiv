@@ -16,7 +16,6 @@
  *
  *
  * libav backend
- * configure hint: disable-auto-configure
  */
 
 /* This backend is based on the excellent short API example from
@@ -104,6 +103,12 @@ void file_type_libav_load(file_t *file, GInputStream *data, GError **error_point
 		return;
 	}
 
+	if(avformat_find_stream_info(private->avcontext, NULL) < 0) {
+		avformat_close_input(&(private->avcontext));
+		*error_pointer = g_error_new(g_quark_from_static_string("pqiv-libav-error"), 1, "Failed to load image using libav.");
+		return;
+	}
+
 	private->video_stream_id = -1;
 	for(size_t i=0; i<private->avcontext->nb_streams; i++) {
         if(private->avcontext->streams[i]->codec->coder_type == AVMEDIA_TYPE_VIDEO) {
@@ -141,25 +146,28 @@ double file_type_libav_animation_next_frame(file_t *file) {/*{{{*/
 		return -1;
 	}
 
-	if(private->pkt_valid) {
-		av_free_packet(&(private->pkt));
-		private->pkt_valid = FALSE;
-	}
+	AVPacket old_pkt = private->pkt;
 
 	do {
 		// Loop until the next video frame is found
 		memset(&(private->pkt), 0, sizeof(AVPacket));
 		if(av_read_frame(private->avcontext, &(private->pkt)) < 0) {
 			av_free_packet(&(private->pkt));
-			avformat_seek_file(private->avcontext, -1, 0, 0, 1, 0);
-			if(av_read_frame(private->avcontext, &(private->pkt)) < 0) {
+			if(avformat_seek_file(private->avcontext, -1, 0, 0, 1, 0) < 0 || av_read_frame(private->avcontext, &(private->pkt)) < 0) {
 				// Reading failed; end stream here to be on the safe side
+				// Display last frame to the user
+				private->pkt = old_pkt;
 				return -1;
 			}
 		}
 	} while(private->pkt.stream_index != private->video_stream_id);
 
-	private->pkt_valid = TRUE;
+	if(private->pkt_valid) {
+		av_free_packet(&old_pkt);
+	}
+	else {
+		private->pkt_valid = TRUE;
+	}
 
 	if(private->avcontext->streams[private->video_stream_id]->avg_frame_rate.den != 0 && private->avcontext->streams[private->video_stream_id]->avg_frame_rate.num != 0) {
 		// Stream has reliable average framerate

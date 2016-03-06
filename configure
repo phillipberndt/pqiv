@@ -25,6 +25,11 @@ BACKENDS=
 ENFORCED_BACKENDS=
 DISABLED_BACKENDS=
 EXTRA_DEFS=
+BACKENDS_BUILD=static
+DEBUG_DEFS=
+
+# For development, you can set default settings here
+[ -x ./configure-dev ] && . ./configure-dev
 
 # Help and options
 help() {
@@ -45,8 +50,13 @@ options:
                           poppler (PDF),
                           spectre (PS/EPS),
                           wand (ImageMagick, various formats)
-  --with[out]-<backend> Alternative syntax for backend selection.
-                        Non-specified backends are autodetermined.
+  --with[out]-<backend> Alternative syntax for backend selection. Non-specified backends are
+                        autodetermined.
+  --backends-build=..   Either \`shared' to compile the backends as shared libraries,
+                        or \`static' to compile them into pqiv. \`shared' is only of use if you
+                        plan to package pqiv and want to get rid of the run-time dependencies,
+                        so this defaults to \`static'.
+
 EOF
 
 sed -n -re 's!#ifn?def (\S+)\s*/\* option (\S+): (.+) ?\*/!\1 \2 \3!p' pqiv.c | while read DEFNAME OPTFLAG DESCRIPTION; do
@@ -86,6 +96,13 @@ while [ $# -gt 0 ]; do
 			CROSS=$VALUE
 			if [ "${CROSS: -1}" != "-" ]; then
 				CROSS="$CROSS-"
+			fi
+			;;
+		--backends-build)
+			BACKENDS_BUILD=$VALUE
+			if [ "$BACKENDS_BUILD" != "static" -a "$BACKENDS_BUILD" != "shared" ]; then
+				echo "Invalid argument to --backends-build: Value must be either \`static' or \`shared'." >&2
+				exit 1
 			fi
 			;;
 		# Undocumented options for autoconf (esp. dh_auto_configure) compatibility
@@ -248,6 +265,7 @@ if [ $? != 0 ]; then
 fi
 
 if $PKG_CONFIG --exists "$LIBS_GTK3"; then
+	LIBS="${LIBS_GTK3}"
 	echo "ok"
 else
 	if $PKG_CONFIG --exists "$LIBS_GTK2"; then
@@ -262,6 +280,7 @@ else
 		fi
 		echo "ok, found GTK 2"
 		GTK_VERSION=2
+		LIBS="${LIBS_GTK2}"
 	else
 		echo "failed."
 		echo
@@ -283,13 +302,44 @@ CROSS=$CROSS
 EXECUTABLE_EXTENSION=$EXECUTABLE_EXTENSION
 PKG_CONFIG=$PKG_CONFIG
 EXTRA_DEFS=${EXTRA_DEFS}
+BACKENDS_BUILD=$BACKENDS_BUILD
 ${CFLAGS:+CFLAGS=$CFLAGS}
 ${LDFLAGS:+LDFLAGS=$LDFLAGS}
 ${CCFLAGS:+CCFLAGS=$CCFLAGS}
 ${MANDIR:+MANDIR=$MANDIR}
 ${BACKENDS:+BACKENDS=$BACKENDS}
 ${CC:+CC=$CC}
+${DEBUG_DEFS}
 EOF
+
+# Check for lcms bug
+#
+if [ "${BACKENDS_BUILD}" = "static" -a "${BACKENDS/poppler//}" != "${BACKENDS}" -a "${BACKENDS/spectre//}" != "${BACKENDS}" ]; then
+	echo -n "Checking if affected by liblcms bug..         "
+	DIR=`tempdir`
+	cd $DIR
+	echo -e "#include <poppler.h>\n#include <libspectre/spectre.h>\nint main() { poppler_get_version(); spectre_status_to_string(SPECTRE_STATUS_SUCCESS); }" > test.c
+	${CROSS}${CC:-cc} ${CFLAGS} test.c ${LDFLAGS} $($PKG_CONFIG --libs --cflags ${LIBS}) -o test >/dev/null 2>&1
+	if [ -e test ]; then
+		if [ "$(ldd test | grep -E "liblcms[0-9]?.so" | wc -l)" -gt 1 ]; then
+			echo "yes"
+			echo 2>&1
+			echo "WARNING: You enabled both the spectre and poppler backends, and chose static linking." >&2
+			echo "Your system uses two different versions of liblcms that are known to interfere:" 2>&1
+			ldd test | grep -E "liblcms[0-9]?.so" >&2
+			echo "Recompile using --backends-build=shared if you experience problems." 2>&1
+			echo 2>&1
+		else
+			echo "no"
+		fi
+	else
+		echo "test failed"
+	fi
+	rm -f test.c test
+	cd ..
+	rmdir $DIR
+fi
+
 echo
 echo "Done. Run \`$MAKE install' to install pqiv."
 exit 0

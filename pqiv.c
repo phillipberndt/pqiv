@@ -27,9 +27,11 @@
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <sys/types.h>
 #include <unistd.h>
 #include <assert.h>
+#include <locale.h>
 
 #ifdef _WIN32
 	#ifndef _WIN32_WINNT
@@ -64,6 +66,9 @@
 #else
 	#define PQIV_VERSION_DEBUG ""
 #endif
+
+// TODO Add stdin interface for actions
+// TODO Add actions useful for scripts: Jump to specific image, add image, remove image
 
 // GTK 2 does not define keyboard aliases the way we do
 #if GTK_MAJOR_VERSION < 3 // {{{
@@ -229,7 +234,10 @@ gint main_window_width = 10;
 gint main_window_height = 10;
 gboolean main_window_in_fullscreen = FALSE;
 GdkRectangle screen_geometry = { 0, 0, 0, 0 };
-gboolean screen_supports_fullscreen = TRUE;
+gboolean wm_supports_fullscreen = TRUE;
+
+// If a WM indicates no moveresize support that's a hint it's a tiling WM
+gboolean wm_supports_moveresize = TRUE;
 
 cairo_pattern_t *background_checkerboard_pattern = NULL;
 
@@ -264,7 +272,14 @@ guint current_image_animation_timeout_id = 0;
 gint slideshow_timeout_id = -1;
 
 // A list containing references to the images in shuffled order
+typedef struct {
+	gboolean viewed;
+	BOSNode *node;
+} shuffled_image_ref_t;
+guint shuffled_images_visited_count = 0;
+guint shuffled_images_list_length = 0;
 GList *shuffled_images_list = NULL;
+#define LIST_SHUFFLED_IMAGE(x) (((shuffled_image_ref_t *)x->data))
 
 #ifndef CONFIGURED_WITHOUT_EXTERNAL_COMMANDS
 // User options
@@ -304,22 +319,36 @@ gboolean option_sort = FALSE;
 enum { NAME, MTIME } option_sort_key = NAME;
 gboolean option_shuffle = FALSE;
 gboolean option_reverse_cursor_keys = FALSE;
+gboolean option_reverse_scroll = FALSE;
 gboolean option_transparent_background = FALSE;
 gboolean option_watch_directories = FALSE;
 gboolean option_fading = FALSE;
 gboolean option_lazy_load = FALSE;
 gboolean option_lowmem = FALSE;
 gboolean option_addl_from_stdin = FALSE;
+#ifndef CONFIGURED_WITHOUT_CONFIGURABLE_KEY_BINDINGS
+gboolean option_commands_from_stdin = FALSE;
+#else
+static const gboolean option_commands_from_stdin = FALSE;
+#endif
 double option_fading_duration = .5;
 gint option_max_depth = -1;
 gboolean option_browse = FALSE;
+enum { QUIT, WAIT, WRAP, WRAP_NO_RESHUFFLE } option_end_of_files_action = WRAP;
+enum { ON, OFF, CHANGES_ONLY } option_watch_files = ON;
 
 double fading_current_alpha_stage = 0;
 gint64 fading_initial_time;
 
 gboolean options_keyboard_alias_set_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error);
+#ifndef CONFIGURED_WITHOUT_CONFIGURABLE_KEY_BINDINGS
+gboolean options_bind_key_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error);
+gboolean help_show_key_bindings(const gchar *option_name, const gchar *value, gpointer data, GError **error);
+#endif
 gboolean option_window_position_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error);
 gboolean option_scale_level_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error);
+gboolean option_end_of_files_action_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error);
+gboolean option_watch_files_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error);
 gboolean option_sort_key_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error);
 void load_images_handle_parameter(char *param, load_images_state_t state, gint depth);
 
@@ -331,7 +360,7 @@ struct {
 // Hint: Only types G_OPTION_ARG_NONE, G_OPTION_ARG_STRING, G_OPTION_ARG_DOUBLE/INTEGER and G_OPTION_ARG_CALLBACK are
 // implemented for option parsing.
 GOptionEntry options[] = {
-	{ "keyboard-alias", 'a', 0, G_OPTION_ARG_CALLBACK, (gpointer)&options_keyboard_alias_set_callback, "Define n as a keyboard alias for f", "nfnf.." },
+	{ "keyboard-alias", 'a', G_OPTION_FLAG_HIDDEN, G_OPTION_ARG_CALLBACK, (gpointer)&options_keyboard_alias_set_callback, "Define n as a keyboard alias for f", "nfnf.." },
 	{ "transparent-background", 'c', 0, G_OPTION_ARG_NONE, &option_transparent_background, "Borderless transparent window", NULL },
 	{ "slideshow-interval", 'd', 0, G_OPTION_ARG_DOUBLE, &option_slideshow_interval, "Set slideshow interval", "n" },
 	{ "fullscreen", 'f', 0, G_OPTION_ARG_NONE, &option_start_fullscreen, "Start in fullscreen mode", NULL },
@@ -342,7 +371,7 @@ GOptionEntry options[] = {
 	{ "lazy-load", 'l', 0, G_OPTION_ARG_NONE, &option_lazy_load, "Display the main window as soon as possible", NULL },
 	{ "sort", 'n', 0, G_OPTION_ARG_NONE, &option_sort, "Sort files in natural order", NULL },
 	{ "window-position", 'P', 0, G_OPTION_ARG_CALLBACK, (gpointer)&option_window_position_callback, "Set initial window position (`x,y' or `off' to not position the window at all)", "POSITION" },
-	{ "reverse-cursor-keys", 'R', 0, G_OPTION_ARG_NONE, &option_reverse_cursor_keys, "Reverse the meaning of the cursor keys", NULL },
+	{ "reverse-cursor-keys", 'R', G_OPTION_FLAG_HIDDEN, G_OPTION_ARG_NONE, &option_reverse_cursor_keys, "Reverse the meaning of the cursor keys", NULL },
 	{ "additional-from-stdin", 'r', 0, G_OPTION_ARG_NONE, &option_addl_from_stdin, "Read additional filenames/folders from stdin", NULL },
 	{ "slideshow", 's', 0, G_OPTION_ARG_NONE, &option_start_with_slideshow_mode, "Activate slideshow mode", NULL },
 	{ "scale-images-up", 't', G_OPTION_FLAG_NO_ARG, G_OPTION_ARG_CALLBACK, (gpointer)&option_scale_level_callback, "Scale images up to fill the whole screen", NULL },
@@ -363,38 +392,77 @@ GOptionEntry options[] = {
 
 	{ "browse", 0, 0, G_OPTION_ARG_NONE, &option_browse, "For each command line argument, additionally load all images from the image's directory", NULL },
 	{ "disable-scaling", 0, G_OPTION_FLAG_NO_ARG, G_OPTION_ARG_CALLBACK, (gpointer)&option_scale_level_callback, "Disable scaling of images", NULL },
+	{ "end-of-files-action", 0, 0, G_OPTION_ARG_CALLBACK, (gpointer)&option_end_of_files_action_callback, "Action to take after all images have been viewed. (`quit', `wait', `wrap', `wrap-no-reshuffle')", "ACTION" },
 	{ "fade-duration", 0, 0, G_OPTION_ARG_DOUBLE, &option_fading_duration, "Adjust fades' duration", "SECONDS" },
 	{ "low-memory", 0, 0, G_OPTION_ARG_NONE, &option_lowmem, "Try to keep memory usage to a minimum", NULL },
 	{ "max-depth", 0, 0, G_OPTION_ARG_INT, &option_max_depth, "Descend at most LEVELS levels of directories below the command line arguments", "LEVELS" },
+	{ "reverse-scroll", 0, G_OPTION_FLAG_HIDDEN, G_OPTION_ARG_NONE, &option_reverse_scroll, "Reverse the meaning of scroll wheel", NULL },
 	{ "shuffle", 0, 0, G_OPTION_ARG_NONE, &option_shuffle, "Shuffle files", NULL },
 	{ "sort-key", 0, 0, G_OPTION_ARG_CALLBACK, (gpointer)&option_sort_key_callback, "Key to use for sorting", "PROPERTY" },
 	{ "watch-directories", 0, 0, G_OPTION_ARG_NONE, &option_watch_directories, "Watch directories for new files", NULL },
+	{ "watch-files", 0, 0, G_OPTION_ARG_CALLBACK, (gpointer)&option_watch_files_callback, "Watch files for changes on disk (`on`, `off', `changes-only', i.e. do nothing on deletetion)", "VALUE" },
+
+#ifndef CONFIGURED_WITHOUT_CONFIGURABLE_KEY_BINDINGS
+	{ "show-keybindings", 0, G_OPTION_FLAG_NO_ARG, G_OPTION_ARG_CALLBACK, &help_show_key_bindings, "Display the keyboard and mouse bindings and exit", NULL },
+	{ "bind-key", 0, 0, G_OPTION_ARG_CALLBACK, &options_bind_key_callback, "Rebind a key to another action, see manpage and --show-keybindings output for details.", "KEY BINDING" },
+	{ "commands-from-stdin", 0, 0, G_OPTION_ARG_NONE, &option_commands_from_stdin, "Read commands from stdin", NULL },
+#endif
 
 	{ NULL, 0, 0, 0, NULL, NULL, NULL }
 };
 
-const char *long_description_text = ("Keyboard & Mouse bindings:\n"
-"  Backspace, Button 3, Scroll        Previous image\n"
-"  PgUp/PgDown                        Jump 10 images forwards/backwards\n"
-"  Escape, q, Button 2                Quit\n"
-"  Cursor keys, Drag & Drop           Move (CTRL to move faster)\n"
-"  Space, Button 1, Scroll            Next image\n"
-"  CTRL Space/Backspace               Move to first image in next/previous directory\n"
-"  f                                  Toggle fullscreen\n"
-#ifndef CONFIGURED_WITHOUT_JUMP_DIALOG
-"  j                                  Jump to an image (Shows a selection box)\n"
-#endif
-"  r                                  Reload image\n"
-"  CTRL r                             Toggle shuffle mode\n"
-"  +/-/0, Button 3 & Drag             Zoom in/out/reset zoom\n"
-"  t                                  Toggle autoscale\n"
-"  l/k                                Rotate left/right\n"
-"  h/v                                Flip horizontally/vertically\n"
-"  i                                  Toggle info box\n"
-"  s                                  Toggle slideshow mode\n"
-"  CTRL +/-                           Change slideshow interval\n"
-"  a                                  Hardlink current image to ./.pqiv-select\n"
-);
+#define KEY_BINDING_VALUE(is_mouse, state, keycode) ((guint)(((is_mouse & 1) << 31) | ((state & 7) << 28) | (keycode & 0xfffffff)))
+typedef struct key_binding key_binding_t;
+struct key_binding {
+	pqiv_action_t action;
+	pqiv_action_parameter_t parameter;
+
+	struct key_binding *next_action;    // For assinging multiple actions to one key
+	GHashTable *next_key_bindings; // For key sequences
+};
+GHashTable *key_bindings;
+struct {
+	key_binding_t *key_binding;
+	gint timeout_id;
+} active_key_binding;
+
+const struct pqiv_action_descriptor {
+	const char *name;
+	enum { PARAMETER_INT, PARAMETER_DOUBLE, PARAMETER_CHARPTR, PARAMETER_NONE } parameter_type;
+} pqiv_action_descriptors[] = {
+	{ "nop", PARAMETER_NONE },
+	{ "shift_y", PARAMETER_INT },
+	{ "shift_x", PARAMETER_INT },
+	{ "set_slideshow_interval_relative", PARAMETER_DOUBLE },
+	{ "set_slideshow_interval_absolute", PARAMETER_DOUBLE },
+	{ "set_scale_level_relative", PARAMETER_DOUBLE },
+	{ "set_scale_level_absolute", PARAMETER_DOUBLE },
+	{ "toggle_scaling_mode", PARAMETER_INT },
+	{ "toggle_shuffle_mode", PARAMETER_INT },
+	{ "reload", PARAMETER_NONE },
+	{ "reset_scale_level", PARAMETER_NONE },
+	{ "toggle_fullscreen", PARAMETER_NONE },
+	{ "flip_horizontally", PARAMETER_NONE },
+	{ "flip_vertically", PARAMETER_NONE },
+	{ "rotate_left", PARAMETER_NONE },
+	{ "rotate_right", PARAMETER_NONE },
+	{ "toggle_info_box", PARAMETER_INT },
+	{ "jump_dialog", PARAMETER_NONE },
+	{ "toggle_slideshow", PARAMETER_INT },
+	{ "hardlink_current_image", PARAMETER_NONE },
+	{ "goto_directory_relative", PARAMETER_INT },
+	{ "goto_file_relative", PARAMETER_INT },
+	{ "quit", PARAMETER_NONE },
+	{ "numeric_command", PARAMETER_INT },
+	{ "command", PARAMETER_CHARPTR },
+	{ "add_file", PARAMETER_CHARPTR },
+	{ "goto_file_byindex", PARAMETER_INT },
+	{ "goto_file_byname", PARAMETER_CHARPTR },
+	{ "remove_file_byindex", PARAMETER_INT },
+	{ "remove_file_byname", PARAMETER_CHARPTR },
+	{ "output_file_list", PARAMETER_NONE },
+	{ NULL, 0 }
+};
 
 typedef struct {
 	gint depth;
@@ -422,6 +490,7 @@ gboolean image_loader_load_single(BOSNode *node, gboolean called_from_main);
 gboolean fading_timeout_callback(gpointer user_data);
 void queue_image_load(BOSNode *);
 void unload_image(BOSNode *);
+void remove_image(BOSNode *);
 gboolean initialize_gui_callback(gpointer);
 gboolean initialize_image_loader();
 void fullscreen_hide_cursor();
@@ -431,11 +500,21 @@ void calculate_current_image_transformed_size(int *image_width, int *image_heigh
 cairo_surface_t *get_scaled_image_surface_for_current_image();
 void window_state_into_fullscreen_actions();
 void window_state_out_of_fullscreen_actions();
+BOSNode *image_pointer_by_name(gchar *display_name);
 BOSNode *relative_image_pointer(ptrdiff_t movement);
 void file_tree_free_helper(BOSNode *node);
+gint relative_image_pointer_shuffle_list_cmp(shuffled_image_ref_t *ref, BOSNode *node);
+void relative_image_pointer_shuffle_list_unref_fn(shuffled_image_ref_t *ref);
+gboolean slideshow_timeout_callback(gpointer user_data);
+#ifndef CONFIGURED_WITHOUT_CONFIGURABLE_KEY_BINDINGS
+void parse_key_bindings(const gchar *bindings);
+#endif
 // }}}
 /* Command line handling, creation of the image list {{{ */
 gboolean options_keyboard_alias_set_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error) {/*{{{*/
+	// TODO Deprecated, remove with 2.6
+	g_printerr("Warning: --keyboard-alias is deprecated and will be removed in pqiv 2.6. Use --bind-key instead.\n");
+
 	if(strlen(value) % 2 != 0) {
 		g_set_error(error, G_OPTION_ERROR, G_OPTION_ERROR_FAILED, "The argument to the alias option must have a multiple of two characters: Every odd one is mapped to the even one following it.");
 		return FALSE;
@@ -447,6 +526,21 @@ gboolean options_keyboard_alias_set_callback(const gchar *option_name, const gch
 
 	return TRUE;
 }/*}}}*/
+#ifndef CONFIGURED_WITHOUT_CONFIGURABLE_KEY_BINDINGS /* option --without-configurable-key-bindings: Do not include support for configurable key/mouse bindings */
+gboolean options_bind_key_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error) {/*{{{*/
+	// Format for value:
+	//  {key sequence description, special keys as <name>} { {action}({parameter});[...] } [...]
+	//
+	// Special names are: <Shift>, <Control>, <Alt> (GDK_MOD1_MASK), <Mouse-%d> and any other must be fed to gdk_keyval_from_name
+	// String parameters must be given in quotes
+	// To set an error:
+	// g_set_error(error, G_OPTION_ERROR, G_OPTION_ERROR_FAILED, "The argument to the alias option must have a multiple of two characters: Every odd one is mapped to the even one following it.");
+	//
+	parse_key_bindings(value);
+
+	return TRUE;
+}/*}}}*/
+#endif
 gboolean option_window_position_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error) {/*{{{*/
 	if(strcmp(value, "off") == 0) {
 		option_window_position.x = option_window_position.y = -1;
@@ -471,6 +565,41 @@ gboolean option_scale_level_callback(const gchar *option_name, const gchar *valu
 	}
 	else {
 		option_scale = 0;
+	}
+	return TRUE;
+}/*}}}*/
+gboolean option_watch_files_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error) {/*{{{*/
+	if(strcmp(value, "off") == 0) {
+		option_watch_files = OFF;
+	}
+	else if(strcmp(value, "on") == 0) {
+		option_watch_files = ON;
+	}
+	else if(strcmp(value, "changes-only") == 0) {
+		option_watch_files = CHANGES_ONLY;
+	}
+	else {
+		g_set_error(error, G_OPTION_ERROR, G_OPTION_ERROR_FAILED, "Unexpected argument value for the --watch-files option. Allowed values are: on, off and changes-only.");
+		return FALSE;
+	}
+	return TRUE;
+}/*}}}*/
+gboolean option_end_of_files_action_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error) {/*{{{*/
+	if(strcmp(value, "quit") == 0) {
+		option_end_of_files_action = QUIT;
+	}
+	else if(strcmp(value, "wait") == 0) {
+		option_end_of_files_action = WAIT;
+	}
+	else if(strcmp(value, "wrap") == 0) {
+		option_end_of_files_action = WRAP;
+	}
+	else if(strcmp(value, "wrap-no-reshuffle") == 0) {
+		option_end_of_files_action = WRAP_NO_RESHUFFLE;
+	}
+	else {
+		g_set_error(error, G_OPTION_ERROR, G_OPTION_ERROR_FAILED, "Unexpected argument value for the --end-of-files-action option. Allowed values are: quit, wait, wrap (default) and wrap-no-reshuffle.");
+		return FALSE;
 	}
 	return TRUE;
 }/*}}}*/
@@ -671,7 +800,6 @@ void parse_configuration_file(int *argc, char **argv[]) {/*{{{*/
 void parse_command_line(int *argc, char *argv[]) {/*{{{*/
 	GOptionContext *parser = g_option_context_new("FILES");
 	g_option_context_set_summary(parser, "A minimalist image viewer\npqiv version " PQIV_VERSION PQIV_VERSION_DEBUG " by Phillip Berndt");
-	g_option_context_set_description(parser, long_description_text);
 	g_option_context_set_help_enabled(parser, TRUE);
 	g_option_context_set_ignore_unknown_options(parser, FALSE);
 	g_option_context_add_main_entries(parser, options, NULL);
@@ -835,11 +963,24 @@ gboolean load_images_handle_parameter_find_handler(const char *param, load_image
 
 	return FALSE;
 }/*}}}*/
+gpointer load_images_handle_parameter_thread(char *param) {/*{{{*/
+	// Thread version of load_images_handle_parameter
+	// Free()s param after run
+	load_images_handle_parameter(param, PARAMETER, 0);
+	g_free(param);
+	gtk_widget_queue_draw(GTK_WIDGET(main_window));
+	return NULL;
+}/*}}}*/
 void load_images_handle_parameter(char *param, load_images_state_t state, gint depth) {/*{{{*/
 	file_t *file;
 
 	// If the file tree has been invalidated, cancel.
 	if(!file_tree_valid) {
+		return;
+	}
+
+	if(!load_images_file_filter_info) {
+		g_printerr("The image loader has been invalidated; your use case isn't covered. Please file a feature request!\n");
 		return;
 	}
 
@@ -892,7 +1033,7 @@ void load_images_handle_parameter(char *param, load_images_state_t state, gint d
 	else {
 		// If the browse option is enabled, add the containing directory's images instead of the parameter itself
 		gchar *original_parameter = NULL;
-		if(state == PARAMETER && option_browse && g_file_test(param, G_FILE_TEST_IS_SYMLINK | G_FILE_TEST_IS_REGULAR) == TRUE && option_max_depth != 0) {
+		if(state == PARAMETER && option_browse && g_file_test(param, G_FILE_TEST_IS_SYMLINK | G_FILE_TEST_IS_REGULAR) == TRUE) {
 			// Handle the actual parameter first, such that it is displayed
 			// first (unless sorting is enabled)
 			load_images_handle_parameter(param, BROWSE_ORIGINAL_PARAMETER, 0);
@@ -1184,12 +1325,13 @@ void load_images(int *argc, char *argv[]) {/*{{{*/
 		g_io_channel_unref(stdin_reader);
 	}
 
-	// If we do not want to watch directories for changes, we can now drop the variables
-	// we used for loading to free some space
-	if(!option_watch_directories) {
-		// TODO 
+	// If we can be certain that no further images will be loaded, we can now
+	// drop the variables we used for loading to free some space
+	if(!option_watch_directories && !option_commands_from_stdin) {
+		// TODO
 		// g_object_ref_sink(load_images_file_filter);
 		g_free(load_images_file_filter_info);
+		load_images_file_filter_info = NULL;
 		bostree_destroy(directory_tree);
 	}
 
@@ -1237,6 +1379,10 @@ gboolean image_animation_timeout_callback(gpointer user_data) {/*{{{*/
 void image_file_updated_callback(GFileMonitor *monitor, GFile *file, GFile *other_file, GFileMonitorEvent event_type, gpointer user_data) {/*{{{*/
 	BOSNode *node = (BOSNode *)user_data;
 
+	if(option_watch_files == OFF) {
+		return;
+	}
+
 	D_LOCK(file_tree);
 	if(event_type == G_FILE_MONITOR_EVENT_CHANGES_DONE_HINT) {
 		FILE(node)->force_reload = TRUE;
@@ -1253,12 +1399,16 @@ void image_file_updated_callback(GFileMonitor *monitor, GFile *file, GFile *othe
 		// periodically exchange images using scp. There might be a race condition if a user
 		// is not aware that he should first move the new images to a folder and then remove
 		// the old ones. Therefore, if there is only one image remaining, pqiv does nothing.
+		// But as new images are added (if --watch-directories is set), the old one should
+		// be removed eventually. Hence, force_reload is still set on the deleted image.
 		//
-		// If anyone ever complains about this it would be best to add an option to entirely
-		// disable this functionality.
-		if(bostree_node_count(file_tree) > 1) {
+		// There's another race if a user deletes all files at once. --watch-files=ignore
+		// has been added for such situations, to disable this functionality
+		if(option_watch_files == ON) {
 			FILE(node)->force_reload = TRUE;
-			queue_image_load(node);
+			if(bostree_node_count(file_tree) > 1) {
+				queue_image_load(node);
+			}
 		}
 	}
 	D_UNLOCK(file_tree);
@@ -1371,6 +1521,25 @@ gboolean image_loaded_handler(gconstpointer node) {/*{{{*/
 	if(node && node != current_file_node) {
 		D_UNLOCK(file_tree);
 		return FALSE;
+	}
+
+	// If in shuffle mode, mark the current image as viewed, and possibly
+	// reset the list once all images have been
+	if(option_shuffle) {
+		GList *current_shuffled_image = g_list_find_custom(shuffled_images_list, current_file_node, (GCompareFunc)relative_image_pointer_shuffle_list_cmp);
+		if(current_shuffled_image) {
+			if(!LIST_SHUFFLED_IMAGE(current_shuffled_image)->viewed) {
+				LIST_SHUFFLED_IMAGE(current_shuffled_image)->viewed = 1;
+				if(++shuffled_images_visited_count == bostree_node_count(file_tree)) {
+					if(option_end_of_files_action == WRAP) {
+						g_list_free_full(shuffled_images_list, (GDestroyNotify)relative_image_pointer_shuffle_list_unref_fn);
+						shuffled_images_list = NULL;
+						shuffled_images_visited_count = 0;
+						shuffled_images_list_length = 0;
+					}
+				}
+			}
+		}
 	}
 
 	// Sometimes when a user is hitting the next image button really fast this
@@ -1729,6 +1898,36 @@ void unload_image(BOSNode *node) {/*{{{*/
 		file->file_monitor = NULL;
 	}
 }/*}}}*/
+void remove_image(BOSNode *node) {/*{{{*/
+	D_LOCK(file_tree);
+
+	node = bostree_node_weak_unref(file_tree, node);
+	if(!node) {
+		D_UNLOCK(file_tree);
+		return;
+	}
+
+	if(node == current_file_node) {
+		// Cheat the image loader into thinking that the file is no longer
+		// available, and force a reload. This is an easy way to use the
+		// mechanism from the loader thread to handle this situation.
+		CURRENT_FILE->force_reload = TRUE;
+		if(CURRENT_FILE->file_name) {
+			CURRENT_FILE->file_name[0] = 0;
+		}
+		if(CURRENT_FILE->file_data) {
+			g_bytes_unref(CURRENT_FILE->file_data);
+			CURRENT_FILE->file_data = NULL;
+		}
+		queue_image_load(current_file_node);
+	}
+	else {
+		unload_image(node);
+		bostree_remove(file_tree, node);
+	}
+
+	D_UNLOCK(file_tree);
+}/*}}}*/
 void preload_adjacent_images() {/*{{{*/
 	if(!option_lowmem) {
 		D_LOCK(file_tree);
@@ -1769,11 +1968,13 @@ gboolean absolute_image_movement(BOSNode *ref) {/*{{{*/
 	current_file_node = bostree_node_weak_ref(node);
 	D_UNLOCK(file_tree);
 
+#ifndef CONFIGURED_WITHOUT_INFO_TEXT
 	// If the new image has not been loaded yet, prepare to display an information message
 	// after some grace period
 	if(!CURRENT_FILE->is_loaded && !option_hide_info_box) {
 		gdk_threads_add_timeout(500, absolute_image_movement_still_unloaded_timer_callback, current_file_node);
 	}
+#endif
 
 	// Load it
 	queue_image_load(current_file_node);
@@ -1802,9 +2003,37 @@ gboolean absolute_image_movement(BOSNode *ref) {/*{{{*/
 
 	return FALSE;
 }/*}}}*/
-void relative_image_pointer_shuffle_list_unref_fn(BOSNode *node) {
-	bostree_node_weak_unref(file_tree, node);
+void relative_image_pointer_shuffle_list_unref_fn(shuffled_image_ref_t *ref) {
+	bostree_node_weak_unref(file_tree, ref->node);
+	g_slice_free(shuffled_image_ref_t, ref);
 }
+gint relative_image_pointer_shuffle_list_cmp(shuffled_image_ref_t *ref, BOSNode *node) {
+	if(node == ref->node) return 0;
+	return 1;
+}
+shuffled_image_ref_t *relative_image_pointer_shuffle_list_create(BOSNode *node) {
+	assert(node != NULL);
+	shuffled_image_ref_t *retval = g_slice_new(shuffled_image_ref_t);
+	retval->node = bostree_node_weak_ref(node);
+	retval->viewed = FALSE;
+	return retval;
+}
+BOSNode *image_pointer_by_name(gchar *display_name) {/*{{{*/
+	// Obtain a pointer to the image that has a given display_name
+	// Note that this is only fast (O(log n)) if the file tree is sorted,
+	// elsewise a linear search is used!
+	if(option_sort && option_sort_key == NAME) {
+		return bostree_lookup(file_tree, display_name);
+	}
+	else {
+		for(BOSNode *iter = bostree_select(file_tree, 0); iter; iter = bostree_next_node(iter)) {
+			if(strcasecmp(FILE(iter)->display_name, display_name) == 0) {
+				return iter;
+			}
+		}
+		return NULL;
+	}
+}/*}}}*/
 BOSNode *relative_image_pointer(ptrdiff_t movement) {/*{{{*/
 	// Obtain a pointer to the image that is +movement away from the current image
 	// This function behaves differently depending on whether shuffle mode is
@@ -1817,10 +2046,10 @@ BOSNode *relative_image_pointer(ptrdiff_t movement) {/*{{{*/
 	if(option_shuffle) {
 #if 0
 		// Output some debug info
-		GList *aa = g_list_find(shuffled_images_list, current_file_node);
+		GList *aa = g_list_find_custom(shuffled_images_list, current_file_node, (GCompareFunc)relative_image_pointer_shuffle_list_cmp);
 		g_print("Current shuffle list: ");
 		for(GList *e = g_list_first(shuffled_images_list); e; e = e->next) {
-			BOSNode *n = bostree_node_weak_unref(file_tree, bostree_node_weak_ref(e->data));
+			BOSNode *n = bostree_node_weak_unref(file_tree, bostree_node_weak_ref(LIST_SHUFFLED_IMAGE(e)->node));
 			if(n) {
 				if(e == aa) {
 					g_print("*%02d* ", bostree_rank(n)+1);
@@ -1837,7 +2066,7 @@ BOSNode *relative_image_pointer(ptrdiff_t movement) {/*{{{*/
 #endif
 
 		// First, check if the relative movement is already possible within the existing list
-		GList *current_shuffled_image = g_list_find(shuffled_images_list, current_file_node);
+		GList *current_shuffled_image = g_list_find_custom(shuffled_images_list, current_file_node, (GCompareFunc)relative_image_pointer_shuffle_list_cmp);
 		if(!current_shuffled_image) {
 			current_shuffled_image = g_list_last(shuffled_images_list);
 
@@ -1858,44 +2087,74 @@ BOSNode *relative_image_pointer(ptrdiff_t movement) {/*{{{*/
 			movement++;
 		}
 
-		// The list isn't long enough to provide us with the desired image. Expand it:
-		while(movement != 0) {
-			BOSNode *next_candidate, *chosen_candidate;
-			// We select one random list element and then choose the sequentially next
-			// until we find one that has not been chosen yet. Walking sequentially
-			// after chosing one random integer index still generates a
-			// equidistributed permutation.
-			// This is O(n^2), since we must in the worst case lookup n-1 elements
-			// in a list of already chosen ones, but I think that this still is a
-			// better choice than to store an additional boolean in each file_t,
-			// which would make this O(n).
-			next_candidate = chosen_candidate = bostree_select(file_tree, g_random_int_range(0, count));
-			if(!next_candidate) {
-				// All images have gone.
-				return current_file_node;
-			}
-			while(g_list_find(shuffled_images_list, next_candidate)) {
-				next_candidate = bostree_next_node(next_candidate);
+		// The list isn't long enough to provide us with the desired image.
+		if(shuffled_images_list_length < bostree_node_count(file_tree)) {
+			// If not all images have been viewed, expand it
+			while(movement != 0) {
+				BOSNode *next_candidate, *chosen_candidate;
+				// We select one random list element and then choose the sequentially next
+				// until we find one that has not been chosen yet. Walking sequentially
+				// after chosing one random integer index still generates a
+				// equidistributed permutation.
+				// This is O(n^2), since we must in the worst case lookup n-1 elements
+				// in a list of already chosen ones, but I think that this still is a
+				// better choice than to store an additional boolean in each file_t,
+				// which would make this O(n).
+				next_candidate = chosen_candidate = bostree_select(file_tree, g_random_int_range(0, count));
 				if(!next_candidate) {
-					next_candidate = bostree_select(file_tree, 0);
+					// All images have gone.
+					return current_file_node;
 				}
-				if(next_candidate == chosen_candidate) {
-					// All images have been visited, restart over
-					g_list_free_full(shuffled_images_list, (GDestroyNotify)relative_image_pointer_shuffle_list_unref_fn);
-					shuffled_images_list = g_list_append(NULL, bostree_node_weak_ref(chosen_candidate));
-					return chosen_candidate;
+				while(g_list_find_custom(shuffled_images_list, next_candidate, (GCompareFunc)relative_image_pointer_shuffle_list_cmp)) {
+					next_candidate = bostree_next_node(next_candidate);
+					if(!next_candidate) {
+						next_candidate = bostree_select(file_tree, 0);
+					}
+					if(next_candidate == chosen_candidate) {
+						// This ought not happen :/
+						g_warn_if_reached();
+						current_shuffled_image = NULL;
+						movement = 0;
+					}
 				}
-			}
 
-			if(movement > 0) {
-				shuffled_images_list = g_list_append(shuffled_images_list, bostree_node_weak_ref(next_candidate));
-				movement--;
-				current_shuffled_image = g_list_last(shuffled_images_list);
+				// If this is the start of a cycle and the current image has
+				// been selected again by chance, jump one image ahead.
+				if((shuffled_images_list == NULL || shuffled_images_list->data == NULL) && next_candidate == current_file_node && bostree_node_count(file_tree) > 1) {
+					next_candidate = bostree_next_node(next_candidate);
+					if(!next_candidate) {
+						next_candidate = bostree_select(file_tree, 0);
+					}
+				}
+
+				if(movement > 0) {
+					shuffled_images_list = g_list_append(shuffled_images_list, relative_image_pointer_shuffle_list_create(next_candidate));
+					movement--;
+					shuffled_images_list_length++;
+					current_shuffled_image = g_list_last(shuffled_images_list);
+				}
+				else if(movement < 0) {
+					shuffled_images_list = g_list_prepend(shuffled_images_list, relative_image_pointer_shuffle_list_create(next_candidate));
+					movement++;
+					shuffled_images_list_length++;
+					current_shuffled_image = g_list_first(shuffled_images_list);
+				}
 			}
-			else {
-				shuffled_images_list = g_list_prepend(shuffled_images_list, bostree_node_weak_ref(next_candidate));
-				movement++;
-				current_shuffled_image = g_list_first(shuffled_images_list);
+		}
+		else {
+			// If all images have been used, wrap around the list's end
+			while(movement) {
+				current_shuffled_image = movement > 0 ? g_list_first(shuffled_images_list) : g_list_last(shuffled_images_list);
+				movement = movement > 0 ? movement - 1 : movement + 1;
+
+				while(((int)movement > 0) && g_list_next(current_shuffled_image)) {
+					current_shuffled_image = g_list_next(current_shuffled_image);
+					movement--;
+				}
+				while(((int)movement < 0) && g_list_previous(current_shuffled_image)) {
+					current_shuffled_image = g_list_previous(current_shuffled_image);
+					movement++;
+				}
 			}
 		}
 
@@ -1907,26 +2166,33 @@ BOSNode *relative_image_pointer(ptrdiff_t movement) {/*{{{*/
 				return current_file_node;
 			}
 			g_list_free_full(shuffled_images_list, (GDestroyNotify)relative_image_pointer_shuffle_list_unref_fn);
-			shuffled_images_list = g_list_append(NULL, bostree_node_weak_ref(chosen_candidate));
+			shuffled_images_list = g_list_append(NULL, relative_image_pointer_shuffle_list_create(chosen_candidate));
+			shuffled_images_visited_count = 0;
+			shuffled_images_list_length = 1;
 			return chosen_candidate;
 		}
 
 		// We found an image. Dereference the weak reference, and walk the list until a valid reference
-		// if found if it is invalid, removing all invalid references along the way.
-		BOSNode *image = bostree_node_weak_unref(file_tree, bostree_node_weak_ref(current_shuffled_image->data));
+		// is found if it is invalid, removing all invalid references along the way.
+		BOSNode *image = bostree_node_weak_unref(file_tree, bostree_node_weak_ref(LIST_SHUFFLED_IMAGE(current_shuffled_image)->node));
 		while(!image && shuffled_images_list) {
 			GList *new_shuffled_image = g_list_next(current_shuffled_image);
-			bostree_node_weak_unref(file_tree, current_shuffled_image->data);
+			shuffled_images_list_length--;
+			if(LIST_SHUFFLED_IMAGE(current_shuffled_image)->viewed) {
+				shuffled_images_visited_count--;
+			}
+			relative_image_pointer_shuffle_list_unref_fn(LIST_SHUFFLED_IMAGE(current_shuffled_image));
 			shuffled_images_list = g_list_delete_link(shuffled_images_list, current_shuffled_image);
 
 			current_shuffled_image = new_shuffled_image ? new_shuffled_image : g_list_last(shuffled_images_list);
 			if(current_shuffled_image) {
-				image = bostree_node_weak_unref(file_tree, bostree_node_weak_ref(current_shuffled_image->data));
+				image = bostree_node_weak_unref(file_tree, bostree_node_weak_ref(LIST_SHUFFLED_IMAGE(current_shuffled_image)->node));
 			}
 			else {
 				// All images have gone. This _is_ a problem, and should not
 				// happen. pqiv will likely exit. But return the current image,
 				// just to be sure that nothing breaks.
+				g_warn_if_reached();
 				return current_file_node;
 			}
 		}
@@ -1964,7 +2230,35 @@ void relative_image_movement(ptrdiff_t movement) {/*{{{*/
 	BOSNode *target = bostree_node_weak_ref(relative_image_pointer(movement));
 	D_UNLOCK(file_tree);
 
-	absolute_image_movement(target);
+	// Check if this movement is allowed
+	if((option_shuffle && shuffled_images_visited_count == bostree_node_count(file_tree)) ||
+		   (!option_shuffle && movement > 0 && bostree_rank(target) <= bostree_rank(current_file_node))) {
+		if(option_end_of_files_action == QUIT) {
+			bostree_node_weak_unref(file_tree, target);
+			gtk_main_quit();
+		}
+		else if(option_end_of_files_action == WAIT) {
+			bostree_node_weak_unref(file_tree, target);
+			return;
+		}
+	}
+
+	// Only perform the movement if the file actually changed.
+	// Important for slideshows if only one file was available and said file has been deleted.
+	if(movement == 0 || target != current_file_node) {
+		absolute_image_movement(target);
+	}
+	else {
+		bostree_node_weak_unref(file_tree, target);
+
+		// If a slideshow called relative_image_movement, it has already stopped the slideshow
+		// callback at this point. It might be that target == current_file_node because the
+		// old slideshow cycle ended, and the new one started off with the same image.
+		// Reinitialize the slideshow in that case.
+		if(slideshow_timeout_id == 0) {
+			slideshow_timeout_id = gdk_threads_add_timeout(option_slideshow_interval * 1000, slideshow_timeout_callback, NULL);
+		}
+	}
 }/*}}}*/
 BOSNode *directory_image_movement_find_different_directory(BOSNode *current, int direction) {/*{{{*/
 	// Return a reference to the first image with a different directory than current
@@ -2247,6 +2541,7 @@ void apply_external_image_filter(gchar *external_filter) {/*{{{*/
 					if(option_sort) {
 						new_image->sort_name = g_strdup_printf("%s;%s", CURRENT_FILE->sort_name, argv[2]);
 					}
+					new_image->file_name = g_strdup("-");
 					new_image->file_type = &file_type_handlers[0];
 					new_image->file_flags = FILE_FLAGS_MEMORY_IMAGE;
 					new_image->file_data = g_bytes_new_take(image_data, image_data_length);
@@ -2634,7 +2929,7 @@ void window_fullscreen() {/*{{{*/
 	gtk_window_set_geometry_hints(main_window, NULL, NULL, 0);
 
 	#ifndef _WIN32
-		if(!screen_supports_fullscreen) {
+		if(!wm_supports_fullscreen) {
 			// WM does not support _NET_WM_ACTION_FULLSCREEN or no WM present
 			main_window_in_fullscreen = TRUE;
 			gtk_window_move(main_window, screen_geometry.x, screen_geometry.y);
@@ -2648,7 +2943,7 @@ void window_fullscreen() {/*{{{*/
 }/*}}}*/
 void window_unfullscreen() {/*{{{*/
 	#ifndef _WIN32
-		if(!screen_supports_fullscreen) {
+		if(!wm_supports_fullscreen) {
 			// WM does not support _NET_WM_ACTION_FULLSCREEN or no WM present
 			main_window_in_fullscreen = FALSE;
 			window_state_out_of_fullscreen_actions();
@@ -3092,6 +3387,344 @@ gboolean set_scale_level_to_fit_callback(gpointer user_data) {
 	return FALSE;
 }
 /*}}}*/
+void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
+	switch(action_id) {
+		case ACTION_NOP:
+			break;
+
+		case ACTION_SHIFT_Y:
+			if(!CURRENT_FILE->is_loaded) return;
+			current_shift_y += parameter.pint;
+			gtk_widget_queue_draw(GTK_WIDGET(main_window));
+			update_info_text(NULL);
+			break;
+
+		case ACTION_SHIFT_X:
+			if(!CURRENT_FILE->is_loaded) return;
+			current_shift_x += parameter.pint;
+			gtk_widget_queue_draw(GTK_WIDGET(main_window));
+			update_info_text(NULL);
+			break;
+
+		case ACTION_SET_SLIDESHOW_INTERVAL_RELATIVE:
+		case ACTION_SET_SLIDESHOW_INTERVAL_ABSOLUTE:
+			if(action_id == ACTION_SET_SLIDESHOW_INTERVAL_ABSOLUTE) {
+				option_slideshow_interval = fmax(parameter.pdouble, 1e-3);
+			}
+			else {
+				option_slideshow_interval = fmax(1., option_slideshow_interval + parameter.pdouble);
+			}
+			if(slideshow_timeout_id > 0) {
+				g_source_remove(slideshow_timeout_id);
+				slideshow_timeout_id = gdk_threads_add_timeout(option_slideshow_interval * 1000, slideshow_timeout_callback, NULL);
+			}
+			gchar *info_text = g_strdup_printf("Slideshow interval set to %d seconds", (int)option_slideshow_interval);
+			update_info_text(info_text);
+			gtk_widget_queue_draw(GTK_WIDGET(main_window));
+			g_free(info_text);
+			break;
+
+		case ACTION_SET_SCALE_LEVEL_RELATIVE:
+		case ACTION_SET_SCALE_LEVEL_ABSOLUTE:
+			if(!CURRENT_FILE->is_loaded) return;
+			if(action_id == ACTION_SET_SCALE_LEVEL_ABSOLUTE) {
+				current_scale_level = parameter.pdouble;
+			}
+			else {
+				current_scale_level *= parameter.pdouble;
+			}
+			current_scale_level = round(current_scale_level * 100.) / 100.;
+			if((option_scale == 1 && current_scale_level > 1) || option_scale == 0) {
+				scale_override = TRUE;
+			}
+			invalidate_current_scaled_image_surface();
+			current_image_drawn = FALSE;
+			if(main_window_in_fullscreen) {
+				gtk_widget_queue_draw(GTK_WIDGET(main_window));
+			}
+			else {
+				int image_width, image_height;
+				calculate_current_image_transformed_size(&image_width, &image_height);
+
+				gtk_window_resize(main_window, current_scale_level * image_width, current_scale_level * image_height);
+				if(!wm_supports_moveresize) {
+					queue_draw();
+				}
+			}
+			update_info_text(NULL);
+			break;
+
+		case ACTION_TOGGLE_SCALING_MODE:
+			if(!CURRENT_FILE->is_loaded) return;
+			if(parameter.pint == 0) {
+				if(++option_scale > 2) {
+					option_scale = 0;
+				}
+			}
+			else {
+				option_scale = (parameter.pint - 1) % 3;
+			}
+			current_image_drawn = FALSE;
+			current_shift_x = 0;
+			current_shift_y = 0;
+			set_scale_level_for_screen();
+			main_window_adjust_for_image();
+			invalidate_current_scaled_image_surface();
+			gtk_widget_queue_draw(GTK_WIDGET(main_window));
+			switch(option_scale) {
+				case 0: update_info_text("Scaling disabled"); break;
+				case 1: update_info_text("Automatic scaledown enabled"); break;
+				case 2: update_info_text("Automatic scaling enabled"); break;
+			}
+			break;
+
+		case ACTION_TOGGLE_SHUFFLE_MODE:
+			if(parameter.pint == 0) {
+				option_shuffle = !option_shuffle;
+			}
+			else {
+				option_shuffle = parameter.pint == 1;
+			}
+			preload_adjacent_images();
+			update_info_text(option_shuffle ? "Shuffle mode enabled" : "Shuffle mode disabled");
+			gtk_widget_queue_draw(GTK_WIDGET(main_window));
+			break;
+
+		case ACTION_RELOAD:
+			if(!CURRENT_FILE->is_loaded) return;
+			CURRENT_FILE->force_reload = TRUE;
+			update_info_text("Reloading image..");
+			queue_image_load(relative_image_pointer(0));
+			break;
+
+		case ACTION_RESET_SCALE_LEVEL:
+			if(!CURRENT_FILE->is_loaded) return;
+			current_image_drawn = FALSE;
+			scale_override = FALSE;
+			set_scale_level_for_screen();
+			main_window_adjust_for_image();
+			invalidate_current_scaled_image_surface();
+			gtk_widget_queue_draw(GTK_WIDGET(main_window));
+			update_info_text(NULL);
+			break;
+
+		case ACTION_TOGGLE_FULLSCREEN:
+			if(main_window_in_fullscreen == FALSE) {
+				window_fullscreen();
+			}
+			else {
+				window_unfullscreen();
+			}
+			break;
+
+		case ACTION_FLIP_HORIZONTALLY:
+			if(!CURRENT_FILE->is_loaded) return;
+			{
+				int image_width, image_height;
+				calculate_current_image_transformed_size(&image_width, &image_height);
+
+				cairo_matrix_t transformation = { -1., 0., 0., 1., image_width, 0 };
+				transform_current_image(&transformation);
+			}
+			update_info_text("Image flipped horizontally");
+			break;
+
+		case ACTION_FLIP_VERTICALLY:
+			if(!CURRENT_FILE->is_loaded) return;
+			{
+				int image_width, image_height;
+				calculate_current_image_transformed_size(&image_width, &image_height);
+
+				cairo_matrix_t transformation = { 1., 0., 0., -1., 0, image_height };
+				transform_current_image(&transformation);
+			}
+			update_info_text("Image flipped vertically");
+			break;
+
+		case ACTION_ROTATE_LEFT:
+			if(!CURRENT_FILE->is_loaded) return;
+			{
+				int image_width, image_height;
+				calculate_current_image_transformed_size(&image_width, &image_height);
+
+				cairo_matrix_t transformation = { 0., -1., 1., 0., 0, image_width };
+				transform_current_image(&transformation);
+			}
+			update_info_text("Image rotated left");
+			break;
+
+		case ACTION_ROTATE_RIGHT:
+			if(!CURRENT_FILE->is_loaded) return;
+			{
+				int image_width, image_height;
+				calculate_current_image_transformed_size(&image_width, &image_height);
+
+				cairo_matrix_t transformation = { 0., 1., -1., 0., image_height, 0. };
+				transform_current_image(&transformation);
+			}
+			update_info_text("Image rotated right");
+			break;
+
+#ifndef CONFIGURED_WITHOUT_INFO_TEXT
+		case ACTION_TOGGLE_INFO_BOX:
+			option_hide_info_box = !option_hide_info_box;
+			update_info_text(NULL);
+			gtk_widget_queue_draw(GTK_WIDGET(main_window));
+			break;
+#endif
+
+#ifndef CONFIGURED_WITHOUT_JUMP_DIALOG
+		case ACTION_JUMP_DIALOG:
+			do_jump_dialog();
+			break;
+#endif
+
+		case ACTION_TOGGLE_SLIDESHOW:
+			if(slideshow_timeout_id >= 0) {
+				if(slideshow_timeout_id > 0) {
+					g_source_remove(slideshow_timeout_id);
+				}
+				slideshow_timeout_id = -1;
+				update_info_text("Slideshow disabled");
+			}
+			else {
+				slideshow_timeout_id = gdk_threads_add_timeout(option_slideshow_interval * 1000, slideshow_timeout_callback, NULL);
+				update_info_text("Slideshow enabled");
+			}
+			gtk_widget_queue_draw(GTK_WIDGET(main_window));
+			break;
+
+		case ACTION_HARDLINK_CURRENT_IMAGE:
+			if(!CURRENT_FILE->is_loaded) return;
+			hardlink_current_image();
+			gtk_widget_queue_draw(GTK_WIDGET(main_window));
+			break;
+
+		case ACTION_GOTO_DIRECTORY_RELATIVE:
+			directory_image_movement(parameter.pint);
+			break;
+
+		case ACTION_GOTO_FILE_RELATIVE:
+			relative_image_movement(parameter.pint);
+			break;
+
+		case ACTION_QUIT:
+			gtk_widget_destroy(GTK_WIDGET(main_window));
+			break;
+
+#ifndef CONFIGURED_WITHOUT_EXTERNAL_COMMANDS
+		case ACTION_NUMERIC_COMMAND:
+			{
+
+				gchar *command = external_image_filter_commands[parameter.pint];
+				action(ACTION_COMMAND, (pqiv_action_parameter_t)( command));
+			}
+			break;
+
+		case ACTION_COMMAND:
+			if(!CURRENT_FILE->is_loaded) return;
+			{
+				char *command = parameter.pcharptr;
+				if(command == NULL) {
+					break;
+				}
+				else if (
+					((CURRENT_FILE->file_flags & FILE_FLAGS_MEMORY_IMAGE) != 0 && command[0] != '|')
+					|| ((CURRENT_FILE->file_flags & FILE_FLAGS_ANIMATION) != 0 && command[0] == '|')) {
+
+					update_info_text("Command incompatible with current file type");
+					gtk_widget_queue_draw(GTK_WIDGET(main_window));
+				}
+				else {
+					gchar *info = g_strdup_printf("Executing command %s", command);
+					update_info_text(info);
+					g_free(info);
+					gtk_widget_queue_draw(GTK_WIDGET(main_window));
+
+					#if GLIB_CHECK_VERSION(2, 32, 0)
+						g_thread_new("image-filter", apply_external_image_filter_thread, command);
+					#else
+						g_thread_create(apply_external_image_filter_thread, command, FALSE, NULL);
+					#endif
+				}
+			}
+			break;
+#endif
+
+		case ACTION_ADD_FILE:
+			#if GLIB_CHECK_VERSION(2, 32, 0)
+				g_thread_new("image-loader-from-action", (GThreadFunc)load_images_handle_parameter_thread, g_strdup(parameter.pcharptr));
+			#else
+				g_thread_new((GThreadFunc)load_images_handle_parameter_thread, NULL, FALSE, g_strdup(parameter.pcharptr));
+			#endif
+			break;
+
+		case ACTION_GOTO_FILE_BYINDEX:
+		case ACTION_REMOVE_FILE_BYINDEX:
+			{
+				D_LOCK(file_tree);
+				BOSNode *node = bostree_select(file_tree, parameter.pint);
+				if(node) {
+					node = bostree_node_weak_ref(node);
+				}
+				D_UNLOCK(file_tree);
+
+				if(!node) {
+					g_printerr("Image #%d not found.\n", parameter.pint);
+				}
+				else {
+					if(action_id == ACTION_GOTO_FILE_BYINDEX) {
+						absolute_image_movement(node);
+					}
+					else {
+						remove_image(node);
+						gtk_widget_queue_draw(GTK_WIDGET(main_window));
+					}
+				}
+			}
+
+			break;
+
+		case ACTION_GOTO_FILE_BYNAME:
+		case ACTION_REMOVE_FILE_BYNAME:
+			{
+				D_LOCK(file_tree);
+				BOSNode *node = image_pointer_by_name(parameter.pcharptr);
+				if(node) {
+					node = bostree_node_weak_ref(node);
+				}
+				D_UNLOCK(file_tree);
+
+				if(!node) {
+					g_printerr("Image `%s' not found.\n", parameter.pcharptr);
+				}
+				else {
+					if(action_id == ACTION_GOTO_FILE_BYNAME) {
+						absolute_image_movement(node);
+					}
+					else {
+						remove_image(node);
+						gtk_widget_queue_draw(GTK_WIDGET(main_window));
+					}
+				}
+			}
+			break;
+
+		case ACTION_OUTPUT_FILE_LIST:
+			{
+				D_LOCK(file_tree);
+				for(BOSNode *iter = bostree_select(file_tree, 0); iter; iter = bostree_next_node(iter)) {
+					g_print("%s\n", FILE(iter)->display_name);
+				}
+				D_UNLOCK(file_tree);
+			}
+
+			break;
+
+		default:
+			g_printerr("Action not implemented.\n");
+	}
+}/*}}}*/
 gboolean window_configure_callback(GtkWidget *widget, GdkEventConfigure *event, gpointer user_data) {/*{{{*/
 	/*
 	 * struct GdkEventConfigure {
@@ -3148,360 +3781,93 @@ gboolean window_configure_callback(GtkWidget *widget, GdkEventConfigure *event, 
 
 	return FALSE;
 }/*}}}*/
-gboolean window_key_press_callback(GtkWidget *widget, GdkEventKey *event, gpointer user_data) {/*{{{*/
-	/*
-	   struct GdkEventKey {
-	   GdkEventType type;
-	   GdkWindow *window;
-	   gint8 send_event;
-	   guint32 time;
-	   guint state;
-	   guint keyval;
-	   gint length;
-	   gchar *string;
-	   guint16 hardware_keycode;
-	   guint8 group;
-	   guint is_modifier : 1;
-	   };
-	 */
+void handle_input_event(guint key_binding_value);
+gboolean handle_input_event_timeout_callback(gpointer user_data) {/*{{{*/
+	handle_input_event(0);
+	active_key_binding.key_binding = NULL;
+	return FALSE;
+}/*}}}*/
+void handle_input_event(guint key_binding_value) {/*{{{*/
+	key_binding_t *binding = NULL;
 
+	gboolean is_mouse = (key_binding_value >> 31) & 1;
+	guint state = (key_binding_value >> 28) & 7;
+	guint keycode = key_binding_value & 0xfffffff;
+
+	// Filter unwanted state variables out
+	state &= (GDK_SHIFT_MASK & GDK_CONTROL_MASK & GDK_MOD1_MASK & GDK_MOD2_MASK & GDK_MOD3_MASK & GDK_MOD4_MASK & GDK_MOD5_MASK);
+	key_binding_value = KEY_BINDING_VALUE(is_mouse, state, keycode);
+
+	if(active_key_binding.key_binding) {
+		g_source_remove(active_key_binding.timeout_id);
+		if(active_key_binding.key_binding->next_key_bindings) {
+			binding = g_hash_table_lookup(active_key_binding.key_binding->next_key_bindings, GUINT_TO_POINTER(key_binding_value));
+
+			if(!binding && !is_mouse && state & GDK_SHIFT_MASK && gdk_keyval_is_upper(keycode)) {
+				guint alternate_value = KEY_BINDING_VALUE(is_mouse, state & !GDK_SHIFT_MASK, gdk_keyval_to_lower(keycode));
+				binding = g_hash_table_lookup(active_key_binding.key_binding->next_key_bindings, GUINT_TO_POINTER(alternate_value));
+			}
+		}
+		if(!binding) {
+			for(key_binding_t *binding = active_key_binding.key_binding; binding; binding = binding->next_action) {
+				action(binding->action, binding->parameter);
+			}
+		}
+		active_key_binding.key_binding = NULL;
+	}
+
+	if(!key_binding_value) {
+		return;
+	}
+
+	if(!binding) {
+			binding = g_hash_table_lookup(key_bindings, GUINT_TO_POINTER(key_binding_value));
+
+			if(!binding && !is_mouse && state & GDK_SHIFT_MASK && gdk_keyval_is_upper(keycode)) {
+				guint alternate_value = KEY_BINDING_VALUE(is_mouse, state & !GDK_SHIFT_MASK, gdk_keyval_to_lower(keycode));
+				binding = g_hash_table_lookup(key_bindings, GUINT_TO_POINTER(alternate_value));
+			}
+	}
+
+	if(binding) {
+		if(binding->next_key_bindings) {
+			active_key_binding.key_binding = binding;
+			active_key_binding.timeout_id = gdk_threads_add_timeout(400, handle_input_event_timeout_callback, NULL);
+		}
+		else {
+			for(; binding; binding = binding->next_action) {
+				action(binding->action, binding->parameter);
+			}
+		}
+	}
+}/*}}}*/
+gboolean window_key_press_callback(GtkWidget *widget, GdkEventKey *event, gpointer user_data) {/*{{{*/
 	if(event->keyval < 128 && keyboard_aliases[event->keyval] != 0) {
+		// TODO Deprecated, remove with 2.6
 		event->keyval = keyboard_aliases[event->keyval];
 	}
-
-	// If the current image is not loaded, only allow stuff unrelated to the current image
-	if(!CURRENT_FILE->is_loaded && (
-		event->keyval != GDK_KEY_space &&
-		event->keyval != GDK_KEY_Page_Up &&
-		event->keyval != GDK_KEY_KP_Page_Up &&
-		event->keyval != GDK_KEY_Page_Down &&
-		event->keyval != GDK_KEY_KP_Page_Down &&
-		event->keyval != GDK_KEY_BackSpace &&
-		event->keyval != GDK_KEY_j &&
-		event->keyval != GDK_KEY_J &&
-		event->keyval != GDK_KEY_i &&
-		event->keyval != GDK_KEY_I &&
-		event->keyval != GDK_KEY_s &&
-		event->keyval != GDK_KEY_S &&
-		event->keyval != GDK_KEY_Q &&
-		event->keyval != GDK_KEY_q &&
-		event->keyval != GDK_KEY_f &&
-		event->keyval != GDK_KEY_F)) {
-		return FALSE;
+	if(option_reverse_cursor_keys) {
+		// TODO Deprecated, remove with 2.6
+		switch(event->keyval) {
+			case GDK_KEY_Up:
+			case GDK_KEY_KP_Up:
+				event->keyval = GDK_KEY_Down;
+				break;
+			case GDK_KEY_Down:
+			case GDK_KEY_KP_Down:
+				event->keyval = GDK_KEY_Up;
+				break;
+			case GDK_KEY_Left:
+			case GDK_KEY_KP_Left:
+				event->keyval = GDK_KEY_Right;
+				break;
+			case GDK_KEY_Right:
+			case GDK_KEY_KP_Right:
+				event->keyval = GDK_KEY_Left;
+				break;
+		}
 	}
-
-	switch(event->keyval) {
-		case GDK_KEY_Up:
-		case GDK_KEY_KP_Up:
-			current_shift_y += (event->state & GDK_CONTROL_MASK ? 50 : 10) * (option_reverse_cursor_keys ? -1 : 1);
-			gtk_widget_queue_draw(GTK_WIDGET(main_window));
-			update_info_text(NULL);
-			break;
-
-		case GDK_KEY_Down:
-		case GDK_KEY_KP_Down:
-			current_shift_y -= (event->state & GDK_CONTROL_MASK ? 50 : 10) * (option_reverse_cursor_keys ? -1 : 1);
-			gtk_widget_queue_draw(GTK_WIDGET(main_window));
-			update_info_text(NULL);
-			break;
-
-		case GDK_KEY_Left:
-		case GDK_KEY_KP_Left:
-			current_shift_x += (event->state & GDK_CONTROL_MASK ? 50 : 10) * (option_reverse_cursor_keys ? -1 : 1);
-			gtk_widget_queue_draw(GTK_WIDGET(main_window));
-			update_info_text(NULL);
-			break;
-
-		case GDK_KEY_Right:
-		case GDK_KEY_KP_Right:
-			current_shift_x -= (event->state & GDK_CONTROL_MASK ? 50 : 10) * (option_reverse_cursor_keys ? -1 : 1);
-			gtk_widget_queue_draw(GTK_WIDGET(main_window));
-			update_info_text(NULL);
-			break;
-
-		case GDK_KEY_plus:
-		case GDK_KEY_KP_Add:
-			if(event->state & GDK_CONTROL_MASK) {
-				option_slideshow_interval = (double)((int)option_slideshow_interval + 1);
-				if(slideshow_timeout_id > 0) {
-					g_source_remove(slideshow_timeout_id);
-					slideshow_timeout_id = gdk_threads_add_timeout(option_slideshow_interval * 1000, slideshow_timeout_callback, NULL);
-				}
-				UPDATE_INFO_TEXT("Slideshow interval set to %d seconds", (int)option_slideshow_interval);
-				gtk_widget_queue_draw(GTK_WIDGET(main_window));
-				break;
-			}
-
-			current_scale_level *= 1.1;
-			current_scale_level = round(current_scale_level * 100.) / 100.;
-			if((option_scale == 1 && current_scale_level > 1) || option_scale == 0) {
-				scale_override = TRUE;
-			}
-			invalidate_current_scaled_image_surface();
-			if(main_window_in_fullscreen) {
-				gtk_widget_queue_draw(GTK_WIDGET(main_window));
-			}
-			else {
-				int image_width, image_height;
-				calculate_current_image_transformed_size(&image_width, &image_height);
-
-				gtk_window_resize(main_window, current_scale_level * image_width, current_scale_level * image_height);
-			}
-			update_info_text(NULL);
-			break;
-
-		case GDK_KEY_minus:
-		case GDK_KEY_KP_Subtract:
-			if(event->state & GDK_CONTROL_MASK) {
-				if(option_slideshow_interval >= 2.) {
-					option_slideshow_interval = (double)((int)option_slideshow_interval - 1);
-				}
-				if(slideshow_timeout_id > 0) {
-					g_source_remove(slideshow_timeout_id);
-					slideshow_timeout_id = gdk_threads_add_timeout(option_slideshow_interval * 1000, slideshow_timeout_callback, NULL);
-				}
-				UPDATE_INFO_TEXT("Slideshow interval set to %d seconds", (int)option_slideshow_interval);
-				gtk_widget_queue_draw(GTK_WIDGET(main_window));
-				break;
-			}
-
-			if(current_scale_level <= 0.01) {
-				break;
-			}
-			current_scale_level /= 1.1;
-			current_scale_level = round(current_scale_level * 100.) / 100.;
-			if((option_scale == 1 && current_scale_level > 1) || option_scale == 0) {
-				scale_override = TRUE;
-			}
-			invalidate_current_scaled_image_surface();
-			if(main_window_in_fullscreen) {
-				gtk_widget_queue_draw(GTK_WIDGET(main_window));
-			}
-			else {
-				int image_width, image_height;
-				calculate_current_image_transformed_size(&image_width, &image_height);
-				image_width = abs(image_width);
-				image_height = abs(image_height);
-
-				gtk_window_resize(main_window, current_scale_level * image_width, current_scale_level * image_height);
-			}
-			update_info_text(NULL);
-			break;
-
-		case GDK_KEY_T:
-		case GDK_KEY_t:
-			if(++option_scale > 2) {
-				option_scale = 0;
-			}
-			current_image_drawn = FALSE;
-			current_shift_x = 0;
-			current_shift_y = 0;
-			set_scale_level_for_screen();
-			main_window_adjust_for_image();
-			invalidate_current_scaled_image_surface();
-			gtk_widget_queue_draw(GTK_WIDGET(main_window));
-			switch(option_scale) {
-				case 0: update_info_text("Scaling disabled"); break;
-				case 1: update_info_text("Automatic scaledown enabled"); break;
-				case 2: update_info_text("Automatic scaling enabled"); break;
-			}
-			break;
-
-		case GDK_KEY_r:
-		case GDK_KEY_R:
-			if(event->state & GDK_CONTROL_MASK) {
-				option_shuffle = !option_shuffle;
-				preload_adjacent_images();
-				update_info_text(option_shuffle ? "Shuffle mode enabled" : "Shuffle mode disabled");
-				gtk_widget_queue_draw(GTK_WIDGET(main_window));
-				break;
-			}
-
-			CURRENT_FILE->force_reload = TRUE;
-			update_info_text("Reloading image..");
-			queue_image_load(relative_image_pointer(0));
-			break;
-
-		case GDK_KEY_0:
-			current_image_drawn = FALSE;
-			scale_override = FALSE;
-			set_scale_level_for_screen();
-			main_window_adjust_for_image();
-			invalidate_current_scaled_image_surface();
-			gtk_widget_queue_draw(GTK_WIDGET(main_window));
-			update_info_text(NULL);
-			break;
-
-		case GDK_KEY_F:
-		case GDK_KEY_f:
-			if(main_window_in_fullscreen == FALSE) {
-				window_fullscreen();
-			}
-			else {
-				window_unfullscreen();
-			}
-			break;
-
-		case GDK_KEY_H:
-		case GDK_KEY_h:
-			{
-				int image_width, image_height;
-				calculate_current_image_transformed_size(&image_width, &image_height);
-
-				cairo_matrix_t transformation = { -1., 0., 0., 1., image_width, 0 };
-				transform_current_image(&transformation);
-			}
-			update_info_text("Image flipped horizontally");
-			break;
-
-		case GDK_KEY_V:
-		case GDK_KEY_v:
-			{
-				int image_width, image_height;
-				calculate_current_image_transformed_size(&image_width, &image_height);
-
-				cairo_matrix_t transformation = { 1., 0., 0., -1., 0, image_height };
-				transform_current_image(&transformation);
-			}
-			update_info_text("Image flipped vertically");
-			break;
-
-		case GDK_KEY_L:
-		case GDK_KEY_l:
-			{
-				int image_width, image_height;
-				calculate_current_image_transformed_size(&image_width, &image_height);
-
-				cairo_matrix_t transformation = { 0., -1., 1., 0., 0, image_width };
-				transform_current_image(&transformation);
-			}
-			update_info_text("Image rotated left");
-			break;
-
-		case GDK_KEY_K:
-		case GDK_KEY_k:
-			{
-				int image_width, image_height;
-				calculate_current_image_transformed_size(&image_width, &image_height);
-
-				cairo_matrix_t transformation = { 0., 1., -1., 0., image_height, 0. };
-				transform_current_image(&transformation);
-			}
-			update_info_text("Image rotated right");
-			break;
-
-#ifndef CONFIGURED_WITHOUT_INFO_TEXT
-		case GDK_KEY_i:
-		case GDK_KEY_I:
-			option_hide_info_box = !option_hide_info_box;
-			update_info_text(NULL);
-			gtk_widget_queue_draw(GTK_WIDGET(main_window));
-			break;
-#endif
-
-#ifndef CONFIGURED_WITHOUT_JUMP_DIALOG
-		case GDK_KEY_j:
-		case GDK_KEY_J:
-			do_jump_dialog();
-			break;
-#endif
-
-		case GDK_KEY_s:
-		case GDK_KEY_S:
-			if(slideshow_timeout_id >= 0) {
-				if(slideshow_timeout_id > 0) {
-					g_source_remove(slideshow_timeout_id);
-				}
-				slideshow_timeout_id = -1;
-				update_info_text("Slideshow disabled");
-			}
-			else {
-				slideshow_timeout_id = gdk_threads_add_timeout(option_slideshow_interval * 1000, slideshow_timeout_callback, NULL);
-				update_info_text("Slideshow enabled");
-			}
-			gtk_widget_queue_draw(GTK_WIDGET(main_window));
-			break;
-
-		case GDK_KEY_a:
-		case GDK_KEY_A:
-			hardlink_current_image();
-			gtk_widget_queue_draw(GTK_WIDGET(main_window));
-			break;
-
-		case GDK_KEY_BackSpace:
-			if(event->state & GDK_CONTROL_MASK) {
-				directory_image_movement(-1);
-			}
-			else {
-				relative_image_movement(-1);
-			}
-			break;
-
-		case GDK_KEY_space:
-			if(event->state & GDK_CONTROL_MASK) {
-				directory_image_movement(1);
-			}
-			else {
-				relative_image_movement(1);
-			}
-			break;
-
-		case GDK_KEY_Page_Up:
-		case GDK_KEY_KP_Page_Up:
-			relative_image_movement(10);
-			break;
-
-		case GDK_KEY_Page_Down:
-		case GDK_KEY_KP_Page_Down:
-			relative_image_movement(-10);
-			break;
-
-		case GDK_KEY_Q:
-		case GDK_KEY_q:
-		case GDK_KEY_Escape:
-			gtk_widget_destroy(GTK_WIDGET(main_window));
-			break;
-
-#ifndef CONFIGURED_WITHOUT_EXTERNAL_COMMANDS
-		case GDK_KEY_1:
-		case GDK_KEY_2:
-		case GDK_KEY_3:
-		case GDK_KEY_4:
-		case GDK_KEY_5:
-		case GDK_KEY_6:
-		case GDK_KEY_7:
-		case GDK_KEY_8:
-		case GDK_KEY_9:
-			{
-
-				gchar *command = external_image_filter_commands[event->keyval - GDK_KEY_1];
-
-				if(command == NULL) {
-					break;
-				}
-				else if (
-					((CURRENT_FILE->file_flags & FILE_FLAGS_MEMORY_IMAGE) != 0 && command[0] != '|')
-					|| ((CURRENT_FILE->file_flags & FILE_FLAGS_ANIMATION) != 0 && command[0] == '|')) {
-
-					UPDATE_INFO_TEXT("Command %d incompatible with current file type", event->keyval - GDK_KEY_1 + 1);
-					gtk_widget_queue_draw(GTK_WIDGET(main_window));
-				}
-				else {
-					UPDATE_INFO_TEXT("Executing command %d", event->keyval - GDK_KEY_1 + 1);
-					gtk_widget_queue_draw(GTK_WIDGET(main_window));
-
-					#if GLIB_CHECK_VERSION(2, 32, 0)
-						g_thread_new("image-filter", apply_external_image_filter_thread, command);
-					#else
-						g_thread_create(apply_external_image_filter_thread, command, FALSE, NULL);
-					#endif
-				}
-			}
-			break;
-#endif
-	}
-
-
+	handle_input_event(KEY_BINDING_VALUE(0, event->state, event->keyval));
 	return FALSE;
 }/*}}}*/
 void window_center_mouse() {/*{{{*/
@@ -3511,8 +3877,13 @@ void window_center_mouse() {/*{{{*/
 	#if GTK_MAJOR_VERSION < 3
 		gdk_display_warp_pointer(display, screen, screen_geometry.x + screen_geometry.width / 2., screen_geometry.y + screen_geometry.height / 2.);
 	#else
-		GdkDevice *device = gdk_device_manager_get_client_pointer(gdk_display_get_device_manager(display));
+		#if GTK_MAJOR_VERSION == 3 && GTK_MINOR_VERSION < 20
+			GdkDevice *device = gdk_device_manager_get_client_pointer(gdk_display_get_device_manager(display));
+		#else
+			GdkDevice *device = gdk_seat_get_pointer(gdk_display_get_default_seat(display));
+		#endif
 		gdk_device_warp(device, screen, screen_geometry.x + screen_geometry.width / 2., screen_geometry.y + screen_geometry.height / 2.);
+
 	#endif
 }/*}}}*/
 gboolean window_motion_notify_callback(GtkWidget *widget, GdkEventMotion *event, gpointer user_data) {/*{{{*/
@@ -3598,16 +3969,7 @@ gboolean window_button_release_callback(GtkWidget *widget, GdkEventButton *event
 		// Do nothing if the button was pressed for a long time or if not in fullscreen
 		return FALSE;
 	}
-
-	if(event->button == GDK_BUTTON_PRIMARY) {
-		relative_image_movement(-1);
-	}
-	else if(event->button == GDK_BUTTON_MIDDLE) {
-		gtk_main_quit();
-	}
-	else if(event->button == GDK_BUTTON_SECONDARY) {
-		relative_image_movement(1);
-	}
+	handle_input_event(KEY_BINDING_VALUE(1, event->state, event->button));
 	return FALSE;
 }/*}}}*/
 gboolean window_scroll_callback(GtkWidget *widget, GdkEventScroll *event, gpointer user_data) {/*{{{*/
@@ -3625,14 +3987,17 @@ gboolean window_scroll_callback(GtkWidget *widget, GdkEventScroll *event, gpoint
 	   gdouble x_root, y_root;
 	   };
 	 */
-	if(event->direction == GDK_SCROLL_UP) {
-		relative_image_movement(1);
-	}
-	else if(event->direction == GDK_SCROLL_DOWN) {
-		relative_image_movement(-1);
+	if(option_reverse_scroll == TRUE) {
+		// TODO Deprecated, remove with 2.6
+		if(event->direction == GDK_SCROLL_UP) {
+			event->direction = GDK_SCROLL_DOWN;
+		}
+		else if(event->direction == GDK_SCROLL_DOWN) {
+			event->direction = GDK_SCROLL_UP;
+		}
 	}
 
-
+	handle_input_event(KEY_BINDING_VALUE(1, event->state, (event->direction + 1) << 2));
 	return FALSE;
 }/*}}}*/
 void fullscreen_hide_cursor() {/*{{{*/
@@ -3730,12 +4095,15 @@ void window_screen_window_manager_changed_callback(gpointer user_data) {/*{{{*/
 	#ifndef _WIN32
 		GdkScreen *screen = GDK_SCREEN(user_data);
 
+		// TODO Would _NET_WM_ALLOWED_ACTIONS -> _NET_WM_ACTION_RESIZE and _NET_WM_ACTION_FULLSCREEN  be a better choice here?
 		#if GTK_MAJOR_VERSION >= 3
 			if(GDK_IS_X11_SCREEN(screen)) {
-				screen_supports_fullscreen = gdk_x11_screen_supports_net_wm_hint(screen, gdk_x11_xatom_to_atom(gdk_x11_get_xatom_by_name("_NET_WM_STATE_FULLSCREEN")));
+				wm_supports_fullscreen = gdk_x11_screen_supports_net_wm_hint(screen, gdk_x11_xatom_to_atom(gdk_x11_get_xatom_by_name("_NET_WM_STATE_FULLSCREEN")));
+				wm_supports_moveresize = gdk_x11_screen_supports_net_wm_hint(screen, gdk_x11_xatom_to_atom(gdk_x11_get_xatom_by_name("_NET_MOVERESIZE_WINDOW")));
 			}
 		#else
-			screen_supports_fullscreen = gdk_x11_screen_supports_net_wm_hint(screen, gdk_x11_xatom_to_atom(gdk_x11_get_xatom_by_name("_NET_WM_STATE_FULLSCREEN")));
+			wm_supports_fullscreen = gdk_x11_screen_supports_net_wm_hint(screen, gdk_x11_xatom_to_atom(gdk_x11_get_xatom_by_name("_NET_WM_STATE_FULLSCREEN")));
+			wm_supports_moveresize = gdk_x11_screen_supports_net_wm_hint(screen, gdk_x11_xatom_to_atom(gdk_x11_get_xatom_by_name("_NET_MOVERESIZE_WINDOW")));
 		#endif
 	#endif
 }/*}}}*/
@@ -3896,6 +4264,523 @@ gboolean initialize_gui_or_quit_callback(gpointer user_data) {/*{{{*/
 
 	return FALSE;
 }/*}}}*/
+#ifndef CONFIGURED_WITHOUT_CONFIGURABLE_KEY_BINDINGS
+void help_show_key_bindings_helper(gpointer key, gpointer value, gpointer user_data) {/*{{{*/
+	guint key_binding_value = GPOINTER_TO_UINT(key);
+	gboolean is_mouse = (key_binding_value >> 31) & 1;
+	guint state = (key_binding_value >> 28) & 7;
+	guint keycode = key_binding_value & 0xfffffff;
+	key_binding_t *key_binding = (key_binding_t *)value;
+
+	gchar *str_key;
+	gchar modifier[255];
+	snprintf(modifier, 255, "%s%s%s", state & GDK_SHIFT_MASK ? "<Shift>" : "", state & GDK_CONTROL_MASK ? "<Control>" : "", state & GDK_MOD1_MASK ? "<Alt>" : "");
+	if(is_mouse) {
+		if(keycode >> 2 == 0) {
+			str_key = g_strdup_printf("%s%s<Mouse-%d> ", user_data ? (gchar*)user_data : "", modifier, keycode);
+		}
+		else {
+			str_key = g_strdup_printf("%s%s<Mouse-Scroll-%d> ", user_data ? (gchar*)user_data : "", modifier, keycode >> 2);
+		}
+	}
+	else {
+		char *keyval_name = gdk_keyval_name(keycode);
+		str_key = g_strdup_printf("%s%s%s%s%s ", user_data ? (gchar*)user_data : "", modifier, keyval_name[1] == 0 ? "" : "<", keyval_name, keyval_name[1] == 0 ? "" : ">");
+	}
+
+	if(key_binding->next_key_bindings) {
+		g_hash_table_foreach(key_binding->next_key_bindings, help_show_key_bindings_helper, str_key);
+	}
+
+	g_print("%30s { ", str_key);
+	for(key_binding_t *current_action = key_binding; current_action; current_action = current_action->next_action) {
+		g_print("%s(", pqiv_action_descriptors[key_binding->action].name);
+		switch(pqiv_action_descriptors[key_binding->action].parameter_type) {
+			case PARAMETER_NONE:
+				g_print(") ");
+				break;
+			case PARAMETER_INT:
+				g_print("%d) ", current_action->parameter.pint);
+				break;
+			case PARAMETER_DOUBLE:
+				g_print("%g) ", current_action->parameter.pdouble);
+				break;
+			case PARAMETER_CHARPTR:
+				for(const char *p = current_action->parameter.pcharptr; *p; p++) {
+					if(*p == ')' || *p == '\\') {
+						g_print("\\");
+					}
+					g_print("%c", *p);
+				}
+				g_print(") ");
+				break;
+		}
+	}
+	g_print("} \n");
+
+	g_free(str_key);
+}/*}}}*/
+gboolean help_show_key_bindings(const gchar *option_name, const gchar *value, gpointer data, GError **error) {/*{{{*/
+	gchar *old_locale = g_strdup(setlocale(LC_NUMERIC, NULL));
+	setlocale(LC_NUMERIC, "C");
+
+	g_hash_table_foreach(key_bindings, help_show_key_bindings_helper, (gpointer)"");
+
+	setlocale(LC_NUMERIC, old_locale);
+	g_free(old_locale);
+
+	exit(0);
+	return FALSE;
+}/*}}}*/
+void parse_key_bindings(const gchar *bindings) {/*{{{*/
+	/*
+	 * This is a simple state machine based parser for the same format that the help function outputs:
+	 *  shortcut { command(parameter); command(parameter); }
+	 *
+	 * The states are
+	 *  0 initial state, expecting keyboard shortcuts or EOF
+	 *  1 keyboard shortcut entering started, expecting more or start of commands
+	 *  2 expecting identifier inside <..>, e.g. <Mouse-1>
+	 *  3 inside command list, e.g. after {. Expecting identifier of command.
+	 *  4 inside command parameters, e.g. after (. Expecting parameter.
+	 *  5 inside command list after state 4, same as 3 except that more commands
+	 *    add to the list instead of overwriting the old binding.
+	 */
+	GHashTable **active_key_bindings_table = &key_bindings;
+
+	int state = 0;
+	const gchar *token_start = NULL;
+	gchar *identifier;
+	ptrdiff_t identifier_length;
+	int keyboard_state = 0;
+	unsigned int keyboard_key_value;
+	key_binding_t *binding = NULL;
+	int parameter_type = 0;
+	const gchar *current_command_start = bindings;
+	gchar *error_message = NULL;
+	const gchar *scan;
+
+	for(scan = bindings; *scan; scan++) {
+		if(*scan == '\n' || *scan == ' ' || *scan == '\t') {
+			if(token_start == scan) token_start++;
+			continue;
+		}
+		switch(state) {
+			case 0: // Expecting key description
+				current_command_start = scan;
+
+			case 1: // Expecting continuation of key description or start of command
+				switch(*scan) {
+					case '<':
+						token_start = scan + 1;
+						state = 2;
+						break;
+
+					case '{':
+						if(state == 0) {
+							error_message = g_strdup("Unallowed { before keyboard binding was given");
+							state = -1;
+							break;
+						}
+						token_start = scan + 1;
+						state = 3;
+						break;
+
+					default:
+						if(scan[0] == '\\' && scan[1]) {
+							scan++;
+						}
+
+						keyboard_key_value = KEY_BINDING_VALUE(0, keyboard_state, *scan);
+						#define PARSE_KEY_BINDINGS_BIND(keyboard_key_value) \
+							keyboard_state = 0; \
+							if(!*active_key_bindings_table) { \
+								*active_key_bindings_table = g_hash_table_new((GHashFunc)g_direct_hash, (GEqualFunc)g_direct_equal); \
+							} \
+							binding = g_hash_table_lookup(*active_key_bindings_table, GUINT_TO_POINTER(keyboard_key_value)); \
+							if(!binding) { \
+								binding = g_slice_new0(key_binding_t); \
+								g_hash_table_insert(*active_key_bindings_table, GUINT_TO_POINTER(keyboard_key_value), binding); \
+							} \
+							active_key_bindings_table = &(binding->next_key_bindings);
+						PARSE_KEY_BINDINGS_BIND(keyboard_key_value);
+						state = 1;
+				}
+				break;
+
+			case 2: // Expecting identifier identifying a special key
+				// That's either Shift, Control, Alt, Mouse-%d, Mouse-Scroll-%d or gdk_keyval_name
+				// Closed by `>'
+				if(*scan == '>') {
+					identifier_length = scan - token_start;
+					if(identifier_length == 7 && g_ascii_strncasecmp(token_start, "mouse-", 6) == 0) {
+						// Is Mouse-
+						keyboard_key_value = KEY_BINDING_VALUE(1, keyboard_state, (token_start[6] - '0'));
+						PARSE_KEY_BINDINGS_BIND(keyboard_key_value);
+					}
+					else if(identifier_length == 14 && g_ascii_strncasecmp(token_start, "mouse-scroll-", 13) == 0) {
+						// Is Mouse-Scroll-
+						keyboard_key_value = KEY_BINDING_VALUE(1, keyboard_state, ((token_start[13] - '0') << 2));
+						PARSE_KEY_BINDINGS_BIND(keyboard_key_value);
+					}
+					else if(identifier_length == 5 && g_ascii_strncasecmp(token_start, "shift", 5) == 0) {
+						keyboard_state |= GDK_SHIFT_MASK;
+					}
+					else if(identifier_length == 7 && g_ascii_strncasecmp(token_start, "control", 7) == 0) {
+						keyboard_state |= GDK_CONTROL_MASK;
+					}
+					else if(identifier_length == 3 && g_ascii_strncasecmp(token_start, "alt", 3) == 0) {
+						keyboard_state |= GDK_MOD1_MASK;
+					}
+					else {
+						identifier = g_malloc(identifier_length + 1);
+						memcpy(identifier, token_start, identifier_length);
+						identifier[identifier_length] = 0;
+						guint keyval = gdk_keyval_from_name(identifier);
+						if(keyval == GDK_KEY_VoidSymbol) {
+							error_message = g_strdup_printf("Failed to parse key: `%s' is not a known GDK keyval name", identifier);
+							state = -1;
+							break;
+						}
+						keyboard_key_value = KEY_BINDING_VALUE(0, keyboard_state, keyval);
+						PARSE_KEY_BINDINGS_BIND(keyboard_key_value);
+						g_free(identifier);
+					}
+					token_start = NULL;
+					state = 1;
+				}
+				break;
+
+			case 3: // Expecting command identifier, ended by `(', or closing parenthesis
+			case 5: // Expecting further commands
+				if(token_start == scan && *scan == ';') {
+					token_start = scan + 1;
+					continue;
+				}
+
+				switch(*scan) {
+					case '(':
+						identifier_length = scan - token_start;
+						identifier = g_malloc(identifier_length + 1);
+						memcpy(identifier, token_start, identifier_length);
+						identifier[identifier_length] = 0;
+
+						if(binding->action && state == 5) {
+							binding->next_action = g_slice_new0(key_binding_t);
+							binding = binding->next_action;
+						}
+
+						state = -1;
+						unsigned int action_id = 0;
+						for(const struct pqiv_action_descriptor *descriptor = pqiv_action_descriptors; descriptor->name; descriptor++) {
+							if((ptrdiff_t)strlen(descriptor->name) == identifier_length && g_ascii_strncasecmp(descriptor->name, identifier, identifier_length) == 0) {
+								binding->action = action_id;
+								parameter_type = descriptor->parameter_type;
+								token_start = scan + 1;
+								state = 4;
+								break;
+							}
+							action_id++;
+						}
+
+						if(state != 4) {
+							error_message = g_strdup_printf("Unknown action: `%s'", identifier);
+							state = -1;
+							break;
+						}
+
+						g_free(identifier);
+
+						break;
+
+					case '}':
+						active_key_bindings_table = &key_bindings;
+						binding = NULL;
+						state = 0;
+						break;
+				}
+				break;
+
+			case 4: // Expecting action parameter, ended by `)'
+				if(parameter_type == PARAMETER_CHARPTR && *scan == '\\' && scan[1]) {
+					scan++;
+					continue;
+				}
+
+				if(*scan == ')') {
+					identifier_length = scan - token_start;
+					identifier = g_malloc(identifier_length + 1);
+					for(int i=0, j=0; j<identifier_length; i++, j++) {
+						if(token_start[j] == '\\') {
+							if(++j > identifier_length) {
+								break;
+							}
+						}
+						identifier[i] = token_start[j];
+					}
+					identifier[identifier_length] = 0;
+
+					switch(parameter_type) {
+						case PARAMETER_NONE:
+							if(identifier_length > 0) {
+								error_message = g_strdup("This function does not expect a parameter");
+								state = -1;
+								break;
+							}
+							break;
+						case PARAMETER_INT:
+							binding->parameter.pint = atoi(identifier);
+							break;
+						case PARAMETER_DOUBLE:
+							binding->parameter.pdouble = atof(identifier);
+							break;
+						case PARAMETER_CHARPTR:
+							binding->parameter.pcharptr = g_strdup(identifier);
+							break;
+					}
+
+					g_free(identifier);
+
+					if(state == -1) {
+						break;
+					}
+
+					token_start = scan + 1;
+					state = 5;
+				}
+				break;
+
+			default:
+				error_message = g_strdup("Unexpected input");
+				state = -1;
+				break;
+		}
+
+		if(state == -1) {
+			break;
+		}
+	}
+
+	if(state != 0) {
+		if(state != -1) {
+			error_message = g_strdup("Unexpected end of key binding definition");
+		}
+
+		g_printerr("Failed to parse key bindings. Error in definition:\n");
+		int error_pos = scan - current_command_start;
+		int print_after = strlen(scan);
+		if(print_after > 20) print_after = 20;
+		g_printerr("%*s\n", error_pos + print_after, current_command_start);
+		for(int i=0; i<error_pos; i++) g_printerr(" ");
+		g_printerr("^-- here\nError was: %s\n\n", error_message);
+		g_free(error_message);
+
+		exit(1);
+	}
+}/*}}}*/
+gboolean perform_string_action(const gchar *string_action) {/*{{{*/
+	const gchar *action_name_start = NULL;
+	const gchar *action_name_end = NULL;
+	const gchar *parameter_start = NULL;
+	const gchar *parameter_end = NULL;
+	const gchar *scan = string_action;
+
+	while(*scan == '\t' || *scan == '\n' || *scan == ' ') scan++;
+	action_name_start = scan;
+	if(!*scan) return TRUE;
+	while(*scan && *scan != '(') scan++;
+	if(*scan != '(') {
+		g_printerr("Invalid command: Missing parenthesis after command specifier.\n");
+		return FALSE;
+	}
+	action_name_end = scan - 1;
+	scan++;
+	while(*scan == '\t' || *scan == '\n' || *scan == ' ') scan++;
+	parameter_start = scan;
+	if(!scan) {
+		g_printerr("Invalid command: Missing parameter list.\n");
+		return FALSE;
+	}
+	while(*scan && *scan != ')') {
+		if(*scan == '\\' && scan[1]) {
+			scan++;
+		}
+		scan++;
+	}
+	parameter_end = scan - 1;
+	if(*scan != ')') {
+		g_printerr("Invalid command: Missing closing parenthesis.\n");
+		return FALSE;
+	}
+	scan++;
+	while(*scan == '\t' || *scan == '\n' || *scan == ' ') scan++;
+
+	ptrdiff_t identifier_length = action_name_end - action_name_start + 1;
+	ptrdiff_t parameter_length = parameter_end - parameter_start + 1;
+
+	gboolean command_found = FALSE;
+	int action_id = 0;
+	for(const struct pqiv_action_descriptor *descriptor = pqiv_action_descriptors; descriptor->name; descriptor++) {
+		if((ptrdiff_t)strlen(descriptor->name) == identifier_length && g_ascii_strncasecmp(descriptor->name, action_name_start, identifier_length) == 0) {
+			command_found = TRUE;
+
+			gchar *parameter = g_malloc(parameter_length + 1);
+			for(int i=0, j=0; j<parameter_length; i++, j++) {
+				if(parameter_start[j] == '\\') {
+					if(++j > parameter_length) {
+						break;
+					}
+				}
+				parameter[i] = parameter_start[j];
+			}
+			parameter[parameter_length] = 0;
+
+			pqiv_action_parameter_t parsed_parameter;
+			switch(descriptor->parameter_type) {
+				case PARAMETER_NONE:
+					if(parameter_length > 0) {
+						g_printerr("Invalid command: This command does not expect a parameter\n");
+						g_free(parameter);
+						return FALSE;
+					}
+					break;
+
+				case PARAMETER_INT:
+					parsed_parameter.pint = atoi(parameter);
+					break;
+
+				case PARAMETER_DOUBLE:
+					parsed_parameter.pdouble = atof(parameter);
+					break;
+
+				case PARAMETER_CHARPTR:
+					parsed_parameter.pcharptr = parameter;
+					break;
+			}
+
+			action(action_id, parsed_parameter);
+			g_free(parameter);
+		}
+		action_id++;
+	}
+	if(!command_found) {
+		g_printerr("Invalid command: Unknown command.\n");
+		return FALSE;
+	}
+
+	if(scan) {
+		return perform_string_action(scan);
+	}
+
+	return TRUE;
+}/*}}}*/
+gboolean read_commands_thread_helper(gpointer command) {/*{{{*/
+	perform_string_action((gchar *)command);
+	g_free(command);
+	return FALSE;
+}/*}}}*/
+gpointer read_commands_thread(gpointer user_data) {/*{{{*/
+		GIOChannel *stdin_reader =
+		#ifdef _WIN32
+			g_io_channel_win32_new_fd(_fileno(stdin));
+		#else
+			g_io_channel_unix_new(STDIN_FILENO);
+		#endif
+
+		gsize line_terminator_pos;
+		gchar *buffer = NULL;
+		const gchar *charset = NULL;
+		if(g_get_charset(&charset)) {
+			g_io_channel_set_encoding(stdin_reader, charset, NULL);
+		}
+
+		while(g_io_channel_read_line(stdin_reader, &buffer, NULL, &line_terminator_pos, NULL) == G_IO_STATUS_NORMAL) {
+			if (buffer == NULL) {
+				continue;
+			}
+
+			buffer[line_terminator_pos] = 0;
+			gdk_threads_add_idle(read_commands_thread_helper, buffer);
+		}
+		g_io_channel_unref(stdin_reader);
+		return NULL;
+}/*}}}*/
+#endif
+void initialize_key_bindings() {/*{{{*/
+	key_bindings = g_hash_table_new((GHashFunc)g_direct_hash, (GEqualFunc)g_direct_equal);
+
+	#define BIND_KEY(key, is_mouse, state, action_id, parameter_value) { \
+		key_binding_t *nkb = g_slice_new(key_binding_t); \
+		nkb->action = action_id; \
+		nkb->parameter = (pqiv_action_parameter_t)(parameter_value); \
+		nkb->next_action = NULL; \
+		nkb->next_key_bindings = NULL; \
+		g_hash_table_insert(key_bindings, GUINT_TO_POINTER(KEY_BINDING_VALUE(is_mouse, state, key)), nkb); \
+	}
+
+	BIND_KEY(GDK_KEY_Up           , 0 , 0                , ACTION_SHIFT_Y                         , 10);
+	BIND_KEY(GDK_KEY_KP_Up        , 0 , 0                , ACTION_SHIFT_Y                         , 10);
+	BIND_KEY(GDK_KEY_Up           , 0 , GDK_CONTROL_MASK , ACTION_SHIFT_Y                         , 50);
+	BIND_KEY(GDK_KEY_KP_Up        , 0 , GDK_CONTROL_MASK , ACTION_SHIFT_Y                         , 50);
+	BIND_KEY(GDK_KEY_Down         , 0 , 0                , ACTION_SHIFT_Y                         , -10);
+	BIND_KEY(GDK_KEY_KP_Down      , 0 , 0                , ACTION_SHIFT_Y                         , -10);
+	BIND_KEY(GDK_KEY_Down         , 0 , GDK_CONTROL_MASK , ACTION_SHIFT_Y                         , -50);
+	BIND_KEY(GDK_KEY_KP_Down      , 0 , GDK_CONTROL_MASK , ACTION_SHIFT_Y                         , -50);
+	BIND_KEY(GDK_KEY_Left         , 0 , 0                , ACTION_SHIFT_X                         , 10);
+	BIND_KEY(GDK_KEY_KP_Left      , 0 , 0                , ACTION_SHIFT_X                         , 10);
+	BIND_KEY(GDK_KEY_Left         , 0 , GDK_CONTROL_MASK , ACTION_SHIFT_X                         , 50);
+	BIND_KEY(GDK_KEY_KP_Left      , 0 , GDK_CONTROL_MASK , ACTION_SHIFT_X                         , 50);
+	BIND_KEY(GDK_KEY_Right        , 0 , 0                , ACTION_SHIFT_X                         , -10);
+	BIND_KEY(GDK_KEY_KP_Right     , 0 , 0                , ACTION_SHIFT_X                         , -10);
+	BIND_KEY(GDK_KEY_Right        , 0 , GDK_CONTROL_MASK , ACTION_SHIFT_X                         , -50);
+	BIND_KEY(GDK_KEY_KP_Right     , 0 , GDK_CONTROL_MASK , ACTION_SHIFT_X                         , -50);
+	BIND_KEY(GDK_KEY_plus         , 0 , GDK_CONTROL_MASK , ACTION_SET_SLIDESHOW_INTERVAL_RELATIVE , 1.);
+	BIND_KEY(GDK_KEY_KP_Add       , 0 , GDK_CONTROL_MASK , ACTION_SET_SLIDESHOW_INTERVAL_RELATIVE , 1.);
+	BIND_KEY(GDK_KEY_plus         , 0 , 0                , ACTION_SET_SCALE_LEVEL_RELATIVE        , 1.1);
+	BIND_KEY(GDK_KEY_KP_Add       , 0 , 0                , ACTION_SET_SCALE_LEVEL_RELATIVE        , 1.1);
+	BIND_KEY(GDK_KEY_minus        , 0 , GDK_CONTROL_MASK , ACTION_SET_SLIDESHOW_INTERVAL_RELATIVE , -1.);
+	BIND_KEY(GDK_KEY_KP_Subtract  , 0 , GDK_CONTROL_MASK , ACTION_SET_SLIDESHOW_INTERVAL_RELATIVE , -1.);
+	BIND_KEY(GDK_KEY_minus        , 0 , 0                , ACTION_SET_SCALE_LEVEL_RELATIVE        , 0.9);
+	BIND_KEY(GDK_KEY_KP_Subtract  , 0 , 0                , ACTION_SET_SCALE_LEVEL_RELATIVE        , 0.9);
+	BIND_KEY(GDK_KEY_t            , 0 , 0                , ACTION_TOGGLE_SCALING_MODE             , 0);
+	BIND_KEY(GDK_KEY_r            , 0 , GDK_CONTROL_MASK , ACTION_TOGGLE_SHUFFLE_MODE             , 0);
+	BIND_KEY(GDK_KEY_r            , 0 , 0                , ACTION_RELOAD                          , 0);
+	BIND_KEY(GDK_KEY_0            , 0 , 0                , ACTION_RESET_SCALE_LEVEL               , 0);
+	BIND_KEY(GDK_KEY_f            , 0 , 0                , ACTION_TOGGLE_FULLSCREEN               , 0);
+	BIND_KEY(GDK_KEY_h            , 0 , 0                , ACTION_FLIP_HORIZONTALLY               , 0);
+	BIND_KEY(GDK_KEY_v            , 0 , 0                , ACTION_FLIP_VERTICALLY                 , 0);
+	BIND_KEY(GDK_KEY_l            , 0 , 0                , ACTION_ROTATE_LEFT                     , 0);
+	BIND_KEY(GDK_KEY_k            , 0 , 0                , ACTION_ROTATE_RIGHT                    , 0);
+	BIND_KEY(GDK_KEY_i            , 0 , 0                , ACTION_TOGGLE_INFO_BOX                 , 0);
+	BIND_KEY(GDK_KEY_j            , 0 , 0                , ACTION_JUMP_DIALOG                     , 0);
+	BIND_KEY(GDK_KEY_s            , 0 , 0                , ACTION_TOGGLE_SLIDESHOW                , 0);
+	BIND_KEY(GDK_KEY_a            , 0 , 0                , ACTION_HARDLINK_CURRENT_IMAGE          , 0);
+	BIND_KEY(GDK_KEY_BackSpace    , 0 , GDK_CONTROL_MASK , ACTION_GOTO_DIRECTORY_RELATIVE         , -1);
+	BIND_KEY(GDK_KEY_BackSpace    , 0 , 0                , ACTION_GOTO_FILE_RELATIVE              , -1);
+	BIND_KEY(GDK_KEY_space        , 0 , GDK_CONTROL_MASK , ACTION_GOTO_DIRECTORY_RELATIVE         , 1);
+	BIND_KEY(GDK_KEY_space        , 0 , 0                , ACTION_GOTO_FILE_RELATIVE              , 1);
+	BIND_KEY(GDK_KEY_Page_Up      , 0 , GDK_CONTROL_MASK , ACTION_GOTO_FILE_RELATIVE              , 10);
+	BIND_KEY(GDK_KEY_KP_Page_Up   , 0 , GDK_CONTROL_MASK , ACTION_GOTO_FILE_RELATIVE              , 10);
+	BIND_KEY(GDK_KEY_Page_Down    , 0 , 0                , ACTION_GOTO_FILE_RELATIVE              , -10);
+	BIND_KEY(GDK_KEY_KP_Page_Down , 0 , 0                , ACTION_GOTO_FILE_RELATIVE              , -10);
+	BIND_KEY(GDK_KEY_q            , 0 , 0                , ACTION_QUIT                            , 0);
+	BIND_KEY(GDK_KEY_Escape       , 0 , 0                , ACTION_QUIT                            , 0);
+	BIND_KEY(GDK_KEY_1            , 0 , 0                , ACTION_NUMERIC_COMMAND                 , 1);
+	BIND_KEY(GDK_KEY_2            , 0 , 0                , ACTION_NUMERIC_COMMAND                 , 2);
+	BIND_KEY(GDK_KEY_3            , 0 , 0                , ACTION_NUMERIC_COMMAND                 , 3);
+	BIND_KEY(GDK_KEY_4            , 0 , 0                , ACTION_NUMERIC_COMMAND                 , 4);
+	BIND_KEY(GDK_KEY_5            , 0 , 0                , ACTION_NUMERIC_COMMAND                 , 5);
+	BIND_KEY(GDK_KEY_6            , 0 , 0                , ACTION_NUMERIC_COMMAND                 , 6);
+	BIND_KEY(GDK_KEY_7            , 0 , 0                , ACTION_NUMERIC_COMMAND                 , 7);
+	BIND_KEY(GDK_KEY_8            , 0 , 0                , ACTION_NUMERIC_COMMAND                 , 8);
+	BIND_KEY(GDK_KEY_9            , 0 , 0                , ACTION_NUMERIC_COMMAND                 , 9);
+
+	BIND_KEY(GDK_BUTTON_PRIMARY   , 1 , 0                , ACTION_GOTO_FILE_RELATIVE              , -1);
+	BIND_KEY(GDK_BUTTON_MIDDLE    , 1 , 0                , ACTION_QUIT                            , 0);
+	BIND_KEY(GDK_BUTTON_SECONDARY , 1 , 0                , ACTION_GOTO_FILE_RELATIVE              , 1);
+	BIND_KEY((GDK_SCROLL_UP+1) << 2, 1 , 0               , ACTION_GOTO_FILE_RELATIVE              , 1);
+	BIND_KEY((GDK_SCROLL_DOWN+1) << 2, 1 , 0             , ACTION_GOTO_FILE_RELATIVE              , -1);
+}/*}}}*/
 // }}}
 
 #ifndef CONFIGURED_WITHOUT_INFO_TEXT
@@ -3968,6 +4853,7 @@ int main(int argc, char *argv[]) {
 	gtk_init(&argc, &argv); // fyi, this generates a MemorySanitizer warning currently
 
 	initialize_file_type_handlers();
+	initialize_key_bindings();
 
 	parse_configuration_file(&argc, &argv);
 	parse_command_line(&argc, argv);
@@ -3978,6 +4864,28 @@ int main(int argc, char *argv[]) {
 		current_scale_level = option_initial_scale;
 	}
 	cairo_matrix_init_identity(&current_transformation);
+
+	// TODO Deprecation warnings, remove with 2.6
+	if(option_reverse_cursor_keys) {
+		g_printerr("Warning: --reverse-cursor-keys is deprecated and will be removed in pqiv 2.6. Use --bind-key instead.\n");
+	}
+	if(option_reverse_scroll) {
+		g_printerr("Warning: --reverse-scroll is deprecated and will be removed in pqiv 2.6. Use --bind-key instead.\n");
+	}
+
+#ifndef CONFIGURED_WITHOUT_CONFIGURABLE_KEY_BINDINGS
+	if(option_commands_from_stdin) {
+		if(option_addl_from_stdin) {
+			g_printerr("Error: --additional-from-stdin conflicts with --commands-from-stdin.\n");
+			exit(1);
+		}
+		#if GLIB_CHECK_VERSION(2, 32, 0)
+			g_thread_new("command-reader", read_commands_thread, NULL);
+		#else
+			g_thread_create(read_commands_thread, NULL, FALSE, NULL);
+		#endif
+	}
+#endif
 
 	global_argc = argc;
 	global_argv = argv;
