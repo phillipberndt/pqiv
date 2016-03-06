@@ -3568,8 +3568,11 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 
 		case ACTION_NUMERIC_COMMAND:
 			{
-
-				gchar *command = external_image_filter_commands[parameter.pint];
+				if(parameter.pint < 1 || parameter.pint > 8) {
+					g_printerr("Only commands 1..9 are supported.\n");
+					return;
+				}
+				gchar *command = external_image_filter_commands[parameter.pint - 1];
 				action(ACTION_COMMAND, (pqiv_action_parameter_t)( command));
 			}
 			break;
