@@ -36,12 +36,14 @@ help() {
 	cat >&2 <<EOF
 pqiv configuration
 
-options:
+general options:
   --prefix=..           Set the prefix for installed files
   --destdir=..          Set the destdir for installed files (for package
                         maintainers)
   --gtk-version=2       Use GTK+-2.0 even if GTK+-3.0 is available
   --cross=..            Set a cross-compiler prefix (e.g. \`i686-pc-mingw32-')
+
+options to select pqiv's backends:
   --backends=..         Select which backends to include in pqiv
                         (autodetermined by default)
                         Available:
@@ -57,6 +59,7 @@ options:
                         plan to package pqiv and want to get rid of the run-time dependencies,
                         so this defaults to \`static'.
 
+options to remove features from pqiv:
 EOF
 
 sed -n -re 's!#ifn?def (\S+)\s*/\* option (\S+): (.+) ?\*/!\1 \2 \3!p' pqiv.c | while read DEFNAME OPTFLAG DESCRIPTION; do
