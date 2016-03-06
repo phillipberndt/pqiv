@@ -1,256 +1,431 @@
 .\" vim:filetype=groff
-.TH pqiv 1 "09 September 2015" "" "pqiv manual"
+.TH pqiv 1 "March 2016" "1.5"
 .SH NAME
 pqiv \- quick image viewer
+.\"
 .SH SYNOPSIS
-.B "pqiv" [options] <file(s) or folder(s)>
+\fBpqiv\fR [options] [filename(s)...]
+.\"
 .SH DESCRIPTION
-pqiv is a simple image viewer inspired by qiv.
+\fBpqiv\fR is a simple command line image viewer inspired by qiv. It is highly
+customizable and supports a variety of formats.
+.\"
 .SH OPTIONS
+.\"
 .TP
-.B -a, --keyboard-alias=nf
-Define n as a keyboard alias for f. For example, `-a af' will give you
-fullscreen with the `a' key. Multiple aliases can be set by concatenating them
-to the option's value: `-a afwa' will make `a' toggle fullscreen and `w' create a
-link to the current image.
+.BR \-c ", " \-\-transparent\-background
+Draw \fBpqiv\fR's window borderless and transparent. In window mode, a mouse
+click activates and deactivates window decorations.
+.\"
 .TP
-.B --browse
+.BR \-d ", " \-\-slideshow\-interval=\fISECONDS\fR
+In slideshow mode (Activated by \fB\-\-slideshow\fR or key \fBs\fR by default),
+cycle through images at this rate. Floating point values are supported, e.g.
+use 0.5 to move through the images at a rate of two images per second.
+.\"
+.TP
+.BR \-f ", " \-\-fullscreen
+Start in fullscreen mode. Fullscreen can be toggled by pressing \fBf\fR at
+runtime by default.
+.\"
+.TP
+.BR \-F  ", " \-\-fade
+Fade between images. See also \fB\-\-fade\-duration\fR.
+.\"
+.TP
+.BR \-i ", " \-\-hide\-info\-box
+Initially hide the info box. Whether the box is visible can be toggled by
+pressing \fBi\fR at runtime by default.
+.\"
+.TP
+.BR \-l ", " \-\-lazy\-load
+\fBpqiv\fR normally processes all command line arguments before displaying its
+main window. With this option, the window is shown as soon as the first image
+has been found and loaded.
+.\"
+.TP
+.BR \-n ", " \-\-sort
+Instead of storing images in the order they are given on the command line and
+found within directories, sort them. The default order is by name (natural
+order). See \fB\-\-sort\-key\fR to change the order.
+.\"
+.TP
+.BR \-P ", " \-\-window\-position=\fIPOSITION\fR
+Set the initial window position. \fIPOSITION\fR may either be
+.RS
+.IP x,y 5
+screen coordinates, or
+.IP off
+to not position the window at all.
+.RE
+.\"
+.TP
+.BR \-r ", " \-\-additional\-from\-stdin
+Read additional filenames/folders from the standard input. This option
+conflicts with \fB\-\-commands\-from\-stdin\fR.
+.\"
+.TP
+.BR \-s ", " \-\-slideshow
+Start in slideshow mode. Slideshow mode can be toggled at runtime by pressing
+\fBs\fR by default.
+.\"
+.TP
+.BR \-t ", " \-\-scale\-images\-up
+Scale images up to fill the whole screen. This can be toggled at runtime by
+pressing \fBt\fR by default. See also \fB\-\-disable\-scaling\fR.
+.\"
+.TP
+.BR \-T ", " \-\-window\-title=\fITITLE\fR
+Set the title of the window. \fBpqiv\fR substitutes several variables into \fITITLE\fR:
+.RS
+.IP $BASEFILENAME 15
+The base file name of the current file (e.g. `\fIimage.png\fR'),
+.IP $FILENAME
+The file name of the current file (e.g. `\fI/home/user/image.png\fR'),
+.IP $WIDTH
+The width of the current image in pixels,
+.IP $HEIGHT
+The height of the current image in pixels,
+.IP $ZOOM
+The current zoom level,
+.IP $IMAGE_NUMBER
+The index of the current image,
+.IP $IMAGE_COUNT
+The total number of images.
+.PP
+The default is `pqiv: $FILENAME ($WIDTHx$HEIGHT) $ZOOM% [$IMAGE_NUMBER/$IMAGE_COUNT]'.
+.RE
+.\"
+.TP
+.BR \-z ", " \-\-zoom\-level=\fIFLOAT\fR
+Set the initial zoom level as a floating point value, i.e., 1.0 is 100%. This
+only applies to the first image, other images are scaled according to the scale
+mode (see \fB\-\-scale\-images\-up\fR and \fB\-\-disable\-scaling\fR) and
+window size.
+.\"
+.TP
+.BR \-1 ", " \-\-command\-1=\fICOMMAND\fR
+Bind the external \fICOMMAND\fR to key 1. You can use 2..9 to bind further
+commands. The \fBACTIONS\fR feature (see below) allows to bind further keys to
+other commands. \fICOMMAND\fR is executed using the default shell processor.
+`$1' is substituted with the current file name.
+.RS
+.PP
+If \fICOMMAND\fR begins with `>', its standard output is displayed in a popup window.
+.PP
+If \fICOMMAND\fR begins with `|', the current image is piped to its standard
+input, and its standard output is loaded as an image. This can be used to e.g.
+process images.
+.RE
+.\"
+.TP
+.BR \-\-bind\-key=\fIKEY BINDING\fR
+Rebind a key to an action. The syntax is
+.RS
+.RS
+key sequence { command(parameter); command(parameter); }
+.RE
+A key sequence may be one or more characters, or special characters supplied as
+`<name>', where name is a GDK key specifier or a mouse button (`Mouse-1') or a
+scrolling direction (`Mouse-Scroll-1'). If you e.g. use `a<Control>b', then a
+user must hit `a' followed by control + `b' to trigger the command. It is possible
+to bind `a' and `ab' as well. The action bound to `a' will then be slightly delayed
+to allow a user to hit `b'. The semicolon separating commands is optional. See
+\fBACTIONS\fR below for available commands.
+.RE
+.\"
+.TP
+.BR \-\-browse
 For each command line argument, additionally load all images from the image's
-directory.
+directory. \fBpqiv\fR will still start at the image that was given as the first
+parameter.
+.\"
 .TP
-.B -c, --transparent-background
-Borderless transparent window. Click on the window to show the window borders,
-click again to hide them.  This will only work in compositing window managers.
+.BR \-\-commands\-from\-stdin
+Read commands from the standard input. See the \fBACTIONS\fR section below for
+syntax and available commands. This option conflicts with
+\fB\-\-additional\-from\-stdin\fR.
+.\"
 .TP
-.B -d, --slideshow-interval=n
-Set the interval for the slideshow mode
+.BR \-\-disable\-scaling
+Completely disable scaling. This can be toggled at runtime by
+pressing \fBt\fR by default. See also \fB\-\-scale\-images\-up\fR.
+.\"
 .TP
-.B --disable-scaling
-Disable scaling of images
+.BR \-\-end\-of\-files\-action=\fIACTION\fR
+If all files have been viewed and the next image is to be viewed, either by the
+user's request or because a slideshow is active, \fBpqiv\fR by default cycles
+and restarts at the first image. This parameter can be used to modify this
+behaviour. Valid choices for \fIACTION\fR are:
+.RS
+.IP quit 20
+Quit \fBpqiv\fR,
+.IP wait
+Wait until a new image becomes available. This only makes sense if used with
+e.g. \fB\-\-watch\-directories\fR,
+.IP wrap (default)
+Restart at the first image. In shuffle mode, choose a new random order,
+.IP wrap-no-reshuffle
+As wrap, but do not reshuffle in random mode.
+.RE
+.\"
 .TP
-.B --end-of-files-action=ACTION
-Control what to to after all images have been viewed. Valid options are
-.I quit
-to make pqiv exit after the last image has been viewed,
-.I wait
-to wait for new images to arrive,
-.I wrap
-to jump again to the first image and
-.I wrap-no-reshuffle
-to jump again to the first image, but in
-.I --shuffle
-mode, repeat the images in the same order as they were seen last time.
-Note that
-.I wait
-only makes sense if used with
-.I --watch-directories
-or
-.I --lazy-load
-and if either
-.I --shuffle
-is enabled or
-.I --sort
-is not: Elsewise, new images might get sorted before the last image, which
-would be ignored by pqiv. Only images that come after the last one count.
+.BR \-\-fade\-duration=\fISECONDS\fR
+With \fB\-\-fade\fR, make each fade this long. Floating point values are
+accepted, e.g. 0.5 makes each fade take half a second.
+.\"
 .TP
-.B -f, --fullscreen
-Start in fullscreen mode
+.BR \-\-low\-memory
+Try to keep memory usage to a minimum. \fBpqiv\fR by default e.g. preloads the
+next and previous image to speed up navigation and caches scaled images to
+speed up redraws. This flag disables such optimizations.
+.\"
 .TP
-.B -F, --fade
-Fade between images
+.BR \-\-max\-depth=\fILEVELS\fR
+For parameters that are directories, \fBpqiv\fR searches recursively for
+images. Use this parameter to limit the depth at which \fBpqiv\fR searches.  A
+level of 0 disables recursion completely, i.e. if you call pqiv with a
+directory as a parameter, it will not search it at all.
+.\"
 .TP
-.B --fade-duration=n
-Set how long pqiv should fade between images. Defaults to 0.5 seconds.
+.BR \-\-shuffle
+Display files in random order. This option conflicts with \fB\-\-sort\fR. Files
+are reshuffled after all images have been shown, but within one cycle, the
+order is stable. The reshuffling can be disabled using
+\fB\-\-end\-of\-files\-action\fR. At runtime, you can use \fBControl + R\fR by
+default to toggle shuffle mode; this retains the shuffled order, i.e., you can
+disable shuffle mode, view a few images, then enable it again and continue
+after the last image you viewed earlier in shuffle mode.
+.\"
 .TP
-.B -i, --hide-info-box
-Initially hide the info box
+.BR \-\-show\-bindings
+Display the keyboard and mouse bindings and exit. This displays the key
+bindings in the format accepted by \fB\-\-bind\-key\fR. See there, and the
+\fBACTIONS\fR section for details on available actions.
+.\"
 .TP
-.B -l, --lazy-load
-Create the image list in a background thread and display the main window as
-soon as one image has been found. New images will be added as they are found.
-When combining this with the
-.I --sort
-or
-.I --shuffle
-options, keep in mind that the first image found will be displayed, though it
-might end up not being the first one in the final file list. As with the
-.I --watch-directories
-option, the info box does not automatically update when new images are added.
+.BR \-\-sort\-key=\fIPROPERTY\fR
+Key to use for sorting. Supported values for \fIPROPERTY\fR are:
+.RS
+.IP NAME 8
+To sort by filename in natural order, e.g. \fIabc32d\fR before \fIabc112d\fR,
+but \fIb1\fR after both,
+.IP MTIME
+To sort by file modification date.
+.RE
+.\"
 .TP
-.B --low-memory
-Try to avoid memory hungry operations: Do not preload the next image, do not
-keep a scaled image in memory for faster redraw operations, etc.
+.BR \-\-watch\-directories
+Watch all directories supplied as parameters to \fBpqiv\fR for new files and
+add them as they appear. In \fB\-\-sort\fR mode, files are sorted into the
+correct position, else, they are appended to the end of the list.
+See also \fB\-\-watch\-files\fR, which handles how changes to the image that is
+currently being viewed are handled.
+.\"
 .TP
-.B --max-depth=n
-Descend at most n levels of directories below the command line arguments. Like
-in find, passing 0 disables recursion. Negative numbers mean infinite recursion
-and are the default.
-.TP
-.B -n, --sort
-Sort files in natural order
-.TP
-.B -P, --window-position=POSITION
-Set initial window position. Use `x,y' to position the window at the specific
-coordinates, or `off' to not position the window at all. The default behavior
-is to center the window.
-.TP
-.B -r, --additional-from-stdin
-Read additional filenames/folders from stdin
-.TP
-.B -R, --reverse-cursor-keys
-Reverse the meaning of the cursor keys
-.TP
-.B --reverse-scroll
-Reverse the meaning of the scroll wheel
-.TP
-.B -s, --slideshow
-Initially activate slideshow mode
-.TP
-.B --shuffle
-Shuffle files
-.TP
-.B --sort-key=PROPERTY
-If
-.I --sort
-is enabled, sort by PROPERTY. Currently supported are
-.I name
-(default), which sorts by filename, and
-.I mtime
-which sorts by the files' modification timestamps.
-.TP
-.B -t, --scale-images-up
-Scale images up to fill the whole screen
-.TP
-.B -T, --window-title=TITLE
-Set the title of the window. You have some variables available:
-
-.po 7
-
-.TP
-.I $BASEFILENAME
-The base file name of the current file (e.g. `image.png')
-
-.TP
-.I $FILENAME
-The file name of the current file (e.g. `/home/user/image.png')
-
-.TP
-.I $WIDTH
-The width of the current image in pixels
-
-.TP
-.I $HEIGHT
-The height of the current image in pixels
-
-.TP
-.I $ZOOM
-The current zoom level
-
-.TP
-.I $IMAGE_NUMBER
-The index of the current image
-
-.TP
-.I $IMAGE_COUNT
-The total numer of images
-
-.po 0
-
-The default is `pqiv: $FILENAME ($WIDTHx$HEIGHT) $ZOOM% [$IMAGE_NUMBER/$IMAGE_COUNT]'
-
-.TP
-.B -z, --zoom-level=FLOAT
-Set initial zoom level as a floating point number (1.0 is 100%)
-.TP
-.B -1, --command-1=COMMAND
-Bind the external COMMAND to key 1. Likewise, you can use -2 to -9 for those keys.
-Extended usage:
-
-.po 7
-.TP
-.I Show command output in a window
-Prefix the command with 
-.RI `>'
-to display it's output in an overlay window.
-.TP
-.I Pipe the image through a filter
-Prefix the command with 
-.RI `|' 
-to write the image to the program's stdin and read an image from its stdout.
-The output is not cached, so reloading the image will revert to the old state.
-.po 0
-
-.TP
-.B --watch-directories
-Watch directories (given on the command line) for new images and add them as
-they appear. Note that the yellow info box does not update automatically, but
-only when the window needs to be redrawn anyway. This option uses GIO's
-GFileMonitor internally. Depending on which system you use, GIO might internally
-poll regularly for changes, i.e. create some load. (In Linux, inotify is used.)
-If you intend to regularly delete all files from a directory and replace them with
-other images, note the comment in the documentation for \fB--watch-files\fR as well.
-
-.TP
-.B --watch-files=VALUE
-Watch files for changes. The default value is
-\fIon\fR, which means that pqiv will monitor if any
-\fUloaded\fR image, i.e. the current image and the two adjacent images unless
-\fB--low-memory\fR is used as well, change on disk or are deleted. If this happens,
-pqiv will try to reload the image, and jump to the next image if this fails. To
-disable this deature completely, use \fIoff\fR. The third possible value for
-this option is \fIchanges-only\fR, which means that pqiv will reload files that
-changed on disk, but ignore if a file is deleted.
-If you intend to delete all files from a directory in conjunction with
-\fB--watch-directories\fR, then you'll need this to prevent pqiv from quitting:
-It would otherwise first notice that the current image was deleted and unload
-it, and only then try to load the other ones.
-
+.BR \-\-watch\-files=\fIVALUE\fR
+Watch files for changes on disk. Valid choices for \fIVALUE\fR are:
+.RS
+.IP "on (default)" 15
+Watch files for changes, reload upon a change, and skip to the next file if a file is removed,
+.IP changes-only
+Watch files for changes, reload upon a change, but do nothing if a file is removed,
+.IP off
+Do not watch files for changes at all.
 .PP
-You can use the file
-.RI ~/.pqivrc
-to make any of these default. The file's syntax is (mostly) those of desktop-files. Create a section
-.I options
-and use the long option names for the key names. For example,
-
-.po 5
-
+Note that a file that has been removed will still be removed from \fBpqiv\fR's
+image list when it has been unloaded, i.e. if a user moves more than one image
+away from it. (See also \fB\-\-low\-memory\fR.)
+.RE
+.\"
+.\"
+.SH ACTIONS
+Actions are the building blocks for controlling \fBpqiv\fR. The syntax for
+entering an action is
+.RS
+\fICOMMAND\fR(\fIPARAMETER\fR)
+.RE
+where \fICOMMAND\fR is one of the commands described in the following and
+\fIPARAMETER\fR is the command's parameter. Strings are not quoted. Instead,
+the closing parenthesis must be escaped by a backslash if it is used in a
+string. E.g., `command(echo \\))' will output a single `)'. The available
+commands are:
+.TP
+.BR nop()
+Do nothing. Can be used to clear an existing binding.
+.TP
+.BR shift_y(INT)
+Shift the current image in y direction.
+.TP
+.BR shift_x(INT)
+Shift the current image in x direction.
+.TP
+.BR set_slideshow_interval_relative(DOUBLE)
+Adjust the slideshow interval additively by the parameter value. See also \fB\-\-slideshow\-interval\fR.
+.TP
+.BR set_slideshow_interval_absolute(DOUBLE)
+Set the slideshow interval to the parameter value, in seconds.
+.TP
+.BR set_scale_level_relative(DOUBLE)
+Adjust the scale level multiplicatively by the parameter value.
+.TP
+.BR set_scale_level_absolute(DOUBLE)
+Set the scale level to the parameter value. 1.0 is 100%. See also \fB\-\-zoom\-level\fR.
+.TP
+.BR toggle_scaling_mode(INT)
+Change the scaling mode: Use 0 to cycle through the possible values, 1 to
+disable scaling, 2 for automated scaledown (default), and 3 to always scale
+images up.
+.TP
+.BR toggle_shuffle_mode(INT)
+Toggle shuffle mode. Use 0 to cycle through the possible values, 1 to enable shuffle, and any other value to disable it.
+.TP
+.BR reload()
+Reload the current image from disk.
+.TP
+.BR reset_scale_level()
+Reset the scale level to the default value.
+.TP
+.BR toggle_fullscreen()
+Toggle fullscreen mode.
+.TP
+.BR flip_horizontally()
+Flip the current image horizontally.
+.TP
+.BR flip_vertically()
+Flip the current image vertically.
+.TP
+.BR rotate_left()
+Rotate the current image left by 90°.
+.TP
+.BR rotate_right()
+Rotate the current image right by 90°.
+.TP
+.BR toggle_info_box()
+Toggle the visibility of the info box.
+.TP
+.BR jump_dialog()
+Display the jump dialog.
+.TP
+.BR toggle_slideshow()
+Toggle slideshow mode.
+.TP
+.BR hardlink_current_image()
+Hardlink the current image to \fI./.pqiv-select/\fR, or copy it if hardlinking is not possible.
+.TP
+.BR goto_directory_relative(INT)
+Jump to the \fIn\fR'th next or previous directory.
+.TP
+.BR goto_file_relative(INT)
+Jump to the \fIn\fR'th next or previous file.
+.TP
+.BR quit()
+Quit pqiv.
+.TP
+.BR numeric_command(INT)
+Execute the \fin\fR'th command defined via \fB\-\-command\-1\fR etc.
+.TP
+.BR command(STRING)
+Execute the given command.
+.TP
+.BR add_file(STRING)
+Add a file or directory.
+.TP
+.BR goto_file_byindex(INT)
+Jump to a file given by its number.
+.TP
+.BR goto_file_byname(STRING)
+Jump to a file given by its displayed name.
+.TP
+.BR remove_file_byindex(INT)
+Remove a file given by its number.
+.TP
+.BR remove_file_byname(STRING)
+Remove a file given by its displayed name.
+.TP
+.BR output_file_list()
+Output a list of all loaded files to the standard output.
+.\"
+.SH DEFAULT KEY BINDINGS
+.IP Space 20
+Next file.
+.IP Backspace
+Previous file.
+.IP a
+Link the current image to \fI./.pqiv-select/\fR, or copy it if hardlinking is not possible.
+.IP f
+Toggle fullscreen mode.
+.IP h/v
+Flip the image horizontally or vertically.
+.IP k/l
+Rotate the image right or left.
+.IP i
+Toggle visibility of the info box.
+.IP j
+Show a dialog with a list of all files for quick selection.
+.IP q
+Quit \fBpqiv\fR
+.IP r
+Reload the current image.
+.IP s
+Toggle slideshow mode.
+.IP t
+Toggle the scaling mode; cycle between scaling all images up, scaling large images down and no scaling at all.
+.IP Plus/minus
+Zoom.
+.IP Mouse buttons (fullscreen)
+Goto the next and previous files.
+.IP Mouse drag (fullscreen)
+Move the image.
+.IP Mouse drag with right button (fullscreen)
+Zoom.
+.IP Arrow keys
+Move the image.
+.PP
+This list omitted some advanced default bindings. Run `\fBpqiv
+\-\-show\-bindings\fR' to display a complete list.
+.\"
+.SH CONFIGURATION FILE
+Upon startup, \fBpqiv\fR parses the file \fI~/.pqivrc\fR. It should be a
+key/value file with a single \fIoptions\fR section. All long form parameters
+are valid keys. To set a boolean flag, set the value to 1. A set flag inverts
+the meaning of the associated parameter. E.g., if you set `fullscreen=1', then
+\fBpqiv\fR will start in fullscreen mode unless you supply \fB\-f\fR upon
+startup.
+.PP
+As an example,
+.RS
+.nf
 [options]
-.br
 fullscreen=1
-.br
-slideshow-interval=5
-
-.po 0
-
-would be a valid configuration file. If you set any boolean option in the
-configuration file, its meaning on the command line will be inverted. So with
-the above example file,
-.I -f
-would make pqiv start in window mode.
-The old syntax from pqiv <= 1.0, where the file was prepended to the argument
-vector, is still supported as well. So you can also just store
-.I -f -n 5
-in the file to achieve the same effect.
-
-Please note that while the use of flags in the configuration file inverts their
-meaning on the command line, the same does not apply to double use of flags. In
-old versions of pqiv,
-.I -ff
-would do nothing. This is no longer the case, it will now fullscreen the application.
-
-.PP
-pqiv will display all files you specified on the command line. Directories will
-be searched recursively for files supported by gtk+
-(for example: bmp, gif, jpeg, png, wbmp, xpm, svg). The special file
-.B -
-will cause pqiv to read a file from stdin.
-
-.SH USAGE
-In pqiv, you can use both mouse and keyboard to navigate through the images. Execute
-.B "pqiv" -h
-to get more information on the key bindings.
-
+sort=1
+command-1=|convert - -blur 20 -
+.fi
+.RE
+will make \fBpqiv\fR start in fullscreen by default, sort the file list and
+bind a blur filter to key \fB1\fR. The \fB-f\fR flag on the command line will
+make \fBpqiv\fR not start in fullscreen, and \fB-n\fR will make it not sort
+the list.
+.SH EXAMPLES
+.\"
+.TP
+\fBpqiv \-\-bind\-key="a { goto_file_byindex(0) }" \-\-sort foo bar.pdf\fR
+Rebinds \fBa\fR to go back to the first image, and loads all files from the
+\fIfoo\fR folder and \fIbar.pdf\fR, sorted.
+.TP
+\fBpqiv \-\-slideshow \-\-watch\-directories \-\-end\-of\-files\-action=wait \-\-slideshow\-interval=0.001 test\fR
+Load all files from the \fItest\fR folder in a slideshow progressing very fast,
+and in the end wait until new files become available. This effectively displays
+new images as they appear in a directory and is useful e.g. if you output images
+from a script that you later intent to combine into a movie and wish to monitor
+progress.
+.TP
+\fBecho "output_file_list(); quit()" | pqiv --commands-from-stdin test\fR
+Output a list of all files from the \fItest\fR folder that \fBpqiv\fR can
+handle and quit.
+.\"
+.SH BUGS
+Please report any bugs on github, on https://github.com/phillipberndt/pqiv
+.\"
 .SH AUTHOR
-.nf
-Phillip Berndt (mail at pberndt dot com)
-.nf
+Phillip Berndt (phillip dot berndt at googlemail dot com)
