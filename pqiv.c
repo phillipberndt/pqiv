@@ -4714,6 +4714,8 @@ void initialize_key_bindings() {/*{{{*/
 	BIND_KEY(GDK_KEY_Page_Up      , 0 , GDK_CONTROL_MASK , ACTION_GOTO_FILE_RELATIVE              , 10);
 	BIND_KEY(GDK_KEY_KP_Page_Up   , 0 , GDK_CONTROL_MASK , ACTION_GOTO_FILE_RELATIVE              , 10);
 	BIND_KEY(GDK_KEY_Page_Down    , 0 , 0                , ACTION_GOTO_FILE_RELATIVE              , -10);
+	BIND_KEY(GDK_KEY_Page_Up      , 0 , 0                , ACTION_GOTO_FILE_RELATIVE              , 10);
+	BIND_KEY(GDK_KEY_KP_Page_Up   , 0 , 0                , ACTION_GOTO_FILE_RELATIVE              , 10);
 	BIND_KEY(GDK_KEY_KP_Page_Down , 0 , 0                , ACTION_GOTO_FILE_RELATIVE              , -10);
 	BIND_KEY(GDK_KEY_q            , 0 , 0                , ACTION_QUIT                            , 0);
 	BIND_KEY(GDK_KEY_Escape       , 0 , 0                , ACTION_QUIT                            , 0);
