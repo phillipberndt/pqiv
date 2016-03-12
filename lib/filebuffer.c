@@ -18,6 +18,18 @@
 #include "filebuffer.h"
 #include <string.h>
 #include <glib/gstdio.h>
+#include <gio/gio.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+
+#ifdef _POSIX_VERSION
+#define HAS_MMAP
+#endif
+
+#ifdef HAS_MMAP
+#include <sys/mman.h>
+#endif
 
 struct buffered_file {
 	GBytes *data;
@@ -28,19 +40,64 @@ struct buffered_file {
 
 GHashTable *file_buffer_table = NULL;
 
+#ifdef HAS_MMAP
+extern GFile *gfile_for_commandline_arg(const char *);
+
+struct buffered_file_mmap_info {
+	void *ptr;
+	int fd;
+	size_t size;
+};
+
+static void buffered_file_mmap_free_helper(struct buffered_file_mmap_info *info) {
+	munmap(info->ptr, info->size);
+	close(info->fd);
+	g_slice_free(struct buffered_file_mmap_info, info);
+}
+#endif
+
 GBytes *buffered_file_as_bytes(file_t *file, GInputStream *data, GError **error_pointer) {
 	if(!file_buffer_table) {
 		file_buffer_table = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, g_free);
 	}
 	struct buffered_file *buffer = g_hash_table_lookup(file_buffer_table, file->file_name);
 	if(!buffer) {
-		GBytes *data_bytes;
+		GBytes *data_bytes = NULL;
 
 		if((file->file_flags & FILE_FLAGS_MEMORY_IMAGE)) {
 			data_bytes = g_bytes_ref(file->file_data);
 		}
 		else {
-			if(!data) {
+
+#ifdef HAS_MMAP
+			// If this is a local file, try to mmap() it first instead of loading it completely
+			GFile *input_file = gfile_for_commandline_arg(file->file_name);
+			char *input_file_abspath = g_file_get_path(input_file);
+			if(input_file_abspath) {
+				GFileInfo *file_info = g_file_query_info(input_file, G_FILE_ATTRIBUTE_STANDARD_SIZE, G_FILE_QUERY_INFO_NONE, NULL, NULL);
+				goffset input_file_size = g_file_info_get_size(file_info);
+				g_object_unref(file_info);
+
+				int fd = open(input_file_abspath, O_RDONLY);
+				g_free(input_file_abspath);
+				void *input_file_data = mmap(NULL, input_file_size, PROT_READ, MAP_SHARED, fd, 0);
+
+				if(input_file_data) {
+					struct buffered_file_mmap_info *mmap_info = g_slice_new(struct buffered_file_mmap_info);
+					mmap_info->ptr = input_file_data;
+					mmap_info->fd = fd;
+					mmap_info->size = input_file_size;
+
+					data_bytes = g_bytes_new_with_free_func(input_file_data, input_file_size, (GDestroyNotify)buffered_file_mmap_free_helper, mmap_info);
+				}
+			}
+			g_object_unref(input_file);
+#endif
+
+			if(data_bytes) {
+				// mmap() above worked
+			}
+			else if(!data) {
 				data = image_loader_stream_file(file, error_pointer);
 				if(!data) {
 					return NULL;
