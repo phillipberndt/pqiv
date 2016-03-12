@@ -2565,6 +2565,7 @@ void apply_external_image_filter(gchar *external_filter) {/*{{{*/
 }/*}}}*/
 gpointer apply_external_image_filter_thread(gpointer external_filter_ptr) {/*{{{*/
 	apply_external_image_filter((gchar *)external_filter_ptr);
+	g_free(external_filter_ptr);
 	return NULL;
 }/*}}}*/
 #endif
@@ -3643,6 +3644,8 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 					update_info_text(info);
 					g_free(info);
 					gtk_widget_queue_draw(GTK_WIDGET(main_window));
+
+					command = g_strdup(command);
 
 					#if GLIB_CHECK_VERSION(2, 32, 0)
 						g_thread_new("image-filter", apply_external_image_filter_thread, command);
@@ -4765,6 +4768,8 @@ void initialize_key_bindings() {/*{{{*/
 	BIND_KEY(GDK_KEY_Page_Up      , 0 , GDK_CONTROL_MASK , ACTION_GOTO_FILE_RELATIVE              , 10);
 	BIND_KEY(GDK_KEY_KP_Page_Up   , 0 , GDK_CONTROL_MASK , ACTION_GOTO_FILE_RELATIVE              , 10);
 	BIND_KEY(GDK_KEY_Page_Down    , 0 , 0                , ACTION_GOTO_FILE_RELATIVE              , -10);
+	BIND_KEY(GDK_KEY_Page_Up      , 0 , 0                , ACTION_GOTO_FILE_RELATIVE              , 10);
+	BIND_KEY(GDK_KEY_KP_Page_Up   , 0 , 0                , ACTION_GOTO_FILE_RELATIVE              , 10);
 	BIND_KEY(GDK_KEY_KP_Page_Down , 0 , 0                , ACTION_GOTO_FILE_RELATIVE              , -10);
 	BIND_KEY(GDK_KEY_q            , 0 , 0                , ACTION_QUIT                            , 0);
 	BIND_KEY(GDK_KEY_Escape       , 0 , 0                , ACTION_QUIT                            , 0);
