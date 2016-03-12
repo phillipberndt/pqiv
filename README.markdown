@@ -64,6 +64,7 @@ and optionally also
  * libspectre (any version, for ps/eps support)
  * poppler (any version, for pdf support)
  * MagickWand (any version, for additional image formats like psd)
+ * libarchive (for cbX comic book files)
  * ffmpeg / libav (for video support, only included if explicitly compiled in)
 
 The backends are per default linked statically into the code, so all backend
@@ -132,6 +133,7 @@ pqiv (wip)
  * Added a configure option to build the backends as shared libraries
  * Added --watch-files to make the file change action configurable
  * Fixed segfault on reloading of images created by pipe-command output
+ * Added support for cbz/cbr/cbt/cb7 comic books
 
 pqiv 2.4.1
  * Fix --end-of-files-action=quit if only one file is present

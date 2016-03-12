@@ -34,6 +34,7 @@ LIBS_poppler=poppler-glib
 LIBS_spectre=libspectre
 LIBS_wand=MagickWand
 LIBS_libav=libavformat libavcodec libswscale libavutil
+LIBS_archive_cbx=libarchive gdk-pixbuf-2.0 >= 2.2
 
 # Disable the automated compilation of the libav backend
 DISABLE_AUTOMATED_BUILD_libav=yes
