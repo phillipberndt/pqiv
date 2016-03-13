@@ -98,10 +98,11 @@ ifneq ($(origin LIBS_$(1)),undefined)
 endif
 endef
 $(foreach BACKEND_C, $(wildcard backends/*.c), $(eval $(call handle-backend,$(basename $(notdir $(BACKEND_C))))))
+PIXBUF_FILTER="gdkpixbuf",
 ifeq ($(BACKENDS_BUILD), shared)
 	CFLAGS_SHARED=-fPIC
 	OBJECTS+=backends/shared-initializer.o
-	BACKENDS_BUILD_CFLAGS_shared-initializer=-DSHARED_BACKENDS='$(SHARED_BACKENDS)'
+	BACKENDS_BUILD_CFLAGS_shared-initializer=-DSHARED_BACKENDS='$(filter $(PIXBUF_FILTER), $(SHARED_BACKENDS)) $(filter-out $(PIXBUF_FILTER), $(SHARED_BACKENDS))'
 	LIBS+=gmodule-2.0
 	LDFLAGS_RPATH=-Wl,-rpath,'$$ORIGIN/backends',-rpath,'$$ORIGIN/../lib/pqiv',-rpath,'$(PREFIX)/lib/pqiv'
 else
@@ -159,7 +160,8 @@ $(BACKENDS_INITIALIZER).c:
 		$(foreach BACKEND, $(sort $(BACKENDS)), echo "void file_type_$(BACKEND)_initializer(file_type_handler_t *info);";) \
 		echo "void initialize_file_type_handlers() {"; \
 		echo "	int i = 0;"; \
-		$(foreach BACKEND, $(sort $(BACKENDS)), echo "	file_type_$(BACKEND)_initializer(&file_type_handlers[i++]);";) \
+		$(foreach BACKEND, $(filter gdkpixbuf, $(BACKENDS)), echo "	file_type_$(BACKEND)_initializer(&file_type_handlers[i++]);";) \
+		$(foreach BACKEND, $(sort $(filter-out gdkpixbuf, $(BACKENDS))), echo "	file_type_$(BACKEND)_initializer(&file_type_handlers[i++]);";) \
 		echo "}" \
 	) > $@
 
