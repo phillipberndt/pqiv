@@ -74,7 +74,11 @@ GBytes *buffered_file_as_bytes(file_t *file, GInputStream *data, GError **error_
 			GFile *input_file = gfile_for_commandline_arg(file->file_name);
 			char *input_file_abspath = g_file_get_path(input_file);
 			if(input_file_abspath) {
-				GFileInfo *file_info = g_file_query_info(input_file, G_FILE_ATTRIBUTE_STANDARD_SIZE, G_FILE_QUERY_INFO_NONE, NULL, NULL);
+				GFileInfo *file_info = g_file_query_info(input_file, G_FILE_ATTRIBUTE_STANDARD_SIZE, G_FILE_QUERY_INFO_NONE, NULL, error_pointer);
+				if(!file_info) {
+					return NULL;
+					g_object_unref(input_file);
+				}
 				goffset input_file_size = g_file_info_get_size(file_info);
 				g_object_unref(file_info);
 

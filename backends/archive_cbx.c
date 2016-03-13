@@ -69,7 +69,7 @@ BOSNode *file_type_archive_cbx_alloc(load_images_state_t state, file_t *file) {/
 	GError *error_pointer = NULL;
 	GBytes *data = buffered_file_as_bytes(file, NULL, &error_pointer);
 	if(!data) {
-		g_printerr("Failed to load archive %s: %s\n", file->display_name, error_pointer->message);
+		g_printerr("Failed to load archive %s: %s\n", file->display_name, error_pointer ? error_pointer->message : "Unknown error");
 		g_clear_error(&error_pointer);
 		file_free(file);
 		return NULL;
@@ -104,6 +104,7 @@ BOSNode *file_type_archive_cbx_alloc(load_images_state_t state, file_t *file) {/
 
 	archive_read_free(archive);
 	buffered_file_unref(file);
+	file_free(file);
 	return NULL;
 }/*}}}*/
 void file_type_archive_cbx_free(file_t *file) {/*{{{*/
