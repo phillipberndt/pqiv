@@ -74,6 +74,7 @@
 #define GDK_BUTTON_MIDDLE 2
 #define GDK_BUTTON_SECONDARY 3
 
+#define GDK_KEY_VoidSymbol 0xffffff
 #define GDK_KEY_Escape 0xff1b
 #define GDK_KEY_Return 0xff0d
 #define GDK_KEY_Left 0xff51
