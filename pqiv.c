@@ -3802,7 +3802,7 @@ void handle_input_event(guint key_binding_value) {/*{{{*/
 	guint keycode = key_binding_value & 0xfffffff;
 
 	// Filter unwanted state variables out
-	state &= (GDK_SHIFT_MASK & GDK_CONTROL_MASK & GDK_MOD1_MASK & GDK_MOD2_MASK & GDK_MOD3_MASK & GDK_MOD4_MASK & GDK_MOD5_MASK);
+	state &= (GDK_SHIFT_MASK | GDK_CONTROL_MASK | GDK_MOD1_MASK | GDK_MOD2_MASK | GDK_MOD3_MASK | GDK_MOD4_MASK | GDK_MOD5_MASK);
 	key_binding_value = KEY_BINDING_VALUE(is_mouse, state, keycode);
 
 	if(active_key_binding.key_binding) {
