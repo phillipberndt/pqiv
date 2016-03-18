@@ -19,6 +19,7 @@
 #define _XOPEN_SOURCE 600
 
 #include "pqiv.h"
+#include "lib/config_parser.h"
 
 #include "lib/strnatcmp.h"
 #include <cairo/cairo.h>
@@ -617,7 +618,162 @@ gboolean option_sort_key_callback(const gchar *option_name, const gchar *value, 
 	}
 	return TRUE;
 }/*}}}*/
-void parse_configuration_file(int *argc, char **argv[]) {/*{{{*/
+void parse_configuration_file_callback(char *section, char *key, config_parser_value_t *value) {
+	int * const argc = &global_argc;
+	char *** const argv = &global_argv;
+
+	config_parser_tolower(section);
+	config_parser_tolower(key);
+
+	if(!section && !key) {
+		// Classic pqiv 1.x configuration file: Append to argv {{{
+		char *options_contents = value->chrpval;
+
+		gint additional_arguments = 0;
+		gint additional_arguments_max = 10;
+
+		// Add configuration file contents to argument vector
+		char **new_argv = (char **)g_malloc(sizeof(char *) * (*argc + additional_arguments_max + 1));
+		new_argv[0] = (*argv)[0];
+		char *end_of_argument;
+		while(*options_contents != 0) {
+			end_of_argument = strchr(options_contents, ' ');
+			if(end_of_argument != NULL) {
+				*end_of_argument = 0;
+			}
+			else {
+				end_of_argument = options_contents + strlen(options_contents) - 1;
+			}
+			gchar *argv_val = options_contents;
+			g_strstrip(argv_val);
+
+			// Try to directly parse boolean options, to reverse their
+			// meaning on the command line
+			if(argv_val[0] == '-') {
+				gboolean direct_parsing_successfull = FALSE;
+				if(argv_val[1] == '-') {
+					// Long option
+					for(GOptionEntry *iter = options; iter->description != NULL; iter++) {
+						if(iter->long_name != NULL && iter->arg == G_OPTION_ARG_NONE && g_strcmp0(iter->long_name, argv_val + 2) == 0) {
+							*(gboolean *)(iter->arg_data) = TRUE;
+							iter->flags |= G_OPTION_FLAG_REVERSE;
+							direct_parsing_successfull = TRUE;
+							break;
+						}
+					}
+				}
+				else {
+					// Short option
+					direct_parsing_successfull = TRUE;
+					for(char *arg = argv_val + 1; *arg != 0; arg++) {
+						gboolean found = FALSE;
+						for(GOptionEntry *iter = options; iter->description != NULL && direct_parsing_successfull; iter++) {
+							if(iter->short_name == *arg) {
+								found = TRUE;
+								if(iter->arg == G_OPTION_ARG_NONE) {
+									*(gboolean *)(iter->arg_data) = TRUE;
+									iter->flags |= G_OPTION_FLAG_REVERSE;
+								}
+								else {
+									direct_parsing_successfull = FALSE;
+
+									// We only want the remainder of the option to be
+									// appended to the argument vector.
+									*(arg - 1) = '-';
+									argv_val = arg - 1;
+								}
+								break;
+							}
+						}
+						if(!found) {
+							g_printerr("Failed to parse the configuration file: Unknown option `%c'\n", *arg);
+							direct_parsing_successfull = FALSE;
+						}
+					}
+				}
+				if(direct_parsing_successfull) {
+					options_contents = end_of_argument + 1;
+					continue;
+				}
+			}
+
+			// Add to argument vector
+			new_argv[1 + additional_arguments] = argv_val;
+			options_contents = end_of_argument + 1;
+			if(++additional_arguments > additional_arguments_max) {
+				additional_arguments_max += 5;
+				new_argv = g_realloc(new_argv, sizeof(char *) * (*argc + additional_arguments_max + 1));
+			}
+		}
+		if(*options_contents != 0) {
+			new_argv[additional_arguments + 1] = g_strstrip(options_contents);
+			additional_arguments++;
+		}
+
+		// Add the real argument vector and make new_argv the new argv
+		new_argv = g_realloc(new_argv, sizeof(char *) * (*argc + additional_arguments + 1));
+		for(int i=1; i<*argc; i++) {
+			new_argv[i + additional_arguments] = (*argv)[i];
+		}
+		new_argv[*argc + additional_arguments] = NULL;
+		*argv = new_argv;
+		*argc = *argc + additional_arguments;
+
+		return;
+		// }}}
+	}
+	else if(strcmp(section, "options") == 0 && key) {
+		// pqiv 2.x configuration setting {{{
+		GError *error_pointer = NULL;
+		for(GOptionEntry *iter = options; iter->description != NULL; iter++) {
+			if(iter->long_name != NULL && strcmp(iter->long_name, key) == 0) {
+				switch(iter->arg) {
+					case G_OPTION_ARG_NONE: {
+						*(gboolean *)(iter->arg_data) = !!value->intval;
+						if(value->intval) {
+							iter->flags |= G_OPTION_FLAG_REVERSE;
+						}
+					} break;
+					case G_OPTION_ARG_CALLBACK:
+					case G_OPTION_ARG_STRING:
+						if(value->chrpval != NULL) {
+							if(iter->arg == G_OPTION_ARG_CALLBACK) {
+								gchar long_name[64];
+								g_snprintf(long_name, 64, "--%s", iter->long_name);
+								((GOptionArgFunc)(iter->arg_data))(long_name, value->chrpval, NULL, &error_pointer);
+							}
+							else {
+								*(gchar **)(iter->arg_data) = value->chrpval;
+							}
+						}
+						break;
+					case G_OPTION_ARG_INT:
+						*(gint *)(iter->arg_data) = value->intval;
+						break;
+					case G_OPTION_ARG_DOUBLE:
+						*(gdouble *)(iter->arg_data) = value->doubleval;
+						break;
+					default:
+						// Unimplemented. See options array.
+					break;
+				}
+			}
+		}
+		if(error_pointer != NULL) {
+			if(error_pointer->code == G_KEY_FILE_ERROR_INVALID_VALUE) {
+				g_printerr("Failed to load setting for `%s' from configuration file: %s\n", key, error_pointer->message);
+			}
+			g_clear_error(&error_pointer);
+		}
+		// }}}
+	}
+#ifndef CONFIGURED_WITHOUT_CONFIGURABLE_KEY_BINDINGS
+	else if(strcmp(section, "keybindings") == 0 && !key) {
+		parse_key_bindings(value->chrpval);
+	}
+#endif
+}
+void parse_configuration_file() {/*{{{*/
 	// Check for a configuration file
 	gchar *config_file_name = g_build_filename(g_getenv("HOME"), ".pqivrc", NULL);
 	if(!g_file_test(config_file_name, G_FILE_TEST_EXISTS)) {
@@ -625,180 +781,11 @@ void parse_configuration_file(int *argc, char **argv[]) {/*{{{*/
 		return;
 	}
 
-	// Load it
-	GError *error_pointer = NULL;
-	GKeyFile *key_file = g_key_file_new();
-
-	if(!g_key_file_load_from_file(key_file, config_file_name, G_KEY_FILE_NONE, &error_pointer)) {
-		g_key_file_free(key_file);
-
-		// Backwards compatibility: Recognize the old configuration file format
-		if(error_pointer->code == G_KEY_FILE_ERROR_PARSE) {
-			gchar *options_contents;
-			// We deliberately do not free options_contents below: Its contents are used as the
-			// new values for argv.
-			g_file_get_contents(config_file_name, &options_contents, NULL, NULL);
-			if(options_contents == NULL) {
-				g_clear_error(&error_pointer);
-				g_free(config_file_name);
-				return;
-			}
-
-			gint additional_arguments = 0;
-			gint additional_arguments_max = 10;
-
-			// Add configuration file contents to argument vector
-			char **new_argv = (char **)g_malloc(sizeof(char *) * (*argc + additional_arguments_max + 1));
-			new_argv[0] = (*argv)[0];
-			char *end_of_argument;
-			while(*options_contents != 0) {
-				end_of_argument = strchr(options_contents, ' ');
-				if(end_of_argument != NULL) {
-					*end_of_argument = 0;
-				}
-				else {
-					end_of_argument = options_contents + strlen(options_contents) - 1;
-				}
-				gchar *argv_val = options_contents;
-				g_strstrip(argv_val);
-
-				// Try to directly parse boolean options, to reverse their
-				// meaning on the command line
-				if(argv_val[0] == '-') {
-					gboolean direct_parsing_successfull = FALSE;
-					if(argv_val[1] == '-') {
-						// Long option
-						for(GOptionEntry *iter = options; iter->description != NULL; iter++) {
-							if(iter->long_name != NULL && iter->arg == G_OPTION_ARG_NONE && g_strcmp0(iter->long_name, argv_val + 2) == 0) {
-								*(gboolean *)(iter->arg_data) = TRUE;
-								iter->flags |= G_OPTION_FLAG_REVERSE;
-								direct_parsing_successfull = TRUE;
-								break;
-							}
-						}
-					}
-					else {
-						// Short option
-						direct_parsing_successfull = TRUE;
-						for(char *arg = argv_val + 1; *arg != 0; arg++) {
-							gboolean found = FALSE;
-							for(GOptionEntry *iter = options; iter->description != NULL && direct_parsing_successfull; iter++) {
-								if(iter->short_name == *arg) {
-									found = TRUE;
-									if(iter->arg == G_OPTION_ARG_NONE) {
-										*(gboolean *)(iter->arg_data) = TRUE;
-										iter->flags |= G_OPTION_FLAG_REVERSE;
-									}
-									else {
-										direct_parsing_successfull = FALSE;
-
-										// We only want the remainder of the option to be
-										// appended to the argument vector.
-										*(arg - 1) = '-';
-										argv_val = arg - 1;
-									}
-									break;
-								}
-							}
-							if(!found) {
-								g_printerr("Failed to parse the configuration file: Unknown option `%c'\n", *arg);
-								direct_parsing_successfull = FALSE;
-							}
-						}
-					}
-					if(direct_parsing_successfull) {
-						options_contents = end_of_argument + 1;
-						continue;
-					}
-				}
-
-				// Add to argument vector
-				new_argv[1 + additional_arguments] = argv_val;
-				options_contents = end_of_argument + 1;
-				if(++additional_arguments > additional_arguments_max) {
-					additional_arguments_max += 5;
-					new_argv = g_realloc(new_argv, sizeof(char *) * (*argc + additional_arguments_max + 1));
-				}
-			}
-			if(*options_contents != 0) {
-				new_argv[additional_arguments + 1] = g_strstrip(options_contents);
-				additional_arguments++;
-			}
-
-			// Add the real argument vector and make new_argv the new argv
-			new_argv = g_realloc(new_argv, sizeof(char *) * (*argc + additional_arguments + 1));
-			for(int i=1; i<*argc; i++) {
-				new_argv[i + additional_arguments] = (*argv)[i];
-			}
-			new_argv[*argc + additional_arguments] = NULL;
-			*argv = new_argv;
-			*argc = *argc + additional_arguments;
-
-			g_clear_error(&error_pointer);
-			g_free(config_file_name);
-			return;
-		}
-
-		g_printerr("Failed to load configuration file: %s\n", error_pointer->message);
-		g_free(config_file_name);
-		g_clear_error(&error_pointer);
-		return;
-	}
-
-	for(GOptionEntry *iter = options; iter->description != NULL; iter++) {
-		if(iter->long_name != NULL) {
-			switch(iter->arg) {
-				case G_OPTION_ARG_NONE: {
-					*(gboolean *)(iter->arg_data) = g_key_file_get_boolean(key_file, "options", iter->long_name, &error_pointer);
-					if(*(gboolean *)(iter->arg_data)) {
-						iter->flags |= G_OPTION_FLAG_REVERSE;
-					}
-				} break;
-				case G_OPTION_ARG_CALLBACK:
-				case G_OPTION_ARG_STRING: {
-					gchar *option_value = g_key_file_get_string(key_file, "options", iter->long_name, NULL);
-					if(option_value != NULL) {
-						if(iter->arg == G_OPTION_ARG_CALLBACK) {
-							gchar long_name[64];
-							g_snprintf(long_name, 64, "--%s", iter->long_name);
-							((GOptionArgFunc)(iter->arg_data))(long_name, option_value, NULL, &error_pointer);
-						}
-						else {
-							*(gchar **)(iter->arg_data) = option_value;
-						}
-					}
-				} break;
-				case G_OPTION_ARG_INT: {
-					gint option_value = g_key_file_get_integer(key_file, "options", iter->long_name, &error_pointer);
-					if(error_pointer == NULL) {
-						*(gint *)(iter->arg_data) = option_value;
-					}
-				} break;
-				case G_OPTION_ARG_DOUBLE: {
-					gdouble option_value = g_key_file_get_double(key_file, "options", iter->long_name, &error_pointer);
-					if(error_pointer == NULL) {
-						*(gdouble *)(iter->arg_data) = option_value;
-					}
-				} break;
-				default:
-					// Unimplemented. See options array.
-				break;
-			}
-
-			if(error_pointer != NULL) {
-				if(error_pointer->code == G_KEY_FILE_ERROR_INVALID_VALUE) {
-					g_printerr("Failed to load setting for `%s' from configuration file: %s\n", iter->long_name, error_pointer->message);
-				}
-				g_clear_error(&error_pointer);
-			}
-		}
-	}
+	config_parser_parse_file(config_file_name, parse_configuration_file_callback);
 
 	g_free(config_file_name);
-	g_key_file_free(key_file);
-
 }/*}}}*/
-void parse_command_line(int *argc, char *argv[]) {/*{{{*/
+void parse_command_line() {/*{{{*/
 	GOptionContext *parser = g_option_context_new("FILES");
 	g_option_context_set_summary(parser, "A minimalist image viewer\npqiv version " PQIV_VERSION PQIV_VERSION_DEBUG " by Phillip Berndt");
 	g_option_context_set_help_enabled(parser, TRUE);
@@ -807,14 +794,14 @@ void parse_command_line(int *argc, char *argv[]) {/*{{{*/
 	g_option_context_add_group(parser, gtk_get_option_group(TRUE));
 
 	GError *error_pointer = NULL;
-	if(g_option_context_parse(parser, argc, &argv, &error_pointer) == FALSE) {
+	if(g_option_context_parse(parser, &global_argc, &global_argv, &error_pointer) == FALSE) {
 		g_printerr("%s\n", error_pointer->message);
 		exit(1);
 	}
 
 	// User didn't specify any files to load; perhaps some help on how to use
 	// pqiv would be useful...
-	if (*argc == 1 && !option_addl_from_stdin) {
+	if (global_argc == 1 && !option_addl_from_stdin) {
 		g_printerr("%s", g_option_context_get_help(parser, TRUE, NULL));
 		exit(0);
 	}
@@ -1275,7 +1262,10 @@ void directory_tree_free_helper(BOSNode *node) {
 	free(node->key);
 	// value is NULL
 }
-void load_images(int *argc, char *argv[]) {/*{{{*/
+void load_images() {/*{{{*/
+	int * const argc = &global_argc;
+	char ** const argv = global_argv;
+
 	// Allocate memory for the file list (Used for unsorted and random order file lists)
 	file_tree = bostree_new(
 		option_sort ? (BOSTree_cmp_function)strnatcasecmp : (BOSTree_cmp_function)image_tree_float_compare,
@@ -4822,7 +4812,7 @@ gpointer load_images_thread(gpointer user_data) {/*{{{*/
 	}
 #endif
 
-	load_images(&global_argc, global_argv);
+	load_images();
 
 	if(file_tree_valid) {
 		if(bostree_node_count(file_tree) == 0) {
@@ -4864,8 +4854,11 @@ int main(int argc, char *argv[]) {
 	initialize_file_type_handlers();
 	initialize_key_bindings();
 
-	parse_configuration_file(&argc, &argv);
-	parse_command_line(&argc, argv);
+	global_argc = argc;
+	global_argv = argv;
+
+	parse_configuration_file();
+	parse_command_line();
 	if(fabs(option_initial_scale - 1.0) < 2 * FLT_MIN) {
 		option_initial_scale_used = TRUE;
 	}
@@ -4896,8 +4889,6 @@ int main(int argc, char *argv[]) {
 	}
 #endif
 
-	global_argc = argc;
-	global_argv = argv;
 	if(option_lazy_load) {
 		#if GLIB_CHECK_VERSION(2, 32, 0)
 			g_thread_new("image-loader", load_images_thread, GINT_TO_POINTER(1));

@@ -387,11 +387,11 @@ This list omitted some advanced default bindings. Run `\fBpqiv
 .\"
 .SH CONFIGURATION FILE
 Upon startup, \fBpqiv\fR parses the file \fI~/.pqivrc\fR. It should be a
-key/value file with a single \fIoptions\fR section. All long form parameters
-are valid keys. To set a boolean flag, set the value to 1. A set flag inverts
-the meaning of the associated parameter. E.g., if you set `fullscreen=1', then
-\fBpqiv\fR will start in fullscreen mode unless you supply \fB\-f\fR upon
-startup.
+INI-style key/value file with an \fIoptions\fR section. All long form
+parameters are valid keys. To set a boolean flag, set the value to 1. A set
+flag inverts the meaning of the associated parameter. E.g., if you set
+`\fIfullscreen=1\fR', then \fBpqiv\fR will start in fullscreen mode unless you supply
+\fB\-f\fR upon startup.
 .PP
 As an example,
 .RS
@@ -403,9 +403,25 @@ command-1=|convert - -blur 20 -
 .fi
 .RE
 will make \fBpqiv\fR start in fullscreen by default, sort the file list and
-bind a blur filter to key \fB1\fR. The \fB-f\fR flag on the command line will
-make \fBpqiv\fR not start in fullscreen, and \fB-n\fR will make it not sort
+bind a blur filter to key \fB1\fR. The \fB\-f\fR flag on the command line will
+make \fBpqiv\fR not start in fullscreen, and \fB\-n\fR will make it not sort
 the list.
+.PP
+You can place key bindings in the format of the \fB\-\-bind\-key\fR
+parameter in a special \fI[keybindings]\fR section. E.g.,
+.RS
+.nf
+[keybindings]
+x { quit(); }
+q { goto_file_relative(-1); }
+w { goto_file_relative(1); }
+.fi
+.RE
+will remap \fIx\fR to quit, and \fIq\fR and \fIw\fR to move between images.
+.PP
+For backwards compatibility with old versions of \fBpqiv\fR, if the file does
+not start with a section definition, the first line will be parsed as command
+line parameters.
 .SH EXAMPLES
 .\"
 .TP
