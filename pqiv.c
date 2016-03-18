@@ -463,6 +463,7 @@ const struct pqiv_action_descriptor {
 	{ "remove_file_byindex", PARAMETER_INT },
 	{ "remove_file_byname", PARAMETER_CHARPTR },
 	{ "output_file_list", PARAMETER_NONE },
+	{ "set_cursor_visibility", PARAMETER_INT },
 	{ NULL, 0 }
 };
 
@@ -495,8 +496,8 @@ void unload_image(BOSNode *);
 void remove_image(BOSNode *);
 gboolean initialize_gui_callback(gpointer);
 gboolean initialize_image_loader();
-void fullscreen_hide_cursor();
-void fullscreen_show_cursor();
+void window_hide_cursor();
+void window_show_cursor();
 void window_center_mouse();
 void calculate_current_image_transformed_size(int *image_width, int *image_height);
 cairo_surface_t *get_scaled_image_surface_for_current_image();
@@ -2801,7 +2802,7 @@ void do_jump_dialog() { /* {{{ */
 	// If in fullscreen, show the cursor again
 	if(main_window_in_fullscreen) {
 		window_center_mouse();
-		fullscreen_show_cursor();
+		window_show_cursor();
 	}
 
 	// Create dialog box
@@ -2906,7 +2907,7 @@ void do_jump_dialog() { /* {{{ */
 	}
 
 	if(main_window_in_fullscreen) {
-		fullscreen_hide_cursor();
+		window_hide_cursor();
 	}
 
 	gtk_widget_destroy(dlg_window);
@@ -3718,6 +3719,15 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 
 			break;
 
+		case ACTION_SET_CURSOR_VISIBILITY:
+			if(parameter.pint) {
+				window_show_cursor();
+			}
+			else {
+				window_hide_cursor();
+			}
+			break;
+
 		default:
 			g_printerr("Action not implemented.\n");
 	}
@@ -3997,7 +4007,7 @@ gboolean window_scroll_callback(GtkWidget *widget, GdkEventScroll *event, gpoint
 	handle_input_event(KEY_BINDING_VALUE(1, event->state, (event->direction + 1) << 2));
 	return FALSE;
 }/*}}}*/
-void fullscreen_hide_cursor() {/*{{{*/
+void window_hide_cursor() {/*{{{*/
 	GdkDisplay *display = gtk_widget_get_display(GTK_WIDGET(main_window));
 	GdkCursor *cursor = gdk_cursor_new_for_display(display, GDK_BLANK_CURSOR);
 	GdkWindow *window = gtk_widget_get_window(GTK_WIDGET(main_window));
@@ -4006,7 +4016,7 @@ void fullscreen_hide_cursor() {/*{{{*/
 		g_object_unref(cursor);
 	#endif
 }/*}}}*/
-void fullscreen_show_cursor() {/*{{{*/
+void window_show_cursor() {/*{{{*/
 	GdkWindow *window = gtk_widget_get_window(GTK_WIDGET(main_window));
 	gdk_window_set_cursor(window, NULL);
 }/*}}}*/
@@ -4014,7 +4024,7 @@ void window_state_into_fullscreen_actions() {/*{{{*/
 	current_shift_x = 0;
 	current_shift_y = 0;
 
-	fullscreen_hide_cursor();
+	window_hide_cursor();
 
 	main_window_width = screen_geometry.width;
 	main_window_height = screen_geometry.height;
@@ -4036,7 +4046,7 @@ void window_state_out_of_fullscreen_actions() {/*{{{*/
 	set_scale_level_for_screen();
 	main_window_adjust_for_image();
 	invalidate_current_scaled_image_surface();
-	fullscreen_show_cursor();
+	window_show_cursor();
 }/*}}}*/
 gboolean window_state_callback(GtkWidget *widget, GdkEventWindowState *event, gpointer user_data) {/*{{{*/
 	/*
