@@ -134,6 +134,8 @@ pqiv (wip)
  * Added --watch-files to make the file change action configurable
  * Fixed segfault on reloading of images created by pipe-command output
  * Added support for cbz/cbr/cbt/cb7 comic books
+ * Key bindings are now configurable
+ * Added a configure option to remove unneeded/unwanted features
 
 pqiv 2.4.1
  * Fix --end-of-files-action=quit if only one file is present
