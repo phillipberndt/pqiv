@@ -14,7 +14,14 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <unistd.h>
+
+#ifdef _POSIX_VERSION
+#define HAS_MMAP
+#endif
+
+#ifdef HAS_MMAP
 #include <sys/mman.h>
+#endif
 
 #include "config_parser.h"
 
@@ -30,20 +37,23 @@ void config_parser_parse_file(const char *file_name, config_parser_callback_t ca
 		return;
 	}
 
-	char *file_data = mmap(NULL, stat.st_size, PROT_READ | PROT_WRITE, MAP_PRIVATE, fd, 0);
+	char *file_data = NULL;
+
+#ifdef HAS_MMAP
+	file_data = mmap(NULL, stat.st_size, PROT_READ | PROT_WRITE, MAP_PRIVATE, fd, 0);
 	if(file_data) {
 		config_parser_parse_data(file_data, stat.st_size, callback);
 		munmap(file_data, stat.st_size);
+		close(fd);
+		return;
 	}
-	else {
-		file_data = malloc(stat.st_size);
-		if(read(fd, file_data, stat.st_size) != stat.st_size) {
-			close(fd);
-			return;
-		}
+#endif
+
+	file_data = malloc(stat.st_size);
+	if(read(fd, file_data, stat.st_size) == stat.st_size) {
 		config_parser_parse_data(file_data, stat.st_size, callback);
-		free(file_data);
 	}
+	free(file_data);
 	close(fd);
 }
 
