@@ -26,10 +26,16 @@
 #include <libavformat/avformat.h>
 #include <libavcodec/avcodec.h>
 #include <libswscale/swscale.h>
+#include <libavutil/imgutils.h>
 
 #if LIBAVCODEC_VERSION_INT < AV_VERSION_INT(55,28,1)
 #define av_frame_alloc avcodec_alloc_frame
 #define av_frame_free avcodec_free_frame
+#endif
+
+#if LIBAVCODEC_VERSION_INT < AV_VERSION_INT(57, 0, 0)
+#define AV_COMPAT_USE_PICTURE
+#define av_packet_unref av_free_packet
 #endif
 
 // This is a list of extensions that are never handled by this backend
@@ -66,7 +72,7 @@ void file_type_libav_unload(file_t *file) {/*{{{*/
 	file_private_data_libav_t *private = (file_private_data_libav_t *)file->private;
 
 	if(private->pkt_valid) {
-		av_free_packet(&(private->pkt));
+		av_packet_unref(&(private->pkt));
 		private->pkt_valid = FALSE;
 	}
 
@@ -111,7 +117,7 @@ void file_type_libav_load(file_t *file, GInputStream *data, GError **error_point
 
 	private->video_stream_id = -1;
 	for(size_t i=0; i<private->avcontext->nb_streams; i++) {
-        if(private->avcontext->streams[i]->codec->coder_type == AVMEDIA_TYPE_VIDEO) {
+        if(private->avcontext->streams[i]->codec->codec_type == AVMEDIA_TYPE_VIDEO) {
 			private->video_stream_id = i;
 			break;
 		}
@@ -131,7 +137,12 @@ void file_type_libav_load(file_t *file, GInputStream *data, GError **error_point
 
 	private->frame = av_frame_alloc();
 	private->rgb_frame = av_frame_alloc();
+
+#ifdef AV_COMPAT_USE_PICTURE
 	size_t num_bytes = avpicture_get_size(AV_PIX_FMT_RGB32, private->cocontext->width, private->cocontext->height);
+#else
+	size_t num_bytes = av_image_get_buffer_size(AV_PIX_FMT_RGB32, private->cocontext->width, private->cocontext->height, 1);
+#endif
 	private->buffer = (uint8_t *)g_malloc(num_bytes * sizeof(uint8_t));
 
 	file->file_flags |= FILE_FLAGS_ANIMATION;
@@ -152,7 +163,7 @@ double file_type_libav_animation_next_frame(file_t *file) {/*{{{*/
 		// Loop until the next video frame is found
 		memset(&(private->pkt), 0, sizeof(AVPacket));
 		if(av_read_frame(private->avcontext, &(private->pkt)) < 0) {
-			av_free_packet(&(private->pkt));
+			av_packet_unref(&(private->pkt));
 			if(avformat_seek_file(private->avcontext, -1, 0, 0, 1, 0) < 0 || av_read_frame(private->avcontext, &(private->pkt)) < 0) {
 				// Reading failed; end stream here to be on the safe side
 				// Display last frame to the user
@@ -163,7 +174,7 @@ double file_type_libav_animation_next_frame(file_t *file) {/*{{{*/
 	} while(private->pkt.stream_index != private->video_stream_id);
 
 	if(private->pkt_valid) {
-		av_free_packet(&old_pkt);
+		av_packet_unref(&old_pkt);
 	}
 	else {
 		private->pkt_valid = TRUE;
@@ -196,16 +207,20 @@ void file_type_libav_draw(file_t *file, cairo_t *cr) {/*{{{*/
 		if(avcodec_decode_video2(private->cocontext, frame, &got_picture_ptr, &(private->pkt)) >= 0 && got_picture_ptr) {
 			// Prepare buffer for RGB32 version
 			uint8_t *buffer = private->buffer;
+#ifdef AV_COMPAT_USE_PICTURE
 			avpicture_fill((AVPicture *)rgb_frame, buffer, AV_PIX_FMT_RGB32, private->cocontext->width, private->cocontext->height);
+#else
+			av_image_fill_arrays(rgb_frame->data, rgb_frame->linesize, buffer, AV_PIX_FMT_RGB32, private->cocontext->width, private->cocontext->height, 1);
+#endif
 
 			// Convert to RGB32
 			struct SwsContext *img_convert_ctx = sws_getCachedContext(NULL, private->cocontext->width, private->cocontext->height, private->cocontext->pix_fmt, private->cocontext->width,
 					private->cocontext->height, AV_PIX_FMT_RGB32, SWS_BICUBIC, NULL, NULL, NULL);
-			sws_scale(img_convert_ctx, (const uint8_t * const *)((AVPicture*)frame)->data, ((AVPicture*)frame)->linesize, 0, private->cocontext->height, ((AVPicture *)rgb_frame)->data, ((AVPicture *)rgb_frame)->linesize);
+			sws_scale(img_convert_ctx, (const uint8_t * const*)frame->data, frame->linesize, 0, private->cocontext->height, rgb_frame->data, rgb_frame->linesize);
 			sws_freeContext(img_convert_ctx);
 
 			// Draw to a temporary image surface and then to cr
-			cairo_surface_t *image_surface = cairo_image_surface_create_for_data(rgb_frame->data[0], CAIRO_FORMAT_ARGB32, file->width, file->height, ((AVPicture *)rgb_frame)->linesize[0]);
+			cairo_surface_t *image_surface = cairo_image_surface_create_for_data(rgb_frame->data[0], CAIRO_FORMAT_ARGB32, file->width, file->height, rgb_frame->linesize[0]);
 			cairo_set_source_surface(cr, image_surface, 0, 0);
 			cairo_paint(cr);
 			cairo_surface_destroy(image_surface);
