@@ -3735,9 +3735,6 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 				window_hide_cursor();
 			}
 			break;
-
-		default:
-			g_printerr("Action not implemented.\n");
 	}
 }/*}}}*/
 gboolean window_configure_callback(GtkWidget *widget, GdkEventConfigure *event, gpointer user_data) {/*{{{*/
