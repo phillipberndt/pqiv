@@ -2070,13 +2070,17 @@ BOSNode *relative_image_pointer(ptrdiff_t movement) {/*{{{*/
 				current_shuffled_image = g_list_previous(current_shuffled_image);
 			}
 		}
-		while(((int)movement > 0) && g_list_next(current_shuffled_image)) {
-			current_shuffled_image = g_list_next(current_shuffled_image);
-			movement--;
+		if(movement > 0) {
+			while(movement && g_list_next(current_shuffled_image)) {
+				current_shuffled_image = g_list_next(current_shuffled_image);
+				movement--;
+			}
 		}
-		while(((int)movement < 0) && g_list_previous(current_shuffled_image)) {
-			current_shuffled_image = g_list_previous(current_shuffled_image);
-			movement++;
+		else if(movement < 0) {
+			while(movement && g_list_previous(current_shuffled_image)) {
+				current_shuffled_image = g_list_previous(current_shuffled_image);
+				movement++;
+			}
 		}
 
 		// The list isn't long enough to provide us with the desired image.
@@ -2139,13 +2143,17 @@ BOSNode *relative_image_pointer(ptrdiff_t movement) {/*{{{*/
 				current_shuffled_image = movement > 0 ? g_list_first(shuffled_images_list) : g_list_last(shuffled_images_list);
 				movement = movement > 0 ? movement - 1 : movement + 1;
 
-				while(((int)movement > 0) && g_list_next(current_shuffled_image)) {
-					current_shuffled_image = g_list_next(current_shuffled_image);
-					movement--;
+				if(movement > 0) {
+					while(movement && g_list_next(current_shuffled_image)) {
+						current_shuffled_image = g_list_next(current_shuffled_image);
+						movement--;
+					}
 				}
-				while(((int)movement < 0) && g_list_previous(current_shuffled_image)) {
-					current_shuffled_image = g_list_previous(current_shuffled_image);
-					movement++;
+				else if(movement < 0) {
+					while(movement && g_list_previous(current_shuffled_image)) {
+						current_shuffled_image = g_list_previous(current_shuffled_image);
+						movement++;
+					}
 				}
 			}
 		}
