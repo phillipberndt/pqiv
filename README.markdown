@@ -138,6 +138,8 @@ pqiv (wip)
  * Added a configure option to remove unneeded/unwanted features
  * Deprecated --keyboard-alias, --reverse-cursor-keys, --reverse-scroll
    in favor of --bind-key.
+ * Added --recreate-window to create a new window instead of resizing the
+   old one, as a workaround for buggy window managers
 
 pqiv 2.4.1
  * Fix --end-of-files-action=quit if only one file is present

@@ -325,6 +325,7 @@ gboolean option_fading = FALSE;
 gboolean option_lazy_load = FALSE;
 gboolean option_lowmem = FALSE;
 gboolean option_addl_from_stdin = FALSE;
+gboolean option_recreate_window = FALSE;
 #ifndef CONFIGURED_WITHOUT_CONFIGURABLE_KEY_BINDINGS
 gboolean option_commands_from_stdin = FALSE;
 #else
@@ -402,6 +403,7 @@ GOptionEntry options[] = {
 	{ "low-memory", 0, 0, G_OPTION_ARG_NONE, &option_lowmem, "Try to keep memory usage to a minimum", NULL },
 	{ "max-depth", 0, 0, G_OPTION_ARG_INT, &option_max_depth, "Descend at most LEVELS levels of directories below the command line arguments", "LEVELS" },
 	{ "reverse-scroll", 0, G_OPTION_FLAG_HIDDEN, G_OPTION_ARG_NONE, &option_reverse_scroll, "Reverse the meaning of scroll wheel", NULL },
+	{ "recreate-window", 0, 0, G_OPTION_ARG_NONE, &option_recreate_window, "Create a new window instead of resizing the old one", NULL },
 	{ "shuffle", 0, 0, G_OPTION_ARG_NONE, &option_shuffle, "Shuffle files", NULL },
 #ifndef CONFIGURED_WITHOUT_CONFIGURABLE_KEY_BINDINGS
 	{ "show-bindings", 0, G_OPTION_FLAG_NO_ARG, G_OPTION_ARG_CALLBACK, &help_show_key_bindings, "Display the keyboard and mouse bindings and exit", NULL },
@@ -512,6 +514,7 @@ gboolean slideshow_timeout_callback(gpointer user_data);
 #ifndef CONFIGURED_WITHOUT_CONFIGURABLE_KEY_BINDINGS
 void parse_key_bindings(const gchar *bindings);
 #endif
+void recreate_window();
 // }}}
 /* Command line handling, creation of the image list {{{ */
 gboolean options_keyboard_alias_set_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error) {/*{{{*/
@@ -1459,6 +1462,10 @@ void main_window_adjust_for_image() {/*{{{*/
 	GdkGeometry hints;
 	hints.min_aspect = hints.max_aspect = new_window_width * 1.0 / new_window_height;
 	if(main_window_width >= 0 && (main_window_width != new_window_width || main_window_height != new_window_height)) {
+		if(option_recreate_window && main_window_visible) {
+			recreate_window();
+		}
+
 		if(option_window_position.x >= 0) {
 			// This is upon startup. Do not attempt to move the window
 			// directly to the startup position, this won't work. WMs don't
@@ -4050,6 +4057,10 @@ void window_state_out_of_fullscreen_actions() {/*{{{*/
 	scale_override = FALSE;
 	set_scale_level_for_screen();
 	main_window_adjust_for_image();
+	if(!main_window_visible) {
+		main_window_visible = TRUE;
+		gtk_widget_show_all(GTK_WIDGET(main_window));
+	}
 	invalidate_current_scaled_image_surface();
 	window_show_cursor();
 }/*}}}*/
@@ -4794,6 +4805,16 @@ void initialize_key_bindings() {/*{{{*/
 	BIND_KEY(GDK_BUTTON_SECONDARY , 1 , 0                , ACTION_GOTO_FILE_RELATIVE              , 1);
 	BIND_KEY((GDK_SCROLL_UP+1) << 2, 1 , 0               , ACTION_GOTO_FILE_RELATIVE              , 1);
 	BIND_KEY((GDK_SCROLL_DOWN+1) << 2, 1 , 0             , ACTION_GOTO_FILE_RELATIVE              , -1);
+}/*}}}*/
+void recreate_window() {/*{{{*/
+	if(!main_window_visible) {
+		return;
+	}
+	g_signal_handlers_disconnect_by_func(main_window, G_CALLBACK(window_close_callback), NULL);
+	gtk_widget_destroy(GTK_WIDGET(main_window));
+	option_start_fullscreen = main_window_in_fullscreen;
+	main_window_visible = FALSE;
+	create_window();
 }/*}}}*/
 // }}}
 
