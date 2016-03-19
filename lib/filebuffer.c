@@ -76,8 +76,8 @@ GBytes *buffered_file_as_bytes(file_t *file, GInputStream *data, GError **error_
 			if(input_file_abspath) {
 				GFileInfo *file_info = g_file_query_info(input_file, G_FILE_ATTRIBUTE_STANDARD_SIZE, G_FILE_QUERY_INFO_NONE, NULL, error_pointer);
 				if(!file_info) {
-					return NULL;
 					g_object_unref(input_file);
+					return NULL;
 				}
 				goffset input_file_size = g_file_info_get_size(file_info);
 				g_object_unref(file_info);
