@@ -4,13 +4,11 @@
  */
 
 #define _POSIX_C_SOURCE 200809L
-#define _GNU_SOURCE
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
 #include <string.h>
-#include <alloca.h>
 
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -32,41 +30,48 @@ void config_parser_parse_file(const char *file_name, config_parser_callback_t ca
 		return;
 	}
 
-	char *file_data = mmap(NULL, stat.st_size, PROT_READ, MAP_SHARED, fd, 0);
+	char *file_data = mmap(NULL, stat.st_size, PROT_READ | PROT_WRITE, MAP_PRIVATE, fd, 0);
 	if(file_data) {
 		config_parser_parse_data(file_data, stat.st_size, callback);
 		munmap(file_data, stat.st_size);
 	}
 	else {
-		file_data = alloca(stat.st_size);
+		file_data = malloc(stat.st_size);
 		if(read(fd, file_data, stat.st_size) != stat.st_size) {
 			close(fd);
 			return;
 		}
 		config_parser_parse_data(file_data, stat.st_size, callback);
+		free(file_data);
 	}
 	close(fd);
 }
 
-static void _config_parser_parse_data_invoke_callback(config_parser_callback_t callback, const char *section_start, const char *section_end, const char *key_start, const char *key_end, const char *data_start, const char *data_end) {
+static void _config_parser_parse_data_invoke_callback(config_parser_callback_t callback, char *section_start, char *section_end, char *key_start, char *key_end, char *data_start, char *data_end) {
 	while(key_end > key_start && (*key_end == ' ' || *key_end == '\n' || *key_end == '\r' || *key_end == '\t')) {
 		key_end--;
 	}
-
 	while(data_end > data_start && (*data_end == ' ' || *data_end == '\n' || *data_end == '\r' || *data_end == '\t')) {
 		data_end--;
 	}
-
 	if(!data_start || data_end < data_start || *data_start == '\0') {
 		return;
 	}
 
+	char data_end_restore, section_end_restore, key_end_restore;
+	data_end_restore = data_end[1];
+	data_end[1] = 0;
+	if(section_end) {
+		section_end_restore = section_end[1];
+		section_end[1] = 0;
+	}
+	if(key_end) {
+		key_end_restore = key_end[1];
+		key_end[1] = 0;
+	}
+
 	config_parser_value_t value;
-#ifdef  __GNUC__
-	value.chrpval = strndupa(data_start, data_end - data_start + 1);
-#else
-	value.chrpval = strndup(data_start, data_end - data_start + 1);
-#endif
+	value.chrpval = data_start;
 	if(*value.chrpval == 'y' || *value.chrpval == 'Y' || *value.chrpval == 't' || *value.chrpval == 'T') {
 		value.intval = 1;
 	}
@@ -75,30 +80,24 @@ static void _config_parser_parse_data_invoke_callback(config_parser_callback_t c
 	}
 	value.doubleval = atof(value.chrpval);
 
-#ifdef __GNUC__
-	char *section_name = section_start == section_end ? NULL : strndupa(section_start, section_end - section_start + 1);
-	char *key_name = key_start == key_end ? NULL : strndupa(key_start, key_end - key_start + 1);
-#else
-	char *section_name = section_start == section_end ? NULL : strndup(section_start, section_end - section_start + 1);
-	char *key_name = key_start == key_end ? NULL : strndup(key_start, key_end - key_start + 1);
-#endif
+	callback(section_start, key_start, &value);
 
-	callback(section_name, key_name, &value);
-
-#ifndef __GNUC__
-	free(section_name);
-	free(key_name);
-	free(value.chrpval);
-#endif
+	data_end[1] = data_end_restore;
+	if(section_end) {
+		section_end[1] = section_end_restore;
+	}
+	if(key_end) {
+		key_end[1] = key_end_restore;
+	}
 }
 
-void config_parser_parse_data(const char *file_data, size_t file_length, config_parser_callback_t callback) {
+void config_parser_parse_data(char *file_data, size_t file_length, config_parser_callback_t callback) {
 	enum { DEFAULT, SECTION_IDENTIFIER, COMMENT, VALUE } state = DEFAULT;
 	int section_had_keys = 0;
-	const char *section_start = NULL, *section_end = NULL, *key_start = NULL, *key_end = NULL, *data_start = NULL, *value_start = NULL;
+	char *section_start = NULL, *section_end = NULL, *key_start = NULL, *key_end = NULL, *data_start = NULL, *value_start = NULL;
 
 	data_start = file_data;
-	const char *fp;
+	char *fp;
 	for(fp = file_data; *fp; fp++) {
 		if(*fp == ' ' || *fp == '\t') {
 			continue;
@@ -211,9 +210,17 @@ int main(int argc, char *argv[]) {
 		}
 		data[len] = 0;
 
+		char *data_copy = malloc(data_size);
+		memcpy(data_copy, data, data_size);
+
 		config_parser_parse_data(data, data_size, &test_cb);
 
+		if(memcmp(data, data_copy, data_size) != 0) {
+			fprintf(stderr, "Warning: Original data changed while processing!\n");
+		}
+
 		free(data);
+		free(data_copy);
 	}
 }
 #endif
