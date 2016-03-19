@@ -726,7 +726,7 @@ void parse_configuration_file_callback(char *section, char *key, config_parser_v
 	else if(strcmp(section, "options") == 0 && key) {
 		// pqiv 2.x configuration setting {{{
 		GError *error_pointer = NULL;
-		for(GOptionEntry *iter = options; iter->description != NULL; iter++) {
+		for(GOptionEntry *iter = options; iter->arg_data != NULL; iter++) {
 			if(iter->long_name != NULL && strcmp(iter->long_name, key) == 0) {
 				switch(iter->arg) {
 					case G_OPTION_ARG_NONE: {
