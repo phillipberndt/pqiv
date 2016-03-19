@@ -251,26 +251,91 @@ the closing parenthesis must be escaped by a backslash if it is used in a
 string. E.g., `command(echo \\))' will output a single `)'. The available
 commands are:
 .TP
+.BR add_file(STRING)
+Add a file or directory.
+.TP
+.BR command(STRING)
+Execute the given command.
+.TP
+.BR flip_horizontally()
+Flip the current image horizontally.
+.TP
+.BR flip_vertically()
+Flip the current image vertically.
+.TP
+.BR goto_directory_relative(INT)
+Jump to the \fIn\fR'th next or previous directory.
+.TP
+.BR goto_file_byindex(INT)
+Jump to a file given by its number.
+.TP
+.BR goto_file_byname(STRING)
+Jump to a file given by its displayed name.
+.TP
+.BR goto_file_relative(INT)
+Jump to the \fIn\fR'th next or previous file.
+.TP
+.BR hardlink_current_image()
+Hardlink the current image to \fI./.pqiv-select/\fR, or copy it if hardlinking is not possible.
+.TP
+.BR jump_dialog()
+Display the jump dialog.
+.TP
 .BR nop()
 Do nothing. Can be used to clear an existing binding.
 .TP
-.BR shift_y(INT)
-Shift the current image in y direction.
+.BR numeric_command(INT)
+Execute the \fin\fR'th command defined via \fB\-\-command\-1\fR etc.
 .TP
-.BR shift_x(INT)
-Shift the current image in x direction.
+.BR output_file_list()
+Output a list of all loaded files to the standard output.
 .TP
-.BR set_slideshow_interval_relative(DOUBLE)
-Adjust the slideshow interval additively by the parameter value. See also \fB\-\-slideshow\-interval\fR.
+.BR quit()
+Quit pqiv.
 .TP
-.BR set_slideshow_interval_absolute(DOUBLE)
-Set the slideshow interval to the parameter value, in seconds.
+.BR reload()
+Reload the current image from disk.
+.TP
+.BR remove_file_byindex(INT)
+Remove a file given by its number.
+.TP
+.BR remove_file_byname(STRING)
+Remove a file given by its displayed name.
+.TP
+.BR reset_scale_level()
+Reset the scale level to the default value.
+.TP
+.BR rotate_left()
+Rotate the current image left by 90°.
+.TP
+.BR rotate_right()
+Rotate the current image right by 90°.
+.TP
+.BR set_cursor_visibility(INT)
+Set the visibility of the cursor; 0 disables, other values enable visibility.
+.BR set_scale_level_absolute(DOUBLE)
+Set the scale level to the parameter value. 1.0 is 100%. See also \fB\-\-zoom\-level\fR.
 .TP
 .BR set_scale_level_relative(DOUBLE)
 Adjust the scale level multiplicatively by the parameter value.
 .TP
-.BR set_scale_level_absolute(DOUBLE)
-Set the scale level to the parameter value. 1.0 is 100%. See also \fB\-\-zoom\-level\fR.
+.BR set_slideshow_interval_absolute(DOUBLE)
+Set the slideshow interval to the parameter value, in seconds.
+.TP
+.BR set_slideshow_interval_relative(DOUBLE)
+Adjust the slideshow interval additively by the parameter value. See also \fB\-\-slideshow\-interval\fR.
+.TP
+.BR shift_x(INT)
+Shift the current image in x direction.
+.TP
+.BR shift_y(INT)
+Shift the current image in y direction.
+.TP
+.BR toggle_fullscreen()
+Toggle fullscreen mode.
+.TP
+.BR toggle_info_box()
+Toggle the visibility of the info box.
 .TP
 .BR toggle_scaling_mode(INT)
 Change the scaling mode: Use 0 to cycle through the possible values, 1 to
@@ -280,74 +345,8 @@ images up.
 .BR toggle_shuffle_mode(INT)
 Toggle shuffle mode. Use 0 to cycle through the possible values, 1 to enable shuffle, and any other value to disable it.
 .TP
-.BR reload()
-Reload the current image from disk.
-.TP
-.BR reset_scale_level()
-Reset the scale level to the default value.
-.TP
-.BR toggle_fullscreen()
-Toggle fullscreen mode.
-.TP
-.BR flip_horizontally()
-Flip the current image horizontally.
-.TP
-.BR flip_vertically()
-Flip the current image vertically.
-.TP
-.BR rotate_left()
-Rotate the current image left by 90°.
-.TP
-.BR rotate_right()
-Rotate the current image right by 90°.
-.TP
-.BR toggle_info_box()
-Toggle the visibility of the info box.
-.TP
-.BR jump_dialog()
-Display the jump dialog.
-.TP
 .BR toggle_slideshow()
 Toggle slideshow mode.
-.TP
-.BR hardlink_current_image()
-Hardlink the current image to \fI./.pqiv-select/\fR, or copy it if hardlinking is not possible.
-.TP
-.BR goto_directory_relative(INT)
-Jump to the \fIn\fR'th next or previous directory.
-.TP
-.BR goto_file_relative(INT)
-Jump to the \fIn\fR'th next or previous file.
-.TP
-.BR quit()
-Quit pqiv.
-.TP
-.BR numeric_command(INT)
-Execute the \fin\fR'th command defined via \fB\-\-command\-1\fR etc.
-.TP
-.BR command(STRING)
-Execute the given command.
-.TP
-.BR add_file(STRING)
-Add a file or directory.
-.TP
-.BR goto_file_byindex(INT)
-Jump to a file given by its number.
-.TP
-.BR goto_file_byname(STRING)
-Jump to a file given by its displayed name.
-.TP
-.BR remove_file_byindex(INT)
-Remove a file given by its number.
-.TP
-.BR remove_file_byname(STRING)
-Remove a file given by its displayed name.
-.TP
-.BR output_file_list()
-Output a list of all loaded files to the standard output.
-.TP
-.BR set_cursor_visibility(INT)
-Set the visibility of the cursor; 0 disables, other values enable visibility.
 .\"
 .SH DEFAULT KEY BINDINGS
 .IP Space 20
