@@ -328,6 +328,7 @@ gboolean option_addl_from_stdin = FALSE;
 gboolean option_recreate_window = FALSE;
 #ifndef CONFIGURED_WITHOUT_CONFIGURABLE_KEY_BINDINGS
 gboolean option_actions_from_stdin = FALSE;
+gboolean option_status_output = FALSE;
 #else
 static const gboolean option_actions_from_stdin = FALSE;
 #endif
@@ -466,6 +467,7 @@ const struct pqiv_action_descriptor {
 	{ "remove_file_byname", PARAMETER_CHARPTR },
 	{ "output_file_list", PARAMETER_NONE },
 	{ "set_cursor_visibility", PARAMETER_INT },
+	{ "set_status_output", PARAMETER_INT },
 	{ NULL, 0 }
 };
 
@@ -516,6 +518,7 @@ void parse_key_bindings(const gchar *bindings);
 gboolean read_commands_thread_helper(gpointer command);
 #endif
 void recreate_window();
+void status_output();
 // }}}
 /* Command line handling, creation of the image list {{{ */
 gboolean options_keyboard_alias_set_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error) {/*{{{*/
@@ -1594,6 +1597,9 @@ gboolean image_loaded_handler(gconstpointer node) {/*{{{*/
 
 	// Reset the info text
 	update_info_text(NULL);
+
+	// Output status for scripts
+	status_output();
 
 	return FALSE;
 }/*}}}*/
@@ -2742,6 +2748,16 @@ cairo_surface_t *get_scaled_image_surface_for_current_image() {/*{{{*/
 
 	return retval;
 }/*}}}*/
+void status_output() {/*{{{*/
+	if(!option_status_output) {
+		return;
+	}
+	D_LOCK(file_tree);
+	if(file_tree_valid && current_file_node) {
+		printf("CURRENT_FILE_NAME=\"%s\"\nCURRENT_FILE_INDEX=%d\n\n", CURRENT_FILE->file_name, bostree_rank(current_file_node));
+	}
+	D_UNLOCK(file_tree);
+}/*}}}*/
 // }}}
 /* Jump dialog {{{ */
 #ifndef CONFIGURED_WITHOUT_JUMP_DIALOG /* option --without-jump-dialog: Do not build with -j support */
@@ -3750,6 +3766,11 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 			else {
 				window_hide_cursor();
 			}
+			break;
+
+		case ACTION_SET_STATUS_OUTPUT:
+			option_status_output = !!parameter.pint;
+			status_output();
 			break;
 	}
 }/*}}}*/

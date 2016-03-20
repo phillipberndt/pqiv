@@ -330,7 +330,8 @@ Rotate the current image right by 90°.
 .BR set_cursor_visibility(INT)
 Set the visibility of the cursor; 0 disables, other values enable visibility.
 .BR set_scale_level_absolute(DOUBLE)
-Set the scale level to the parameter value. 1.0 is 100%. See also \fB\-\-zoom\-level\fR.
+Set the scale level to the parameter value. 1.0 is 100%. See also
+\fB\-\-zoom\-level\fR.
 .TP
 .BR set_scale_level_relative(DOUBLE)
 Adjust the scale level multiplicatively by the parameter value.
@@ -339,7 +340,15 @@ Adjust the scale level multiplicatively by the parameter value.
 Set the slideshow interval to the parameter value, in seconds.
 .TP
 .BR set_slideshow_interval_relative(DOUBLE)
-Adjust the slideshow interval additively by the parameter value. See also \fB\-\-slideshow\-interval\fR.
+Adjust the slideshow interval additively by the parameter value. See also
+\fB\-\-slideshow\-interval\fR.
+.TP
+.BR set_status_output(INT)
+Set this to non-zero to make pqiv print status information for scripts to
+stdout, once upon activation and then whenever the user moves between images.
+The format is compatible with shell variable definitions. Variables currently
+implemented are \fICURRENT_FILE_NAME\fR and \fICURRENT_FILE_INDEX\fR. An
+output sweep always ends with an empty line.
 .TP
 .BR shift_x(INT)
 Shift the current image in x direction.
