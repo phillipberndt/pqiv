@@ -327,9 +327,9 @@ gboolean option_lowmem = FALSE;
 gboolean option_addl_from_stdin = FALSE;
 gboolean option_recreate_window = FALSE;
 #ifndef CONFIGURED_WITHOUT_CONFIGURABLE_KEY_BINDINGS
-gboolean option_commands_from_stdin = FALSE;
+gboolean option_actions_from_stdin = FALSE;
 #else
-static const gboolean option_commands_from_stdin = FALSE;
+static const gboolean option_actions_from_stdin = FALSE;
 #endif
 double option_fading_duration = .5;
 gint option_max_depth = -1;
@@ -350,6 +350,7 @@ gboolean option_scale_level_callback(const gchar *option_name, const gchar *valu
 gboolean option_end_of_files_action_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error);
 gboolean option_watch_files_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error);
 gboolean option_sort_key_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error);
+gboolean option_action_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error);
 void load_images_handle_parameter(char *param, load_images_state_t state, gint depth);
 
 struct {
@@ -391,12 +392,11 @@ GOptionEntry options[] = {
 #endif
 
 #ifndef CONFIGURED_WITHOUT_CONFIGURABLE_KEY_BINDINGS
+	{ "action", 0, 0, G_OPTION_ARG_CALLBACK, &option_action_callback, "Read actions from stdin", "ACTION" },
+	{ "actions-from-stdin", 0, 0, G_OPTION_ARG_NONE, &option_actions_from_stdin, "Read actions from stdin", NULL },
 	{ "bind-key", 0, 0, G_OPTION_ARG_CALLBACK, &options_bind_key_callback, "Rebind a key to another action, see manpage and --show-keybindings output for details.", "KEY BINDING" },
 #endif
 	{ "browse", 0, 0, G_OPTION_ARG_NONE, &option_browse, "For each command line argument, additionally load all images from the image's directory", NULL },
-#ifndef CONFIGURED_WITHOUT_CONFIGURABLE_KEY_BINDINGS
-	{ "commands-from-stdin", 0, 0, G_OPTION_ARG_NONE, &option_commands_from_stdin, "Read commands from stdin", NULL },
-#endif
 	{ "disable-scaling", 0, G_OPTION_FLAG_NO_ARG, G_OPTION_ARG_CALLBACK, (gpointer)&option_scale_level_callback, "Disable scaling of images", NULL },
 	{ "end-of-files-action", 0, 0, G_OPTION_ARG_CALLBACK, (gpointer)&option_end_of_files_action_callback, "Action to take after all images have been viewed. (`quit', `wait', `wrap', `wrap-no-reshuffle')", "ACTION" },
 	{ "fade-duration", 0, 0, G_OPTION_ARG_DOUBLE, &option_fading_duration, "Adjust fades' duration", "SECONDS" },
@@ -513,6 +513,7 @@ void relative_image_pointer_shuffle_list_unref_fn(shuffled_image_ref_t *ref);
 gboolean slideshow_timeout_callback(gpointer user_data);
 #ifndef CONFIGURED_WITHOUT_CONFIGURABLE_KEY_BINDINGS
 void parse_key_bindings(const gchar *bindings);
+gboolean read_commands_thread_helper(gpointer command);
 #endif
 void recreate_window();
 // }}}
@@ -620,6 +621,10 @@ gboolean option_sort_key_callback(const gchar *option_name, const gchar *value, 
 		g_set_error(error, G_OPTION_ERROR, G_OPTION_ERROR_FAILED, "Unexpected argument value for the --sort-key option. Allowed keys are: name, mtime.");
 		return FALSE;
 	}
+	return TRUE;
+}/*}}}*/
+gboolean option_action_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error) {/*{{{*/
+	gdk_threads_add_idle(read_commands_thread_helper, g_strdup(value));
 	return TRUE;
 }/*}}}*/
 void parse_configuration_file_callback(char *section, char *key, config_parser_value_t *value) {
@@ -1322,7 +1327,7 @@ void load_images() {/*{{{*/
 
 	// If we can be certain that no further images will be loaded, we can now
 	// drop the variables we used for loading to free some space
-	if(!option_watch_directories && !option_commands_from_stdin) {
+	if(!option_watch_directories && !option_actions_from_stdin) {
 		// TODO
 		// g_object_ref_sink(load_images_file_filter);
 		g_free(load_images_file_filter_info);
@@ -4608,7 +4613,7 @@ gboolean perform_string_action(const gchar *string_action) {/*{{{*/
 	const gchar *parameter_end = NULL;
 	const gchar *scan = string_action;
 
-	while(*scan == '\t' || *scan == '\n' || *scan == ' ') scan++;
+	while(*scan == '\t' || *scan == '\n' || *scan == ' ' || *scan == ';') scan++;
 	action_name_start = scan;
 	if(!*scan) return TRUE;
 	while(*scan && *scan != '(') scan++;
@@ -4912,9 +4917,9 @@ int main(int argc, char *argv[]) {
 	}
 
 #ifndef CONFIGURED_WITHOUT_CONFIGURABLE_KEY_BINDINGS
-	if(option_commands_from_stdin) {
+	if(option_actions_from_stdin) {
 		if(option_addl_from_stdin) {
-			g_printerr("Error: --additional-from-stdin conflicts with --commands-from-stdin.\n");
+			g_printerr("Error: --additional-from-stdin conflicts with --actions-from-stdin.\n");
 			exit(1);
 		}
 		#if GLIB_CHECK_VERSION(2, 32, 0)

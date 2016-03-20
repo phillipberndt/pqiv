@@ -119,6 +119,22 @@ process images.
 .RE
 .\"
 .TP
+.BR \-\-action=\fIACTION\fR
+Execute a specific \fIACTION\fR when starting \fBpqiv\fR. The syntax is
+.RS
+.RS
+command(parameter); command(parameter);
+.RE
+See the \fBACTIONS\fR section below for available commands.
+.RE
+.\"
+.TP
+.BR \-\-actions\-from\-stdin
+Like \fB\-\-action\fR, but read actions from the standard input. See the
+\fBACTIONS\fR section below for syntax and available commands. This option
+conflicts with \fB\-\-additional\-from\-stdin\fR.
+.\"
+.TP
 .BR \-\-bind\-key=\fIKEY BINDING\fR
 Rebind a key to an action. The syntax is
 .RS
@@ -139,12 +155,6 @@ to allow a user to hit `b'. The semicolon separating commands is optional. See
 For each command line argument, additionally load all images from the image's
 directory. \fBpqiv\fR will still start at the image that was given as the first
 parameter.
-.\"
-.TP
-.BR \-\-commands\-from\-stdin
-Read commands from the standard input. See the \fBACTIONS\fR section below for
-syntax and available commands. This option conflicts with
-\fB\-\-additional\-from\-stdin\fR.
 .\"
 .TP
 .BR \-\-disable\-scaling
