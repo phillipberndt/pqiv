@@ -203,13 +203,13 @@ void config_parser_parse_data(char *file_data, size_t file_length, config_parser
 	if(state == VALUE) {
 		_config_parser_parse_data_invoke_callback(callback, section_start, section_end, key_start, key_end, value_start, fp - 1);
 	}
-	else if(state == DEFAULT) {
+	else if(state != SECTION_IDENTIFIER) {
 		if(!section_had_keys) {
 			_config_parser_parse_data_invoke_callback(callback, section_start, section_end, NULL, NULL, data_start, fp - 1);
 		}
 	}
 	else {
-		fprintf(stderr, "Info: Failed to parse configuration state, parsing finished in an unexpected state.\n");
+		fprintf(stderr, "Info: Failed to parse configuration, parsing finished in an unexpected state (%d).\n", state);
 	}
 }
 

@@ -4416,7 +4416,7 @@ void parse_key_bindings(const gchar *bindings) {/*{{{*/
 	const gchar *scan;
 
 	for(scan = bindings; *scan; scan++) {
-		if(*scan == '\n' || *scan == ' ' || *scan == '\t') {
+		if(*scan == '\n' || *scan == '\r' || *scan == ' ' || *scan == '\t') {
 			if(token_start == scan) token_start++;
 			continue;
 		}
