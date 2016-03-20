@@ -639,6 +639,7 @@ void parse_configuration_file_callback(char *section, char *key, config_parser_v
 
 	if(!section && !key) {
 		// Classic pqiv 1.x configuration file: Append to argv {{{
+		config_parser_strip_comments(value->chrpval);
 		char *options_contents = value->chrpval;
 
 		gint additional_arguments = 0;
@@ -785,6 +786,7 @@ void parse_configuration_file_callback(char *section, char *key, config_parser_v
 	}
 #ifndef CONFIGURED_WITHOUT_CONFIGURABLE_KEY_BINDINGS
 	else if(strcmp(section, "keybindings") == 0 && !key) {
+		config_parser_strip_comments(value->chrpval);
 		parse_key_bindings(value->chrpval);
 	}
 #endif

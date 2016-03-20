@@ -25,6 +25,30 @@
 
 #include "config_parser.h"
 
+void config_parser_strip_comments(char *p) {
+	char *k;
+	int state = 0;
+
+	for(; *p; p++) {
+		if(*p == '\n') {
+			state = 0;
+		}
+		else if((*p == '#' || *p == ';') && state == 0) {
+			k = strchr(p, '\n');
+			if(k) {
+				strcpy(p, k);
+			}
+			else {
+				*p = 0;
+				break;
+			}
+		}
+		else if(*p != '\t' && *p != ' ') {
+			state = 1;
+		}
+	}
+}
+
 void config_parser_parse_file(const char *file_name, config_parser_callback_t callback) {
 	int fd = open(file_name, O_RDONLY);
 	if(fd < 0) {
@@ -163,18 +187,13 @@ void config_parser_parse_data(char *file_data, size_t file_length, config_parser
 				value_start = fp;
 			}
 
-			if(*fp != ';' && *fp != '#' && *fp != '\n') {
+			if(*fp != '\n') {
 				continue;
 			}
-			else if(*fp == '\n') {
-				if(fp[1] == ' ' || fp[1] == '\t') {
-					continue;
-				}
-				state = DEFAULT;
+			if(fp[1] == ' ' || fp[1] == '\t') {
+				continue;
 			}
-			else {
-				state = COMMENT;
-			}
+			state = DEFAULT;
 			section_had_keys |= 1;
 			_config_parser_parse_data_invoke_callback(callback, section_start, section_end, key_start, key_end, value_start, fp - 1);
 			key_start = NULL;
@@ -196,7 +215,11 @@ void config_parser_parse_data(char *file_data, size_t file_length, config_parser
 
 #ifdef TEST
 void test_cb(char *section, char *key, config_parser_value_t *value) {
-	printf("%s.%s: i=%d, f=%f, b=%d, s=\"%s\"\n", section, key, value->intval, value->doubleval, !!value->intval, value->chrpval);
+	char dup[strlen(value->chrpval)];
+	strcpy(dup, value->chrpval);
+	config_parser_strip_comments(dup);
+
+	printf("%s.%s: i=%d, f=%f, b=%d, s=\"%s\"\n", section, key, value->intval, value->doubleval, !!value->intval, dup);
 }
 
 int main(int argc, char *argv[]) {
