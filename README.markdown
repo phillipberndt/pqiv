@@ -140,6 +140,7 @@ pqiv (wip)
    in favor of --bind-key.
  * Added --recreate-window to create a new window instead of resizing the
    old one, as a workaround for buggy window managers
+ * Added --actions-from-stdin to make pqiv scriptable
 
 pqiv 2.4.1
  * Fix --end-of-files-action=quit if only one file is present
