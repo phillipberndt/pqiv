@@ -36,7 +36,7 @@ void config_parser_strip_comments(char *p) {
 		else if((*p == '#' || *p == ';') && state == 0) {
 			k = strchr(p, '\n');
 			if(k) {
-				strcpy(p, k);
+				memmove(p, k, strlen(k) + 1);
 			}
 			else {
 				*p = 0;
