@@ -713,6 +713,9 @@ void parse_configuration_file_callback(char *section, char *key, config_parser_v
 					continue;
 				}
 			}
+			if(!argv_val[0]) {
+				continue;
+			}
 
 			// Add to argument vector
 			new_argv[1 + additional_arguments] = g_strdup(argv_val);
@@ -1304,7 +1307,9 @@ void load_images() {/*{{{*/
 
 	// Load the images from the remaining parameters
 	for(int i=1; i<*argc; i++) {
-		load_images_handle_parameter(argv[i], PARAMETER, 0);
+		if(argv[i][0]) {
+			load_images_handle_parameter(argv[i], PARAMETER, 0);
+		}
 	}
 
 	if(option_addl_from_stdin) {
