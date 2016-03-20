@@ -646,12 +646,16 @@ void parse_configuration_file_callback(char *section, char *key, config_parser_v
 		new_argv[0] = (*argv)[0];
 		char *end_of_argument;
 		while(*options_contents != 0) {
-			end_of_argument = strchr(options_contents, ' ');
-			if(end_of_argument != NULL) {
+			end_of_argument = strpbrk(options_contents, " \n\t");
+			if(end_of_argument == options_contents) {
+				options_contents++;
+				continue;
+			}
+			else if(end_of_argument != NULL) {
 				*end_of_argument = 0;
 			}
 			else {
-				end_of_argument = options_contents + strlen(options_contents) - 1;
+				end_of_argument = options_contents + strlen(options_contents);
 			}
 			gchar *argv_val = options_contents;
 			g_strstrip(argv_val);
@@ -707,8 +711,8 @@ void parse_configuration_file_callback(char *section, char *key, config_parser_v
 			}
 
 			// Add to argument vector
-			new_argv[1 + additional_arguments] = argv_val;
-			options_contents = end_of_argument + 1;
+			new_argv[1 + additional_arguments] = g_strdup(argv_val);
+			options_contents = end_of_argument;
 			if(++additional_arguments > additional_arguments_max) {
 				additional_arguments_max += 5;
 				new_argv = g_realloc(new_argv, sizeof(char *) * (*argc + additional_arguments_max + 1));
