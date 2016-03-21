@@ -3851,7 +3851,8 @@ void handle_input_event(guint key_binding_value) {/*{{{*/
 	guint keycode = key_binding_value & 0xfffffff;
 
 	// Filter unwanted state variables out
-	state &= (GDK_SHIFT_MASK | GDK_CONTROL_MASK | GDK_MOD1_MASK | GDK_MOD2_MASK | GDK_MOD3_MASK | GDK_MOD4_MASK | GDK_MOD5_MASK);
+	state &= gtk_accelerator_get_default_mod_mask();
+	state &= !GDK_SHIFT_MASK;
 	key_binding_value = KEY_BINDING_VALUE(is_mouse, state, keycode);
 
 	if(active_key_binding.key_binding) {
@@ -3859,7 +3860,7 @@ void handle_input_event(guint key_binding_value) {/*{{{*/
 		if(active_key_binding.key_binding->next_key_bindings) {
 			binding = g_hash_table_lookup(active_key_binding.key_binding->next_key_bindings, GUINT_TO_POINTER(key_binding_value));
 
-			if(!binding && !is_mouse && state & GDK_SHIFT_MASK && gdk_keyval_is_upper(keycode)) {
+			if(!binding && !is_mouse && gdk_keyval_is_upper(keycode) && !gdk_keyval_is_lower(keycode)) {
 				guint alternate_value = KEY_BINDING_VALUE(is_mouse, state & !GDK_SHIFT_MASK, gdk_keyval_to_lower(keycode));
 				binding = g_hash_table_lookup(active_key_binding.key_binding->next_key_bindings, GUINT_TO_POINTER(alternate_value));
 			}
@@ -3879,7 +3880,7 @@ void handle_input_event(guint key_binding_value) {/*{{{*/
 	if(!binding) {
 			binding = g_hash_table_lookup(key_bindings, GUINT_TO_POINTER(key_binding_value));
 
-			if(!binding && !is_mouse && state & GDK_SHIFT_MASK && gdk_keyval_is_upper(keycode)) {
+			if(!binding && !is_mouse && gdk_keyval_is_upper(keycode) && !gdk_keyval_is_lower(keycode)) {
 				guint alternate_value = KEY_BINDING_VALUE(is_mouse, state & !GDK_SHIFT_MASK, gdk_keyval_to_lower(keycode));
 				binding = g_hash_table_lookup(key_bindings, GUINT_TO_POINTER(alternate_value));
 			}
@@ -4451,7 +4452,12 @@ void parse_key_bindings(const gchar *bindings) {/*{{{*/
 							scan++;
 						}
 
-						keyboard_key_value = KEY_BINDING_VALUE(0, keyboard_state, *scan);
+						guint keyval = *scan;
+						if(keyboard_state & GDK_SHIFT_MASK) {
+							keyval = gdk_keyval_to_upper(keyval);
+							keyboard_state &= !GDK_SHIFT_MASK;
+						}
+						keyboard_key_value = KEY_BINDING_VALUE(0, keyboard_state, keyval);
 						#define PARSE_KEY_BINDINGS_BIND(keyboard_key_value) \
 							keyboard_state = 0; \
 							if(!*active_key_bindings_table) { \
@@ -4501,6 +4507,10 @@ void parse_key_bindings(const gchar *bindings) {/*{{{*/
 							error_message = g_strdup_printf("Failed to parse key: `%s' is not a known GDK keyval name", identifier);
 							state = -1;
 							break;
+						}
+						if(keyboard_state & GDK_SHIFT_MASK) {
+							keyval = gdk_keyval_to_upper(keyval);
+							keyboard_state &= !GDK_SHIFT_MASK;
 						}
 						keyboard_key_value = KEY_BINDING_VALUE(0, keyboard_state, keyval);
 						PARSE_KEY_BINDINGS_BIND(keyboard_key_value);
