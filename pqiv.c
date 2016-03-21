@@ -303,7 +303,14 @@ gchar keyboard_aliases[127] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 	0, 0, 0, 0, 0, 0, 0 };
 
-gint option_scale = 1;
+// Scaling mode, only 0-2 are available in the default UI, FIXED_SCALE can be
+// set using a command line option, SCALE_TO_FIT only using an action
+enum { NO_SCALING=0, AUTO_SCALEDOWN, AUTO_SCALEUP, FIXED_SCALE, SCALE_TO_FIT } option_scale = AUTO_SCALEDOWN;
+struct {
+	guint width;
+	guint height;
+} scale_to_fit_size;
+
 gboolean scale_override = FALSE;
 const gchar *option_window_title = "pqiv: $FILENAME ($WIDTHx$HEIGHT) $ZOOM% [$IMAGE_NUMBER/$IMAGE_COUNT]";
 gdouble option_slideshow_interval = 5.;
@@ -312,7 +319,6 @@ gboolean option_hide_info_box = FALSE;
 #endif
 gboolean option_start_fullscreen = FALSE;
 gdouble option_initial_scale = 1.0;
-gboolean option_initial_scale_used = FALSE;
 gboolean option_start_with_slideshow_mode = FALSE;
 gboolean option_sort = FALSE;
 enum { NAME, MTIME } option_sort_key = NAME;
@@ -433,7 +439,7 @@ struct {
 
 const struct pqiv_action_descriptor {
 	const char *name;
-	enum { PARAMETER_INT, PARAMETER_DOUBLE, PARAMETER_CHARPTR, PARAMETER_NONE } parameter_type;
+	enum { PARAMETER_INT, PARAMETER_DOUBLE, PARAMETER_CHARPTR, PARAMETER_2SHORT, PARAMETER_NONE } parameter_type;
 } pqiv_action_descriptors[] = {
 	{ "nop", PARAMETER_NONE },
 	{ "shift_y", PARAMETER_INT },
@@ -442,7 +448,7 @@ const struct pqiv_action_descriptor {
 	{ "set_slideshow_interval_absolute", PARAMETER_DOUBLE },
 	{ "set_scale_level_relative", PARAMETER_DOUBLE },
 	{ "set_scale_level_absolute", PARAMETER_DOUBLE },
-	{ "toggle_scaling_mode", PARAMETER_INT },
+	{ "toggle_scale_mode", PARAMETER_INT },
 	{ "toggle_shuffle_mode", PARAMETER_INT },
 	{ "reload", PARAMETER_NONE },
 	{ "reset_scale_level", PARAMETER_NONE },
@@ -468,6 +474,11 @@ const struct pqiv_action_descriptor {
 	{ "output_file_list", PARAMETER_NONE },
 	{ "set_cursor_visibility", PARAMETER_INT },
 	{ "set_status_output", PARAMETER_INT },
+	{ "set_scale_mode_fit_px", PARAMETER_2SHORT },
+	{ "set_shift_x", PARAMETER_INT },
+	{ "set_shift_y", PARAMETER_INT },
+	{ "bind_key", PARAMETER_CHARPTR },
+	{ "send_keys", PARAMETER_CHARPTR },
 	{ NULL, 0 }
 };
 
@@ -519,6 +530,7 @@ gboolean read_commands_thread_helper(gpointer command);
 #endif
 void recreate_window();
 static void status_output();
+void handle_input_event(guint key_binding_value);
 // }}}
 /* Command line handling, creation of the image list {{{ */
 gboolean options_keyboard_alias_set_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error) {/*{{{*/
@@ -571,10 +583,10 @@ gboolean option_window_position_callback(const gchar *option_name, const gchar *
 }/*}}}*/
 gboolean option_scale_level_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error) {/*{{{*/
 	if(g_strcmp0(option_name, "-t") == 0 || g_strcmp0(option_name, "--scale-images-up") == 0) {
-		option_scale = 2;
+		option_scale = AUTO_SCALEUP;
 	}
 	else {
-		option_scale = 0;
+		option_scale = NO_SCALING;
 	}
 	return TRUE;
 }/*}}}*/
@@ -1432,10 +1444,6 @@ void image_file_updated_callback(GFileMonitor *monitor, GFile *file, GFile *othe
 gboolean window_move_helper_callback(gpointer user_data) {/*{{{*/
 	gtk_window_move(main_window, option_window_position.x, option_window_position.y);
 	option_window_position.x = -1;
-	return FALSE;
-}/*}}}*/
-gboolean set_option_initial_scale_used_callback(gpointer user_data) {/*{{{*/
-	option_initial_scale_used = TRUE;
 	return FALSE;
 }/*}}}*/
 gboolean main_window_resize_callback(gpointer user_data) {/*{{{*/
@@ -3124,7 +3132,7 @@ gboolean window_draw_callback(GtkWidget *widget, cairo_t *cr_arg, gpointer user_
 		// Calculate where to draw the image and the transformation matrix to use
 		int image_transform_width, image_transform_height;
 		calculate_current_image_transformed_size(&image_transform_width, &image_transform_height);
-		if(option_scale > 0 || main_window_in_fullscreen) {
+		if(option_scale != NO_SCALING || main_window_in_fullscreen) {
 			x = (main_window_width - current_scale_level * image_transform_width) / 2;
 			y = (main_window_height - current_scale_level * image_transform_height) / 2;
 		}
@@ -3353,22 +3361,25 @@ void set_scale_level_for_screen() {/*{{{*/
 		const int screen_width = screen_geometry.width;
 		const int screen_height = screen_geometry.height;
 
-		current_scale_level = 1.0;
-		if(option_initial_scale_used == FALSE) {
-			current_scale_level = option_initial_scale;
+		if(option_scale == FIXED_SCALE) {
+			return;
 		}
 		else {
-			if(option_scale > 1 || scale_override) {
+			current_scale_level = 1.0;
+			if(option_scale == AUTO_SCALEUP || scale_override) {
 				// Scale up to 80% screen size
 				current_scale_level = screen_width * .8 / image_width;
 			}
-			else if(option_scale == 1 && image_width > screen_width * .8) {
+			else if(option_scale == SCALE_TO_FIT) {
+				current_scale_level = fmin(scale_to_fit_size.width / image_width, scale_to_fit_size.height / image_height);
+			}
+			else if(option_scale == AUTO_SCALEDOWN && image_width > screen_width * .8) {
 				// Scale down to 80% screen size
 				current_scale_level = screen_width * .8 / image_width;
 			}
 			// In both cases: If the height exceeds 80% screen size, scale
 			// down
-			if(option_scale > 0 && image_height * current_scale_level > screen_height * .8) {
+			if((option_scale == AUTO_SCALEUP || option_scale == AUTO_SCALEDOWN) && image_height * current_scale_level > screen_height * .8) {
 				current_scale_level = screen_height * .8 / image_height;
 			}
 		}
@@ -3398,8 +3409,8 @@ void set_scale_level_to_fit() {/*{{{*/
 		// scale for no-scaling mode if (!main_window_in_fullscreen). This
 		// effectively disables the no-scaling mode in non-fullscreen. I
 		// implemented that this way, but changed it per user request.
-		if(option_scale > 0 || scale_override) {
-			if(option_scale > 1 || scale_override) {
+		if(option_scale == AUTO_SCALEUP || option_scale == AUTO_SCALEDOWN || scale_override) {
+			if(option_scale == AUTO_SCALEUP || scale_override) {
 				// Scale up
 				if(image_width * new_scale_level < main_window_width) {
 					new_scale_level = main_window_width * 1.0 / image_width;
@@ -3417,6 +3428,12 @@ void set_scale_level_to_fit() {/*{{{*/
 			if(main_window_width < new_scale_level * image_width) {
 				new_scale_level = main_window_width * 1.0 / image_width;
 			}
+		}
+		else if(option_scale == SCALE_TO_FIT) {
+			new_scale_level = fmin(scale_to_fit_size.width / image_width, scale_to_fit_size.height / image_height);
+		}
+		else if(option_scale == FIXED_SCALE) {
+			new_scale_level = current_scale_level;
 		}
 
 		if(fabs(new_scale_level - current_scale_level) > DBL_EPSILON) {
@@ -3478,7 +3495,7 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 				current_scale_level *= parameter.pdouble;
 			}
 			current_scale_level = round(current_scale_level * 100.) / 100.;
-			if((option_scale == 1 && current_scale_level > 1) || option_scale == 0) {
+			if((option_scale == AUTO_SCALEDOWN && current_scale_level > 1) || option_scale == NO_SCALING) {
 				scale_override = TRUE;
 			}
 			invalidate_current_scaled_image_surface();
@@ -3498,11 +3515,11 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 			update_info_text(NULL);
 			break;
 
-		case ACTION_TOGGLE_SCALING_MODE:
+		case ACTION_TOGGLE_SCALE_MODE:
 			if(!CURRENT_FILE->is_loaded) return;
 			if(parameter.pint == 0) {
-				if(++option_scale > 2) {
-					option_scale = 0;
+				if(++option_scale > AUTO_SCALEUP) {
+					option_scale = NO_SCALING;
 				}
 			}
 			else {
@@ -3516,9 +3533,10 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 			invalidate_current_scaled_image_surface();
 			gtk_widget_queue_draw(GTK_WIDGET(main_window));
 			switch(option_scale) {
-				case 0: update_info_text("Scaling disabled"); break;
-				case 1: update_info_text("Automatic scaledown enabled"); break;
-				case 2: update_info_text("Automatic scaling enabled"); break;
+				case NO_SCALING: update_info_text("Scaling disabled"); break;
+				case AUTO_SCALEDOWN: update_info_text("Automatic scaledown enabled"); break;
+				case AUTO_SCALEUP: update_info_text("Automatic scaling enabled"); break;
+				default: break;
 			}
 			break;
 
@@ -3784,6 +3802,42 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 			option_status_output = !!parameter.pint;
 			status_output();
 			break;
+
+		case ACTION_SET_SCALE_MODE_FIT_PX:
+			option_scale = SCALE_TO_FIT;
+			scale_to_fit_size.width = parameter.p2short.p1;
+			scale_to_fit_size.height = parameter.p2short.p2;
+
+			set_scale_level_for_screen();
+			main_window_adjust_for_image();
+			invalidate_current_scaled_image_surface();
+			gtk_widget_queue_draw(GTK_WIDGET(main_window));
+			update_info_text(NULL);
+			break;
+
+		case ACTION_SET_SHIFT_X:
+			if(!CURRENT_FILE->is_loaded) return;
+			current_shift_x = parameter.pint;
+			gtk_widget_queue_draw(GTK_WIDGET(main_window));
+			update_info_text(NULL);
+			break;
+
+		case ACTION_SET_SHIFT_Y:
+			if(!CURRENT_FILE->is_loaded) return;
+			current_shift_y = parameter.pint;
+			gtk_widget_queue_draw(GTK_WIDGET(main_window));
+			update_info_text(NULL);
+			break;
+
+		case ACTION_BIND_KEY:
+			parse_key_bindings(parameter.pcharptr);
+			break;
+
+		case ACTION_SEND_KEYS:
+			for(char *i=parameter.pcharptr; *i; i++) {
+				handle_input_event(KEY_BINDING_VALUE(0, 0, *i));
+			}
+			break;
 #endif
 	}
 }/*}}}*/
@@ -3829,11 +3883,9 @@ gboolean window_configure_callback(GtkWidget *widget, GdkEventConfigure *event, 
 			main_window_height = event->height;
 		}
 
-		// Rescale the image, unless overridden by the user
-		if(option_initial_scale_used) {
-			set_scale_level_to_fit();
-			queue_draw();
-		}
+		// Rescale the image
+		set_scale_level_to_fit();
+		queue_draw();
 
 		// We need to redraw in old GTK versions to avoid artifacts
 		#if GTK_MAJOR_VERSION < 3
@@ -4085,9 +4137,7 @@ void window_state_into_fullscreen_actions() {/*{{{*/
 	main_window_width = screen_geometry.width;
 	main_window_height = screen_geometry.height;
 
-	if(option_initial_scale_used) {
-		set_scale_level_to_fit();
-	}
+	set_scale_level_to_fit();
 	invalidate_current_scaled_image_surface();
 	#if GTK_MAJOR_VERSION < 3
 		gtk_widget_queue_draw(GTK_WIDGET(main_window));
@@ -4201,28 +4251,6 @@ void window_realize_callback(GtkWidget *widget, gpointer user_data) {/*{{{*/
 	// to the window (if it's not the primary one, which we assigned in
 	// create_window)
 	window_screen_changed_callback(NULL, NULL, NULL);
-
-	// This would be the correct time to reset the option_initial_scale_used,
-	// but compositing window managers (at least mutter) first map the
-	// non-fullscreen window and then remap it before switching to fullscreen,
-	// resulting in weird multiple calls to window_state_callback. On the
-	// other hand, there are situations where window_state_callback is not
-	// called at all.
-	//
-	// As a workaround, we use a timeout with a reasonalbe delay.
-	//
-	// TODO It would be very nice if this could be avoided. So far, I have not
-	// been able to find out how it can be done (except for using override
-	// redirect or waiting for the window to show up before fullscreening it,
-	// which I'd both like to avoid)
-	if(!option_initial_scale_used) {
-		if(!option_start_fullscreen || main_window_in_fullscreen) {
-			gdk_threads_add_idle(set_option_initial_scale_used_callback, NULL);
-		}
-		else {
-			gdk_threads_add_timeout(300, set_option_initial_scale_used_callback, NULL);
-		}
-	}
 
 	#if GTK_MAJOR_VERSION < 3
 		if(option_transparent_background) {
@@ -4361,8 +4389,8 @@ void help_show_key_bindings_helper(gpointer key, gpointer value, gpointer user_d
 
 	g_print("%30s { ", str_key);
 	for(key_binding_t *current_action = key_binding; current_action; current_action = current_action->next_action) {
-		g_print("%s(", pqiv_action_descriptors[key_binding->action].name);
-		switch(pqiv_action_descriptors[key_binding->action].parameter_type) {
+		g_print("%s(", pqiv_action_descriptors[current_action->action].name);
+		switch(pqiv_action_descriptors[current_action->action].parameter_type) {
 			case PARAMETER_NONE:
 				g_print(") ");
 				break;
@@ -4381,6 +4409,8 @@ void help_show_key_bindings_helper(gpointer key, gpointer value, gpointer user_d
 				}
 				g_print(") ");
 				break;
+			case PARAMETER_2SHORT:
+				g_print("%d, %d) ", current_action->parameter.p2short.p1, current_action->parameter.p2short.p2);
 		}
 	}
 	g_print("} \n");
@@ -4426,6 +4456,9 @@ void parse_key_bindings(const gchar *bindings) {/*{{{*/
 	const gchar *current_command_start = bindings;
 	gchar *error_message = NULL;
 	const gchar *scan;
+
+	gchar *old_locale = g_strdup(setlocale(LC_NUMERIC, NULL));
+	setlocale(LC_NUMERIC, "C");
 
 	for(scan = bindings; *scan; scan++) {
 		if(*scan == '\n' || *scan == '\r' || *scan == ' ' || *scan == '\t') {
@@ -4613,6 +4646,22 @@ void parse_key_bindings(const gchar *bindings) {/*{{{*/
 						case PARAMETER_CHARPTR:
 							binding->parameter.pcharptr = g_strdup(identifier);
 							break;
+						case PARAMETER_2SHORT:
+							{
+								char *comma_pos = strchr(identifier, ',');
+								if(comma_pos) {
+									if(!strchr(comma_pos + 1, ',')) {
+										*comma_pos = 0;
+										for(comma_pos++; *comma_pos == '\t' || *comma_pos == '\n' || *comma_pos == ' '; comma_pos++);
+										binding->parameter.p2short.p1 = (short)atoi(identifier);
+										binding->parameter.p2short.p2 = (short)atoi(comma_pos);
+										break;
+									}
+								}
+								error_message = g_strdup("This function expects two parameters");
+								state = -1;
+							}
+							break;
 					}
 
 					g_free(identifier);
@@ -4636,6 +4685,9 @@ void parse_key_bindings(const gchar *bindings) {/*{{{*/
 			break;
 		}
 	}
+
+	setlocale(LC_NUMERIC, old_locale);
+	g_free(old_locale);
 
 	if(state != 0) {
 		if(state != -1) {
@@ -4732,6 +4784,24 @@ gboolean perform_string_action(const gchar *string_action) {/*{{{*/
 				case PARAMETER_CHARPTR:
 					parsed_parameter.pcharptr = parameter;
 					break;
+
+				case PARAMETER_2SHORT:
+					{
+						char *comma_pos = strchr(parameter, ',');
+						if(comma_pos) {
+							if(!strchr(comma_pos + 1, ',')) {
+								*comma_pos = 0;
+								for(comma_pos++; *comma_pos == '\t' || *comma_pos == '\n' || *comma_pos == ' '; comma_pos++);
+								parsed_parameter.p2short.p1 = (short)atoi(parameter);
+								parsed_parameter.p2short.p2 = (short)atoi(comma_pos);
+								break;
+							}
+						}
+						g_printerr("Invalid command: This command expects two parameters\n");
+						g_free(parameter);
+						return FALSE;
+					}
+					break;
 			}
 
 			action(action_id, parsed_parameter);
@@ -4818,7 +4888,7 @@ void initialize_key_bindings() {/*{{{*/
 	BIND_KEY(GDK_KEY_KP_Subtract  , 0 , GDK_CONTROL_MASK , ACTION_SET_SLIDESHOW_INTERVAL_RELATIVE , -1.);
 	BIND_KEY(GDK_KEY_minus        , 0 , 0                , ACTION_SET_SCALE_LEVEL_RELATIVE        , 0.9);
 	BIND_KEY(GDK_KEY_KP_Subtract  , 0 , 0                , ACTION_SET_SCALE_LEVEL_RELATIVE        , 0.9);
-	BIND_KEY(GDK_KEY_t            , 0 , 0                , ACTION_TOGGLE_SCALING_MODE             , 0);
+	BIND_KEY(GDK_KEY_t            , 0 , 0                , ACTION_TOGGLE_SCALE_MODE               , 0);
 	BIND_KEY(GDK_KEY_r            , 0 , GDK_CONTROL_MASK , ACTION_TOGGLE_SHUFFLE_MODE             , 0);
 	BIND_KEY(GDK_KEY_r            , 0 , 0                , ACTION_RELOAD                          , 0);
 	BIND_KEY(GDK_KEY_0            , 0 , 0                , ACTION_RESET_SCALE_LEVEL               , 0);
@@ -4948,10 +5018,8 @@ int main(int argc, char *argv[]) {
 
 	parse_configuration_file();
 	parse_command_line();
-	if(fabs(option_initial_scale - 1.0) < 2 * FLT_MIN) {
-		option_initial_scale_used = TRUE;
-	}
-	else {
+	if(fabs(option_initial_scale - 1.0) > 2 * FLT_MIN) {
+		option_scale = FIXED_SCALE;
 		current_scale_level = option_initial_scale;
 	}
 	cairo_matrix_init_identity(&current_transformation);

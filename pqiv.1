@@ -148,6 +148,10 @@ user must hit `a' followed by control + `b' to trigger the command. It is possib
 to bind `a' and `ab' as well. The action bound to `a' will then be slightly delayed
 to allow a user to hit `b'. The semicolon separating commands is optional. See
 \fBACTIONS\fR below for available commands.
+.PP
+If you need to know the name of a key specifier, you can run \fBxmodmap
+\-pk\fR. The command outputs the symbolic names in parentheses. Or use the
+list at \fIhttps://git.gnome.org/browse/gtk+/plain/gdk/gdkkeysyms.h\fR.
 .RE
 .\"
 .TP
@@ -270,6 +274,11 @@ commands are:
 .BR add_file(STRING)
 Add a file or directory.
 .TP
+.BR bind_key(STRING)
+Override a key binding. Remember to quote closing parenthesis inside the new
+definition by prepending a backslash. Useful in conjunction with
+\fBsend_keys(STRING)\fR to set up cyclic bindings.
+.TP
 .BR command(STRING)
 Execute the given command.
 .TP
@@ -327,14 +336,29 @@ Rotate the current image left by 90°.
 .BR rotate_right()
 Rotate the current image right by 90°.
 .TP
+.BR send_keys(STRING)
+Emulate pressing a sequence of keys. This action currently does not support
+special keys that do not have an ASCII representation. Useful in conjunction
+with \fBbind_key(STRING)\fR to set up cyclic key bindings.
+.TP
 .BR set_cursor_visibility(INT)
 Set the visibility of the cursor; 0 disables, other values enable visibility.
+.TP
 .BR set_scale_level_absolute(DOUBLE)
 Set the scale level to the parameter value. 1.0 is 100%. See also
 \fB\-\-zoom\-level\fR.
 .TP
 .BR set_scale_level_relative(DOUBLE)
 Adjust the scale level multiplicatively by the parameter value.
+.TP
+.BR set_scale_mode_fit_px(INT, INT)
+Always adjust the scale level such that each image fits the given dimensions.
+.TP
+.BR set_shift_x(INT)
+Set the shift in horizontal direction to a fixed value.
+.TP
+.BR set_shift_y(INT)
+Set the shift in vertical direction to a fixed value.
 .TP
 .BR set_slideshow_interval_absolute(DOUBLE)
 Set the slideshow interval to the parameter value, in seconds.
@@ -362,8 +386,8 @@ Toggle fullscreen mode.
 .BR toggle_info_box()
 Toggle the visibility of the info box.
 .TP
-.BR toggle_scaling_mode(INT)
-Change the scaling mode: Use 0 to cycle through the possible values, 1 to
+.BR toggle_scale_mode(INT)
+Change the scale mode: Use 0 to cycle through the possible values, 1 to
 disable scaling, 2 for automated scaledown (default), and 3 to always scale
 images up.
 .TP
@@ -397,7 +421,7 @@ Reload the current image.
 .IP s
 Toggle slideshow mode.
 .IP t
-Toggle the scaling mode; cycle between scaling all images up, scaling large images down and no scaling at all.
+Toggle the scale mode; cycle between scaling all images up, scaling large images down and no scaling at all.
 .IP Plus/minus
 Zoom.
 .IP "Mouse buttons (fullscreen)"
@@ -439,12 +463,17 @@ parameter in a special \fI[keybindings]\fR section. E.g.,
 .RS
 .nf
 [keybindings]
-x { quit(); }
 q { goto_file_relative(-1); }
 w { goto_file_relative(1); }
+
+x { send_keys(#1); }
+<numbersign>1 { set_scale_level_absolute(1.); bind_key(x { send_keys(#2\\); }); }
+<numbersign>2 { set_scale_level_absolute(.5); bind_key(x { send_keys(#3\\); }); }
+<numbersign>3 { set_scale_level_absolute(0.25); bind_key(x { send_keys(#1\\); }); }
 .fi
 .RE
-will remap \fIx\fR to quit, and \fIq\fR and \fIw\fR to move between images.
+will remap \fIq\fR and \fIw\fR to move between images, and set up \fIx\fR to
+cycle through 100%, 50% and 25% zoom levels.
 .PP
 For backwards compatibility with old versions of \fBpqiv\fR, if the file does
 not start with a section definition, the first line will be parsed as command

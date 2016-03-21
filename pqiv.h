@@ -187,7 +187,7 @@ typedef enum {
 	ACTION_SET_SLIDESHOW_INTERVAL_ABSOLUTE,
 	ACTION_SET_SCALE_LEVEL_RELATIVE,
 	ACTION_SET_SCALE_LEVEL_ABSOLUTE,
-	ACTION_TOGGLE_SCALING_MODE,
+	ACTION_TOGGLE_SCALE_MODE,
 	ACTION_TOGGLE_SHUFFLE_MODE,
 	ACTION_RELOAD,
 	ACTION_RESET_SCALE_LEVEL,
@@ -212,13 +212,22 @@ typedef enum {
 	ACTION_REMOVE_FILE_BYNAME,
 	ACTION_OUTPUT_FILE_LIST,
 	ACTION_SET_CURSOR_VISIBILITY,
-	ACTION_SET_STATUS_OUTPUT
+	ACTION_SET_STATUS_OUTPUT,
+	ACTION_SET_SCALE_MODE_FIT_PX,
+	ACTION_SET_SHIFT_X,
+	ACTION_SET_SHIFT_Y,
+	ACTION_BIND_KEY,
+	ACTION_SEND_KEYS
 } pqiv_action_t;
 
 typedef union {
 	int pint;
 	double pdouble;
 	char *pcharptr;
+	struct {
+		short p1;
+		short p2;
+	} p2short;
 } pqiv_action_parameter_t;
 void action(pqiv_action_t action, pqiv_action_parameter_t parameter);
 // }}}
