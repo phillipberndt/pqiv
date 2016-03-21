@@ -149,9 +149,12 @@ to bind `a' and `ab' as well. The action bound to `a' will then be slightly dela
 to allow a user to hit `b'. The semicolon separating commands is optional. See
 \fBACTIONS\fR below for available commands.
 .PP
-If you need to know the name of a key specifier, you can run \fBxmodmap
-\-pk\fR. The command outputs the symbolic names in parentheses. Or use the
-list at \fIhttps://git.gnome.org/browse/gtk+/plain/gdk/gdkkeysyms.h\fR.
+If you need to know the name of a key specifier, you can run \fBxev\fR and
+press the desired key. The name of the keysym will be printed in parentheses,
+preceded by `keysym' and a hexadecimal representation. An alternative is to
+run \fBxmodmap \-pk\fR. The command outputs the symbolic names in parentheses.
+Or use the list at
+\fIhttps://git.gnome.org/browse/gtk+/plain/gdk/gdkkeysyms.h\fR.
 .RE
 .\"
 .TP
