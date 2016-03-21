@@ -3731,6 +3731,9 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 		case ACTION_REMOVE_FILE_BYINDEX:
 			{
 				D_LOCK(file_tree);
+				if(parameter.pint < 0) {
+					parameter.pint += bostree_node_count(file_tree);
+				}
 				BOSNode *node = bostree_select(file_tree, parameter.pint);
 				if(node) {
 					node = bostree_node_weak_ref(node);
