@@ -326,7 +326,7 @@ gboolean option_lazy_load = FALSE;
 gboolean option_lowmem = FALSE;
 gboolean option_addl_from_stdin = FALSE;
 gboolean option_recreate_window = FALSE;
-#ifndef CONFIGURED_WITHOUT_CONFIGURABLE_KEY_BINDINGS
+#ifndef CONFIGURED_WITHOUT_ACTIONS
 gboolean option_actions_from_stdin = FALSE;
 gboolean option_status_output = FALSE;
 #else
@@ -342,7 +342,7 @@ double fading_current_alpha_stage = 0;
 gint64 fading_initial_time;
 
 gboolean options_keyboard_alias_set_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error);
-#ifndef CONFIGURED_WITHOUT_CONFIGURABLE_KEY_BINDINGS
+#ifndef CONFIGURED_WITHOUT_ACTIONS
 gboolean options_bind_key_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error);
 gboolean help_show_key_bindings(const gchar *option_name, const gchar *value, gpointer data, GError **error);
 #endif
@@ -392,7 +392,7 @@ GOptionEntry options[] = {
 	{ "command-9", '9', G_OPTION_FLAG_HIDDEN, G_OPTION_ARG_STRING, &external_image_filter_commands[8], NULL, NULL },
 #endif
 
-#ifndef CONFIGURED_WITHOUT_CONFIGURABLE_KEY_BINDINGS
+#ifndef CONFIGURED_WITHOUT_ACTIONS
 	{ "action", 0, 0, G_OPTION_ARG_CALLBACK, &option_action_callback, "Read actions from stdin", "ACTION" },
 	{ "actions-from-stdin", 0, 0, G_OPTION_ARG_NONE, &option_actions_from_stdin, "Read actions from stdin", NULL },
 	{ "bind-key", 0, 0, G_OPTION_ARG_CALLBACK, &options_bind_key_callback, "Rebind a key to another action, see manpage and --show-keybindings output for details.", "KEY BINDING" },
@@ -406,7 +406,7 @@ GOptionEntry options[] = {
 	{ "reverse-scroll", 0, G_OPTION_FLAG_HIDDEN, G_OPTION_ARG_NONE, &option_reverse_scroll, "Reverse the meaning of scroll wheel", NULL },
 	{ "recreate-window", 0, 0, G_OPTION_ARG_NONE, &option_recreate_window, "Create a new window instead of resizing the old one", NULL },
 	{ "shuffle", 0, 0, G_OPTION_ARG_NONE, &option_shuffle, "Shuffle files", NULL },
-#ifndef CONFIGURED_WITHOUT_CONFIGURABLE_KEY_BINDINGS
+#ifndef CONFIGURED_WITHOUT_ACTIONS
 	{ "show-bindings", 0, G_OPTION_FLAG_NO_ARG, G_OPTION_ARG_CALLBACK, &help_show_key_bindings, "Display the keyboard and mouse bindings and exit", NULL },
 #endif
 	{ "sort-key", 0, 0, G_OPTION_ARG_CALLBACK, (gpointer)&option_sort_key_callback, "Key to use for sorting", "PROPERTY" },
@@ -513,12 +513,12 @@ void file_tree_free_helper(BOSNode *node);
 gint relative_image_pointer_shuffle_list_cmp(shuffled_image_ref_t *ref, BOSNode *node);
 void relative_image_pointer_shuffle_list_unref_fn(shuffled_image_ref_t *ref);
 gboolean slideshow_timeout_callback(gpointer user_data);
-#ifndef CONFIGURED_WITHOUT_CONFIGURABLE_KEY_BINDINGS
+#ifndef CONFIGURED_WITHOUT_ACTIONS
 void parse_key_bindings(const gchar *bindings);
 gboolean read_commands_thread_helper(gpointer command);
 #endif
 void recreate_window();
-void status_output();
+static void status_output();
 // }}}
 /* Command line handling, creation of the image list {{{ */
 gboolean options_keyboard_alias_set_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error) {/*{{{*/
@@ -536,7 +536,7 @@ gboolean options_keyboard_alias_set_callback(const gchar *option_name, const gch
 
 	return TRUE;
 }/*}}}*/
-#ifndef CONFIGURED_WITHOUT_CONFIGURABLE_KEY_BINDINGS /* option --without-configurable-key-bindings: Do not include support for configurable key/mouse bindings */
+#ifndef CONFIGURED_WITHOUT_ACTIONS /* option --without-actions: Do not include support for configurable key/mouse bindings and actions */
 gboolean options_bind_key_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error) {/*{{{*/
 	// Format for value:
 	//  {key sequence description, special keys as <name>} { {action}({parameter});[...] } [...]
@@ -626,10 +626,12 @@ gboolean option_sort_key_callback(const gchar *option_name, const gchar *value, 
 	}
 	return TRUE;
 }/*}}}*/
+#ifndef CONFIGURED_WITHOUT_ACTIONS
 gboolean option_action_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error) {/*{{{*/
 	gdk_threads_add_idle(read_commands_thread_helper, g_strdup(value));
 	return TRUE;
 }/*}}}*/
+#endif
 void parse_configuration_file_callback(char *section, char *key, config_parser_value_t *value) {
 	int * const argc = &global_argc;
 	char *** const argv = &global_argv;
@@ -787,7 +789,7 @@ void parse_configuration_file_callback(char *section, char *key, config_parser_v
 		}
 		// }}}
 	}
-#ifndef CONFIGURED_WITHOUT_CONFIGURABLE_KEY_BINDINGS
+#ifndef CONFIGURED_WITHOUT_ACTIONS
 	else if(strcmp(section, "keybindings") == 0 && !key) {
 		config_parser_strip_comments(value->chrpval);
 		parse_key_bindings(value->chrpval);
@@ -2755,7 +2757,8 @@ cairo_surface_t *get_scaled_image_surface_for_current_image() {/*{{{*/
 
 	return retval;
 }/*}}}*/
-void status_output() {/*{{{*/
+static void status_output() {/*{{{*/
+#ifndef CONFIGURED_WITHOUT_ACTIONS
 	if(!option_status_output) {
 		return;
 	}
@@ -2764,6 +2767,7 @@ void status_output() {/*{{{*/
 		printf("CURRENT_FILE_NAME=\"%s\"\nCURRENT_FILE_INDEX=%d\n\n", CURRENT_FILE->file_name, bostree_rank(current_file_node));
 	}
 	D_UNLOCK(file_tree);
+#endif
 }/*}}}*/
 // }}}
 /* Jump dialog {{{ */
@@ -3696,6 +3700,7 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 			break;
 #endif
 
+#ifndef CONFIGURED_WITHOUT_ACTIONS
 		case ACTION_ADD_FILE:
 			#if GLIB_CHECK_VERSION(2, 32, 0)
 				g_thread_new("image-loader-from-action", (GThreadFunc)load_images_handle_parameter_thread, g_strdup(parameter.pcharptr));
@@ -3779,6 +3784,7 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 			option_status_output = !!parameter.pint;
 			status_output();
 			break;
+#endif
 	}
 }/*}}}*/
 gboolean window_configure_callback(GtkWidget *widget, GdkEventConfigure *event, gpointer user_data) {/*{{{*/
@@ -4325,7 +4331,7 @@ gboolean initialize_gui_or_quit_callback(gpointer user_data) {/*{{{*/
 
 	return FALSE;
 }/*}}}*/
-#ifndef CONFIGURED_WITHOUT_CONFIGURABLE_KEY_BINDINGS
+#ifndef CONFIGURED_WITHOUT_ACTIONS
 void help_show_key_bindings_helper(gpointer key, gpointer value, gpointer user_data) {/*{{{*/
 	guint key_binding_value = GPOINTER_TO_UINT(key);
 	gboolean is_mouse = (key_binding_value >> 31) & 1;
@@ -4958,7 +4964,7 @@ int main(int argc, char *argv[]) {
 		g_printerr("Warning: --reverse-scroll is deprecated and will be removed in pqiv 2.6. Use --bind-key instead.\n");
 	}
 
-#ifndef CONFIGURED_WITHOUT_CONFIGURABLE_KEY_BINDINGS
+#ifndef CONFIGURED_WITHOUT_ACTIONS
 	if(option_actions_from_stdin) {
 		if(option_addl_from_stdin) {
 			g_printerr("Error: --additional-from-stdin conflicts with --actions-from-stdin.\n");
