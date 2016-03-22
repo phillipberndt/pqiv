@@ -1567,7 +1567,16 @@ void main_window_adjust_for_image() {/*{{{*/
 	int new_window_height = current_scale_level * image_height;
 
 	GdkGeometry hints;
+#if GTK_MAJOR_VERSION >= 3
 	hints.min_aspect = hints.max_aspect = new_window_width * 1.0 / new_window_height;
+#else
+	// Fix for issue #57: Some WMs calculate aspect ratios slightly different
+	// than GTK 2, resulting in an off-by-1px result for gtk_window_resize(),
+	// which creates a loop shrinking the window until it eventually vanishes.
+	// This is mitigated by temporarily removing the aspect constraint,
+	// resizing, and reenabling it afterwards.
+	hints.min_aspect = hints.max_aspect = 0;
+#endif
 	if(main_window_width >= 0 && (main_window_width != new_window_width || main_window_height != new_window_height)) {
 		if(option_recreate_window && main_window_visible) {
 			recreate_window();
@@ -1599,6 +1608,10 @@ void main_window_adjust_for_image() {/*{{{*/
 		else {
 			gtk_window_set_geometry_hints(main_window, NULL, &hints, GDK_HINT_ASPECT);
 			gtk_window_resize(main_window, new_window_width, new_window_height);
+#if GTK_MAJOR_VERSION < 3
+			hints.min_aspect = hints.max_aspect = image_width * 1.0 / image_height;
+			gtk_window_set_geometry_hints(main_window, NULL, &hints, GDK_HINT_ASPECT);
+#endif
 		}
 
 		// In theory, we do not need to draw manually here. The resizing will
