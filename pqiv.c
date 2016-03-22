@@ -422,7 +422,83 @@ GOptionEntry options[] = {
 	{ NULL, 0, 0, 0, NULL, NULL, NULL }
 };
 
+/* Key bindings & actions {{{ */
 #define KEY_BINDING_VALUE(is_mouse, state, keycode) ((guint)(((is_mouse & 1) << 31) | ((state & 7) << 28) | (keycode & 0xfffffff)))
+
+static const struct default_key_bindings_struct {
+	guint key_binding_value;
+	pqiv_action_t action;
+	pqiv_action_parameter_t parameter;
+} default_key_bindings[] = {
+	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_Up               ), ACTION_SHIFT_Y                         , { 10  }},
+	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_KP_Up            ), ACTION_SHIFT_Y                         , { 10  }},
+	{ KEY_BINDING_VALUE(0 , GDK_CONTROL_MASK , GDK_KEY_Up               ), ACTION_SHIFT_Y                         , { 50  }},
+	{ KEY_BINDING_VALUE(0 , GDK_CONTROL_MASK , GDK_KEY_KP_Up            ), ACTION_SHIFT_Y                         , { 50  }},
+	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_Down             ), ACTION_SHIFT_Y                         , { -10 }},
+	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_KP_Down          ), ACTION_SHIFT_Y                         , { -10 }},
+	{ KEY_BINDING_VALUE(0 , GDK_CONTROL_MASK , GDK_KEY_Down             ), ACTION_SHIFT_Y                         , { -50 }},
+	{ KEY_BINDING_VALUE(0 , GDK_CONTROL_MASK , GDK_KEY_KP_Down          ), ACTION_SHIFT_Y                         , { -50 }},
+	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_Left             ), ACTION_SHIFT_X                         , { 10  }},
+	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_KP_Left          ), ACTION_SHIFT_X                         , { 10  }},
+	{ KEY_BINDING_VALUE(0 , GDK_CONTROL_MASK , GDK_KEY_Left             ), ACTION_SHIFT_X                         , { 50  }},
+	{ KEY_BINDING_VALUE(0 , GDK_CONTROL_MASK , GDK_KEY_KP_Left          ), ACTION_SHIFT_X                         , { 50  }},
+	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_Right            ), ACTION_SHIFT_X                         , { -10 }},
+	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_KP_Right         ), ACTION_SHIFT_X                         , { -10 }},
+	{ KEY_BINDING_VALUE(0 , GDK_CONTROL_MASK , GDK_KEY_Right            ), ACTION_SHIFT_X                         , { -50 }},
+	{ KEY_BINDING_VALUE(0 , GDK_CONTROL_MASK , GDK_KEY_KP_Right         ), ACTION_SHIFT_X                         , { -50 }},
+	{ KEY_BINDING_VALUE(0 , GDK_CONTROL_MASK , GDK_KEY_plus             ), ACTION_SET_SLIDESHOW_INTERVAL_RELATIVE , { 1.  }},
+	{ KEY_BINDING_VALUE(0 , GDK_CONTROL_MASK , GDK_KEY_KP_Add           ), ACTION_SET_SLIDESHOW_INTERVAL_RELATIVE , { 1.  }},
+	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_plus             ), ACTION_SET_SCALE_LEVEL_RELATIVE        , { 1.1 }},
+	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_KP_Add           ), ACTION_SET_SCALE_LEVEL_RELATIVE        , { 1.1 }},
+	{ KEY_BINDING_VALUE(0 , GDK_CONTROL_MASK , GDK_KEY_minus            ), ACTION_SET_SLIDESHOW_INTERVAL_RELATIVE , { -1. }},
+	{ KEY_BINDING_VALUE(0 , GDK_CONTROL_MASK , GDK_KEY_KP_Subtract      ), ACTION_SET_SLIDESHOW_INTERVAL_RELATIVE , { -1. }},
+	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_minus            ), ACTION_SET_SCALE_LEVEL_RELATIVE        , { 0.9 }},
+	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_KP_Subtract      ), ACTION_SET_SCALE_LEVEL_RELATIVE        , { 0.9 }},
+	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_t                ), ACTION_TOGGLE_SCALE_MODE               , { 0   }},
+	{ KEY_BINDING_VALUE(0 , GDK_CONTROL_MASK , GDK_KEY_r                ), ACTION_TOGGLE_SHUFFLE_MODE             , { 0   }},
+	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_r                ), ACTION_RELOAD                          , { 0   }},
+	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_0                ), ACTION_RESET_SCALE_LEVEL               , { 0   }},
+	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_f                ), ACTION_TOGGLE_FULLSCREEN               , { 0   }},
+	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_h                ), ACTION_FLIP_HORIZONTALLY               , { 0   }},
+	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_v                ), ACTION_FLIP_VERTICALLY                 , { 0   }},
+	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_l                ), ACTION_ROTATE_LEFT                     , { 0   }},
+	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_k                ), ACTION_ROTATE_RIGHT                    , { 0   }},
+	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_i                ), ACTION_TOGGLE_INFO_BOX                 , { 0   }},
+	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_j                ), ACTION_JUMP_DIALOG                     , { 0   }},
+	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_s                ), ACTION_TOGGLE_SLIDESHOW                , { 0   }},
+	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_a                ), ACTION_HARDLINK_CURRENT_IMAGE          , { 0   }},
+	{ KEY_BINDING_VALUE(0 , GDK_CONTROL_MASK , GDK_KEY_BackSpace        ), ACTION_GOTO_DIRECTORY_RELATIVE         , { -1  }},
+	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_BackSpace        ), ACTION_GOTO_FILE_RELATIVE              , { -1  }},
+	{ KEY_BINDING_VALUE(0 , GDK_CONTROL_MASK , GDK_KEY_space            ), ACTION_GOTO_DIRECTORY_RELATIVE         , { 1   }},
+	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_space            ), ACTION_GOTO_FILE_RELATIVE              , { 1   }},
+	{ KEY_BINDING_VALUE(0 , GDK_CONTROL_MASK , GDK_KEY_Page_Up          ), ACTION_GOTO_FILE_RELATIVE              , { 10  }},
+	{ KEY_BINDING_VALUE(0 , GDK_CONTROL_MASK , GDK_KEY_KP_Page_Up       ), ACTION_GOTO_FILE_RELATIVE              , { 10  }},
+	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_Page_Down        ), ACTION_GOTO_FILE_RELATIVE              , { -10 }},
+	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_Page_Up          ), ACTION_GOTO_FILE_RELATIVE              , { 10  }},
+	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_KP_Page_Up       ), ACTION_GOTO_FILE_RELATIVE              , { 10  }},
+	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_KP_Page_Down     ), ACTION_GOTO_FILE_RELATIVE              , { -10 }},
+	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_q                ), ACTION_QUIT                            , { 0   }},
+	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_Escape           ), ACTION_QUIT                            , { 0   }},
+	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_1                ), ACTION_NUMERIC_COMMAND                 , { 1   }},
+	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_2                ), ACTION_NUMERIC_COMMAND                 , { 2   }},
+	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_3                ), ACTION_NUMERIC_COMMAND                 , { 3   }},
+	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_4                ), ACTION_NUMERIC_COMMAND                 , { 4   }},
+	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_5                ), ACTION_NUMERIC_COMMAND                 , { 5   }},
+	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_6                ), ACTION_NUMERIC_COMMAND                 , { 6   }},
+	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_7                ), ACTION_NUMERIC_COMMAND                 , { 7   }},
+	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_8                ), ACTION_NUMERIC_COMMAND                 , { 8   }},
+	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_9                ), ACTION_NUMERIC_COMMAND                 , { 9   }},
+
+	{ KEY_BINDING_VALUE(1 , 0                , GDK_BUTTON_PRIMARY       ), ACTION_GOTO_FILE_RELATIVE              , { -1  }},
+	{ KEY_BINDING_VALUE(1 , 0                , GDK_BUTTON_MIDDLE        ), ACTION_QUIT                            , { 0   }},
+	{ KEY_BINDING_VALUE(1 , 0                , GDK_BUTTON_SECONDARY     ), ACTION_GOTO_FILE_RELATIVE              , { 1   }},
+	{ KEY_BINDING_VALUE(1 , 0                , (GDK_SCROLL_UP+1) << 2   ), ACTION_GOTO_FILE_RELATIVE              , { 1   }},
+	{ KEY_BINDING_VALUE(1 , 0                , (GDK_SCROLL_DOWN+1) << 2 ), ACTION_GOTO_FILE_RELATIVE              , { -1  }},
+
+	{ 0, 0, { 0 } }
+};
+
+#ifndef CONFIGURED_WITHOUT_ACTIONS
 typedef struct key_binding key_binding_t;
 struct key_binding {
 	pqiv_action_t action;
@@ -436,6 +512,7 @@ struct {
 	key_binding_t *key_binding;
 	gint timeout_id;
 } active_key_binding;
+#endif
 
 const struct pqiv_action_descriptor {
 	const char *name;
@@ -481,6 +558,7 @@ const struct pqiv_action_descriptor {
 	{ "send_keys", PARAMETER_CHARPTR },
 	{ NULL, 0 }
 };
+/* }}} */
 
 typedef struct {
 	gint depth;
@@ -3842,6 +3920,8 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 			}
 			break;
 #endif
+		default:
+			break;
 	}
 }/*}}}*/
 gboolean window_configure_callback(GtkWidget *widget, GdkEventConfigure *event, gpointer user_data) {/*{{{*/
@@ -3899,22 +3979,25 @@ gboolean window_configure_callback(GtkWidget *widget, GdkEventConfigure *event, 
 	return FALSE;
 }/*}}}*/
 void handle_input_event(guint key_binding_value);
+#ifndef CONFIGURED_WITHOUT_ACTIONS
 gboolean handle_input_event_timeout_callback(gpointer user_data) {/*{{{*/
 	handle_input_event(0);
 	active_key_binding.key_binding = NULL;
 	return FALSE;
 }/*}}}*/
+#endif
 void handle_input_event(guint key_binding_value) {/*{{{*/
-	key_binding_t *binding = NULL;
-
 	gboolean is_mouse = (key_binding_value >> 31) & 1;
 	guint state = (key_binding_value >> 28) & 7;
 	guint keycode = key_binding_value & 0xfffffff;
 
 	// Filter unwanted state variables out
 	state &= gtk_accelerator_get_default_mod_mask();
-	state &= !GDK_SHIFT_MASK;
+	state &= ~GDK_SHIFT_MASK;
 	key_binding_value = KEY_BINDING_VALUE(is_mouse, state, keycode);
+
+#ifndef CONFIGURED_WITHOUT_ACTIONS
+	key_binding_t *binding = NULL;
 
 	if(active_key_binding.key_binding) {
 		g_source_remove(active_key_binding.timeout_id);
@@ -3922,7 +4005,7 @@ void handle_input_event(guint key_binding_value) {/*{{{*/
 			binding = g_hash_table_lookup(active_key_binding.key_binding->next_key_bindings, GUINT_TO_POINTER(key_binding_value));
 
 			if(!binding && !is_mouse && gdk_keyval_is_upper(keycode) && !gdk_keyval_is_lower(keycode)) {
-				guint alternate_value = KEY_BINDING_VALUE(is_mouse, state & !GDK_SHIFT_MASK, gdk_keyval_to_lower(keycode));
+				guint alternate_value = KEY_BINDING_VALUE(is_mouse, state & ~GDK_SHIFT_MASK, gdk_keyval_to_lower(keycode));
 				binding = g_hash_table_lookup(active_key_binding.key_binding->next_key_bindings, GUINT_TO_POINTER(alternate_value));
 			}
 		}
@@ -3942,7 +4025,7 @@ void handle_input_event(guint key_binding_value) {/*{{{*/
 			binding = g_hash_table_lookup(key_bindings, GUINT_TO_POINTER(key_binding_value));
 
 			if(!binding && !is_mouse && gdk_keyval_is_upper(keycode) && !gdk_keyval_is_lower(keycode)) {
-				guint alternate_value = KEY_BINDING_VALUE(is_mouse, state & !GDK_SHIFT_MASK, gdk_keyval_to_lower(keycode));
+				guint alternate_value = KEY_BINDING_VALUE(is_mouse, state & ~GDK_SHIFT_MASK, gdk_keyval_to_lower(keycode));
 				binding = g_hash_table_lookup(key_bindings, GUINT_TO_POINTER(alternate_value));
 			}
 	}
@@ -3958,6 +4041,15 @@ void handle_input_event(guint key_binding_value) {/*{{{*/
 			}
 		}
 	}
+
+#else
+	for(const struct default_key_bindings_struct *kb = default_key_bindings; kb->key_binding_value; kb++) {
+		if(kb->key_binding_value == key_binding_value) {
+			action(kb->action, kb->parameter);
+			break;
+		}
+	}
+#endif
 }/*}}}*/
 gboolean window_key_press_callback(GtkWidget *widget, GdkEventKey *event, gpointer user_data) {/*{{{*/
 	if(event->keyval < 128 && keyboard_aliases[event->keyval] != 0) {
@@ -4497,7 +4589,7 @@ void parse_key_bindings(const gchar *bindings) {/*{{{*/
 						guint keyval = *scan;
 						if(keyboard_state & GDK_SHIFT_MASK) {
 							keyval = gdk_keyval_to_upper(keyval);
-							keyboard_state &= !GDK_SHIFT_MASK;
+							keyboard_state &= ~GDK_SHIFT_MASK;
 						}
 						keyboard_key_value = KEY_BINDING_VALUE(0, keyboard_state, keyval);
 						#define PARSE_KEY_BINDINGS_BIND(keyboard_key_value) \
@@ -4552,7 +4644,7 @@ void parse_key_bindings(const gchar *bindings) {/*{{{*/
 						}
 						if(keyboard_state & GDK_SHIFT_MASK) {
 							keyval = gdk_keyval_to_upper(keyval);
-							keyboard_state &= !GDK_SHIFT_MASK;
+							keyboard_state &= ~GDK_SHIFT_MASK;
 						}
 						keyboard_key_value = KEY_BINDING_VALUE(0, keyboard_state, keyval);
 						PARSE_KEY_BINDINGS_BIND(keyboard_key_value);
@@ -4854,84 +4946,19 @@ gpointer read_commands_thread(gpointer user_data) {/*{{{*/
 		g_io_channel_unref(stdin_reader);
 		return NULL;
 }/*}}}*/
-#endif
 void initialize_key_bindings() {/*{{{*/
 	key_bindings = g_hash_table_new((GHashFunc)g_direct_hash, (GEqualFunc)g_direct_equal);
 
-	#define BIND_KEY(key, is_mouse, state, action_id, parameter_value) { \
-		key_binding_t *nkb = g_slice_new(key_binding_t); \
-		nkb->action = action_id; \
-		nkb->parameter = (pqiv_action_parameter_t)(parameter_value); \
-		nkb->next_action = NULL; \
-		nkb->next_key_bindings = NULL; \
-		g_hash_table_insert(key_bindings, GUINT_TO_POINTER(KEY_BINDING_VALUE(is_mouse, state, key)), nkb); \
+	for(const struct default_key_bindings_struct *kb = default_key_bindings; kb->key_binding_value; kb++) {
+		key_binding_t *nkb = g_slice_new(key_binding_t);
+		nkb->action = kb->action;
+		nkb->parameter = (pqiv_action_parameter_t)(kb->parameter);
+		nkb->next_action = NULL;
+		nkb->next_key_bindings = NULL;
+		g_hash_table_insert(key_bindings, GUINT_TO_POINTER(kb->key_binding_value), nkb);
 	}
-
-	BIND_KEY(GDK_KEY_Up           , 0 , 0                , ACTION_SHIFT_Y                         , 10);
-	BIND_KEY(GDK_KEY_KP_Up        , 0 , 0                , ACTION_SHIFT_Y                         , 10);
-	BIND_KEY(GDK_KEY_Up           , 0 , GDK_CONTROL_MASK , ACTION_SHIFT_Y                         , 50);
-	BIND_KEY(GDK_KEY_KP_Up        , 0 , GDK_CONTROL_MASK , ACTION_SHIFT_Y                         , 50);
-	BIND_KEY(GDK_KEY_Down         , 0 , 0                , ACTION_SHIFT_Y                         , -10);
-	BIND_KEY(GDK_KEY_KP_Down      , 0 , 0                , ACTION_SHIFT_Y                         , -10);
-	BIND_KEY(GDK_KEY_Down         , 0 , GDK_CONTROL_MASK , ACTION_SHIFT_Y                         , -50);
-	BIND_KEY(GDK_KEY_KP_Down      , 0 , GDK_CONTROL_MASK , ACTION_SHIFT_Y                         , -50);
-	BIND_KEY(GDK_KEY_Left         , 0 , 0                , ACTION_SHIFT_X                         , 10);
-	BIND_KEY(GDK_KEY_KP_Left      , 0 , 0                , ACTION_SHIFT_X                         , 10);
-	BIND_KEY(GDK_KEY_Left         , 0 , GDK_CONTROL_MASK , ACTION_SHIFT_X                         , 50);
-	BIND_KEY(GDK_KEY_KP_Left      , 0 , GDK_CONTROL_MASK , ACTION_SHIFT_X                         , 50);
-	BIND_KEY(GDK_KEY_Right        , 0 , 0                , ACTION_SHIFT_X                         , -10);
-	BIND_KEY(GDK_KEY_KP_Right     , 0 , 0                , ACTION_SHIFT_X                         , -10);
-	BIND_KEY(GDK_KEY_Right        , 0 , GDK_CONTROL_MASK , ACTION_SHIFT_X                         , -50);
-	BIND_KEY(GDK_KEY_KP_Right     , 0 , GDK_CONTROL_MASK , ACTION_SHIFT_X                         , -50);
-	BIND_KEY(GDK_KEY_plus         , 0 , GDK_CONTROL_MASK , ACTION_SET_SLIDESHOW_INTERVAL_RELATIVE , 1.);
-	BIND_KEY(GDK_KEY_KP_Add       , 0 , GDK_CONTROL_MASK , ACTION_SET_SLIDESHOW_INTERVAL_RELATIVE , 1.);
-	BIND_KEY(GDK_KEY_plus         , 0 , 0                , ACTION_SET_SCALE_LEVEL_RELATIVE        , 1.1);
-	BIND_KEY(GDK_KEY_KP_Add       , 0 , 0                , ACTION_SET_SCALE_LEVEL_RELATIVE        , 1.1);
-	BIND_KEY(GDK_KEY_minus        , 0 , GDK_CONTROL_MASK , ACTION_SET_SLIDESHOW_INTERVAL_RELATIVE , -1.);
-	BIND_KEY(GDK_KEY_KP_Subtract  , 0 , GDK_CONTROL_MASK , ACTION_SET_SLIDESHOW_INTERVAL_RELATIVE , -1.);
-	BIND_KEY(GDK_KEY_minus        , 0 , 0                , ACTION_SET_SCALE_LEVEL_RELATIVE        , 0.9);
-	BIND_KEY(GDK_KEY_KP_Subtract  , 0 , 0                , ACTION_SET_SCALE_LEVEL_RELATIVE        , 0.9);
-	BIND_KEY(GDK_KEY_t            , 0 , 0                , ACTION_TOGGLE_SCALE_MODE               , 0);
-	BIND_KEY(GDK_KEY_r            , 0 , GDK_CONTROL_MASK , ACTION_TOGGLE_SHUFFLE_MODE             , 0);
-	BIND_KEY(GDK_KEY_r            , 0 , 0                , ACTION_RELOAD                          , 0);
-	BIND_KEY(GDK_KEY_0            , 0 , 0                , ACTION_RESET_SCALE_LEVEL               , 0);
-	BIND_KEY(GDK_KEY_f            , 0 , 0                , ACTION_TOGGLE_FULLSCREEN               , 0);
-	BIND_KEY(GDK_KEY_h            , 0 , 0                , ACTION_FLIP_HORIZONTALLY               , 0);
-	BIND_KEY(GDK_KEY_v            , 0 , 0                , ACTION_FLIP_VERTICALLY                 , 0);
-	BIND_KEY(GDK_KEY_l            , 0 , 0                , ACTION_ROTATE_LEFT                     , 0);
-	BIND_KEY(GDK_KEY_k            , 0 , 0                , ACTION_ROTATE_RIGHT                    , 0);
-	BIND_KEY(GDK_KEY_i            , 0 , 0                , ACTION_TOGGLE_INFO_BOX                 , 0);
-	BIND_KEY(GDK_KEY_j            , 0 , 0                , ACTION_JUMP_DIALOG                     , 0);
-	BIND_KEY(GDK_KEY_s            , 0 , 0                , ACTION_TOGGLE_SLIDESHOW                , 0);
-	BIND_KEY(GDK_KEY_a            , 0 , 0                , ACTION_HARDLINK_CURRENT_IMAGE          , 0);
-	BIND_KEY(GDK_KEY_BackSpace    , 0 , GDK_CONTROL_MASK , ACTION_GOTO_DIRECTORY_RELATIVE         , -1);
-	BIND_KEY(GDK_KEY_BackSpace    , 0 , 0                , ACTION_GOTO_FILE_RELATIVE              , -1);
-	BIND_KEY(GDK_KEY_space        , 0 , GDK_CONTROL_MASK , ACTION_GOTO_DIRECTORY_RELATIVE         , 1);
-	BIND_KEY(GDK_KEY_space        , 0 , 0                , ACTION_GOTO_FILE_RELATIVE              , 1);
-	BIND_KEY(GDK_KEY_Page_Up      , 0 , GDK_CONTROL_MASK , ACTION_GOTO_FILE_RELATIVE              , 10);
-	BIND_KEY(GDK_KEY_KP_Page_Up   , 0 , GDK_CONTROL_MASK , ACTION_GOTO_FILE_RELATIVE              , 10);
-	BIND_KEY(GDK_KEY_Page_Down    , 0 , 0                , ACTION_GOTO_FILE_RELATIVE              , -10);
-	BIND_KEY(GDK_KEY_Page_Up      , 0 , 0                , ACTION_GOTO_FILE_RELATIVE              , 10);
-	BIND_KEY(GDK_KEY_KP_Page_Up   , 0 , 0                , ACTION_GOTO_FILE_RELATIVE              , 10);
-	BIND_KEY(GDK_KEY_KP_Page_Down , 0 , 0                , ACTION_GOTO_FILE_RELATIVE              , -10);
-	BIND_KEY(GDK_KEY_q            , 0 , 0                , ACTION_QUIT                            , 0);
-	BIND_KEY(GDK_KEY_Escape       , 0 , 0                , ACTION_QUIT                            , 0);
-	BIND_KEY(GDK_KEY_1            , 0 , 0                , ACTION_NUMERIC_COMMAND                 , 1);
-	BIND_KEY(GDK_KEY_2            , 0 , 0                , ACTION_NUMERIC_COMMAND                 , 2);
-	BIND_KEY(GDK_KEY_3            , 0 , 0                , ACTION_NUMERIC_COMMAND                 , 3);
-	BIND_KEY(GDK_KEY_4            , 0 , 0                , ACTION_NUMERIC_COMMAND                 , 4);
-	BIND_KEY(GDK_KEY_5            , 0 , 0                , ACTION_NUMERIC_COMMAND                 , 5);
-	BIND_KEY(GDK_KEY_6            , 0 , 0                , ACTION_NUMERIC_COMMAND                 , 6);
-	BIND_KEY(GDK_KEY_7            , 0 , 0                , ACTION_NUMERIC_COMMAND                 , 7);
-	BIND_KEY(GDK_KEY_8            , 0 , 0                , ACTION_NUMERIC_COMMAND                 , 8);
-	BIND_KEY(GDK_KEY_9            , 0 , 0                , ACTION_NUMERIC_COMMAND                 , 9);
-
-	BIND_KEY(GDK_BUTTON_PRIMARY   , 1 , 0                , ACTION_GOTO_FILE_RELATIVE              , -1);
-	BIND_KEY(GDK_BUTTON_MIDDLE    , 1 , 0                , ACTION_QUIT                            , 0);
-	BIND_KEY(GDK_BUTTON_SECONDARY , 1 , 0                , ACTION_GOTO_FILE_RELATIVE              , 1);
-	BIND_KEY((GDK_SCROLL_UP+1) << 2, 1 , 0               , ACTION_GOTO_FILE_RELATIVE              , 1);
-	BIND_KEY((GDK_SCROLL_DOWN+1) << 2, 1 , 0             , ACTION_GOTO_FILE_RELATIVE              , -1);
 }/*}}}*/
+#endif
 void recreate_window() {/*{{{*/
 	if(!main_window_visible) {
 		return;
@@ -5014,7 +5041,9 @@ int main(int argc, char *argv[]) {
 	gtk_init(&argc, &argv); // fyi, this generates a MemorySanitizer warning currently
 
 	initialize_file_type_handlers();
+#ifndef CONFIGURED_WITHOUT_ACTIONS
 	initialize_key_bindings();
+#endif
 
 	global_argc = argc;
 	global_argv = argv;
