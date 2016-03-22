@@ -129,15 +129,14 @@ Changelog
 ---------
 
 pqiv (wip)
- * Add --reverse-scroll option (by @onodera-punpun)
  * Added a configure option to build the backends as shared libraries
  * Added --watch-files to make the file change action configurable
  * Fixed segfault on reloading of images created by pipe-command output
  * Added support for cbz/cbr/cbt/cb7 comic books
  * Key bindings are now configurable
  * Added a configure option to remove unneeded/unwanted features
- * Deprecated --keyboard-alias, --reverse-cursor-keys, --reverse-scroll
-   in favor of --bind-key.
+ * Deprecated --keyboard-alias and --reverse-cursor-keys in favor of
+   --bind-key.
  * Added --recreate-window to create a new window instead of resizing the
    old one, as a workaround for buggy window managers
  * Added --actions-from-stdin to make pqiv scriptable
