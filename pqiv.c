@@ -3462,7 +3462,7 @@ void set_scale_level_for_screen() {/*{{{*/
 				current_scale_level = screen_width * .8 / image_width;
 			}
 			else if(option_scale == SCALE_TO_FIT) {
-				current_scale_level = fmin(scale_to_fit_size.width / image_width, scale_to_fit_size.height / image_height);
+				current_scale_level = fmin(scale_to_fit_size.width * 1. / image_width, scale_to_fit_size.height * 1. / image_height);
 			}
 			else if(option_scale == AUTO_SCALEDOWN && image_width > screen_width * .8) {
 				// Scale down to 80% screen size
@@ -3521,7 +3521,7 @@ void set_scale_level_to_fit() {/*{{{*/
 			}
 		}
 		else if(option_scale == SCALE_TO_FIT) {
-			new_scale_level = fmin(scale_to_fit_size.width / image_width, scale_to_fit_size.height / image_height);
+			new_scale_level = fmin(scale_to_fit_size.width * 1. / image_width, scale_to_fit_size.height * 1. / image_height);
 		}
 		else if(option_scale == FIXED_SCALE) {
 			new_scale_level = current_scale_level;
@@ -3614,7 +3614,7 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 				}
 			}
 			else {
-				option_scale = (parameter.pint - 1) % 3;
+				option_scale = (parameter.pint - 1) % 4;
 			}
 			current_image_drawn = FALSE;
 			current_shift_x = 0;
@@ -3627,6 +3627,7 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 				case NO_SCALING: update_info_text("Scaling disabled"); break;
 				case AUTO_SCALEDOWN: update_info_text("Automatic scaledown enabled"); break;
 				case AUTO_SCALEUP: update_info_text("Automatic scaling enabled"); break;
+				case FIXED_SCALE: update_info_text("Maintaining current scale level"); break;
 				default: break;
 			}
 			break;
@@ -3906,7 +3907,11 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 			main_window_adjust_for_image();
 			invalidate_current_scaled_image_surface();
 			gtk_widget_queue_draw(GTK_WIDGET(main_window));
-			update_info_text(NULL);
+			{
+				gchar info_text[255];
+				snprintf(info_text, 255, "Scale level adjusted to fit %dx%d px", scale_to_fit_size.width, scale_to_fit_size.height);
+				update_info_text(info_text);
+			}
 			break;
 
 		case ACTION_SET_SHIFT_X:
