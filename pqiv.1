@@ -357,6 +357,13 @@ Adjust the scale level multiplicatively by the parameter value.
 .BR set_scale_mode_fit_px(INT,\ INT)
 Always adjust the scale level such that each image fits the given dimensions.
 .TP
+.BR set_shift_align_corner(STRING)
+Align the image to the window/screen border. Possible parameter values are the
+cardinal directions, e.g. \fINE\fR will align the image to the north east, i.e. \
+top right, corner. You can prepend the parameter by an additional \fIC\fR to
+perform the adjustment only if the image dimensions exceed the available space,
+and to center the image elsewise.
+.TP
 .BR set_shift_x(INT)
 Set the shift in horizontal direction to a fixed value.
 .TP

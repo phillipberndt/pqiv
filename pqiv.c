@@ -556,6 +556,7 @@ const struct pqiv_action_descriptor {
 	{ "set_shift_y", PARAMETER_INT },
 	{ "bind_key", PARAMETER_CHARPTR },
 	{ "send_keys", PARAMETER_CHARPTR },
+	{ "set_shift_align_corner", PARAMETER_CHARPTR },
 	{ NULL, 0 }
 };
 /* }}} */
@@ -3213,6 +3214,18 @@ gboolean window_close_callback(GtkWidget *object, gpointer user_data) {/*{{{*/
 
 	return FALSE;
 }/*}}}*/
+void calculate_base_draw_pos_and_size(int *image_transform_width, int *image_transform_height, int *x, int *y) {/*{{{*/
+	calculate_current_image_transformed_size(image_transform_width, image_transform_height);
+	if(option_scale != NO_SCALING || main_window_in_fullscreen) {
+		*x = (main_window_width - current_scale_level * *image_transform_width) / 2;
+		*y = (main_window_height - current_scale_level * *image_transform_height) / 2;
+	}
+	else {
+		// When scaling is disabled always use the upper left corder to avoid
+		// problems with window managers ignoring the large window size request.
+		*x = *y = 0;
+	}
+}/*}}}*/
 gboolean window_draw_callback(GtkWidget *widget, cairo_t *cr_arg, gpointer user_data) {/*{{{*/
 	// Draw image
 	int x = 0;
@@ -3222,16 +3235,7 @@ gboolean window_draw_callback(GtkWidget *widget, cairo_t *cr_arg, gpointer user_
 	if(CURRENT_FILE->is_loaded) {
 		// Calculate where to draw the image and the transformation matrix to use
 		int image_transform_width, image_transform_height;
-		calculate_current_image_transformed_size(&image_transform_width, &image_transform_height);
-		if(option_scale != NO_SCALING || main_window_in_fullscreen) {
-			x = (main_window_width - current_scale_level * image_transform_width) / 2;
-			y = (main_window_height - current_scale_level * image_transform_height) / 2;
-		}
-		else {
-			// When scaling is disabled always use the upper left corder to avoid
-			// problems with window managers ignoring the large window size request.
-			x = y = 0;
-		}
+		calculate_base_draw_pos_and_size(&image_transform_width, &image_transform_height, &x, &y);
 		cairo_matrix_t apply_transformation = current_transformation;
 		apply_transformation.x0 *= current_scale_level;
 		apply_transformation.y0 *= current_scale_level;
@@ -3452,12 +3456,12 @@ void set_scale_level_for_screen() {/*{{{*/
 		const int screen_width = screen_geometry.width;
 		const int screen_height = screen_geometry.height;
 
-		if(option_scale == FIXED_SCALE) {
+		if(option_scale == FIXED_SCALE || scale_override) {
 			return;
 		}
 		else {
 			current_scale_level = 1.0;
-			if(option_scale == AUTO_SCALEUP || scale_override) {
+			if(option_scale == AUTO_SCALEUP) {
 				// Scale up to 80% screen size
 				current_scale_level = screen_width * .8 / image_width;
 			}
@@ -3484,6 +3488,10 @@ void set_scale_level_for_screen() {/*{{{*/
 	}
 }/*}}}*/
 void set_scale_level_to_fit() {/*{{{*/
+	if(scale_override || option_scale == FIXED_SCALE) {
+		return;
+	}
+
 	D_LOCK(file_tree);
 	if(CURRENT_FILE->is_loaded) {
 		if(!current_image_drawn) {
@@ -3500,8 +3508,8 @@ void set_scale_level_to_fit() {/*{{{*/
 		// scale for no-scaling mode if (!main_window_in_fullscreen). This
 		// effectively disables the no-scaling mode in non-fullscreen. I
 		// implemented that this way, but changed it per user request.
-		if(option_scale == AUTO_SCALEUP || option_scale == AUTO_SCALEDOWN || scale_override) {
-			if(option_scale == AUTO_SCALEUP || scale_override) {
+		if(option_scale == AUTO_SCALEUP || option_scale == AUTO_SCALEDOWN) {
+			if(option_scale == AUTO_SCALEUP) {
 				// Scale up
 				if(image_width * new_scale_level < main_window_width) {
 					new_scale_level = main_window_width * 1.0 / image_width;
@@ -3522,9 +3530,6 @@ void set_scale_level_to_fit() {/*{{{*/
 		}
 		else if(option_scale == SCALE_TO_FIT) {
 			new_scale_level = fmin(scale_to_fit_size.width * 1. / image_width, scale_to_fit_size.height * 1. / image_height);
-		}
-		else if(option_scale == FIXED_SCALE) {
-			new_scale_level = current_scale_level;
 		}
 
 		if(fabs(new_scale_level - current_scale_level) > DBL_EPSILON) {
@@ -3616,6 +3621,7 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 			else {
 				option_scale = (parameter.pint - 1) % 4;
 			}
+			scale_override = FALSE;
 			current_image_drawn = FALSE;
 			current_shift_x = 0;
 			current_shift_y = 0;
@@ -3935,6 +3941,50 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 		case ACTION_SEND_KEYS:
 			for(char *i=parameter.pcharptr; *i; i++) {
 				handle_input_event(KEY_BINDING_VALUE(0, 0, *i));
+			}
+			break;
+
+		case ACTION_SET_SHIFT_ALIGN_CORNER:
+			{
+				int flags = 0;
+				int x, y;
+				int image_width, image_height;
+				calculate_base_draw_pos_and_size(&image_width, &image_height, &x, &y);
+				image_width *= current_scale_level;
+				image_height *= current_scale_level;
+
+				for(char *direction = parameter.pcharptr; *direction; direction++) {
+					switch(*direction) {
+						case 'C':
+							flags = 1; // Prefer centering
+							current_shift_x = 0;
+							current_shift_y = 0;
+							break;
+						case 'N':
+							if(flags == 0 || image_height > main_window_height) {
+								current_shift_y = -y;
+							}
+							break;
+						case 'S':
+							if(flags == 0 || image_height > main_window_height) {
+								current_shift_y = -y - image_height + main_window_height;
+							}
+							break;
+						case 'E':
+							if(flags == 0 || image_width > main_window_width) {
+								current_shift_x = -x - image_width + main_window_width;
+							}
+							break;
+						case 'W':
+							if(flags == 0 || image_width > main_window_width) {
+								current_shift_x = -x;
+							}
+							break;
+					}
+				}
+
+				gtk_widget_queue_draw(GTK_WIDGET(main_window));
+				update_info_text(NULL);
 			}
 			break;
 #endif
