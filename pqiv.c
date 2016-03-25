@@ -68,6 +68,11 @@
 	#define PQIV_VERSION_DEBUG ""
 #endif
 
+
+#if !GLIB_CHECK_VERSION(2, 32, 0)
+	#define g_thread_new(name, func, data) g_thread_create(func, data, FALSE, NULL)
+#endif
+
 // GTK 2 does not define keyboard aliases the way we do
 #if GTK_MAJOR_VERSION < 3 // {{{
 
@@ -1971,11 +1976,7 @@ gboolean initialize_image_loader() {/*{{{*/
 	if(bostree_node_count(file_tree) == 0) {
 		return FALSE;
 	}
-	#if GLIB_CHECK_VERSION(2, 32, 0)
-		g_thread_new("image-loader", image_loader_thread, NULL);
-	#else
-		g_thread_create(image_loader_thread, NULL, FALSE, NULL);
-	#endif
+	g_thread_new("image-loader", image_loader_thread, NULL);
 
 	if(!option_lowmem) {
 		D_LOCK(file_tree);
@@ -2628,11 +2629,7 @@ void apply_external_image_filter(gchar *external_filter) {/*{{{*/
 			g_clear_error(&error_pointer);
 		}
 		else {
-			#if GLIB_CHECK_VERSION(2, 32, 0)
-				g_thread_new("image-filter-writer", apply_external_image_filter_image_writer_thread, &child_stdin);
-			#else
-				g_thread_create(apply_external_image_filter_image_writer_thread, &child_stdin, FALSE, NULL);
-			#endif
+			g_thread_new("image-filter-writer", apply_external_image_filter_image_writer_thread, &child_stdin);
 
 			gchar *image_data;
 			gsize image_data_length;
@@ -3806,11 +3803,7 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 
 					command = g_strdup(command);
 
-					#if GLIB_CHECK_VERSION(2, 32, 0)
-						g_thread_new("image-filter", apply_external_image_filter_thread, command);
-					#else
-						g_thread_create(apply_external_image_filter_thread, command, FALSE, NULL);
-					#endif
+					g_thread_new("image-filter", apply_external_image_filter_thread, command);
 				}
 			}
 			break;
@@ -3818,11 +3811,7 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 
 #ifndef CONFIGURED_WITHOUT_ACTIONS
 		case ACTION_ADD_FILE:
-			#if GLIB_CHECK_VERSION(2, 32, 0)
-				g_thread_new("image-loader-from-action", (GThreadFunc)load_images_handle_parameter_thread, g_strdup(parameter.pcharptr));
-			#else
-				g_thread_new((GThreadFunc)load_images_handle_parameter_thread, NULL, FALSE, g_strdup(parameter.pcharptr));
-			#endif
+			g_thread_new("image-loader-from-action", (GThreadFunc)load_images_handle_parameter_thread, g_strdup(parameter.pcharptr));
 			break;
 
 		case ACTION_GOTO_FILE_BYINDEX:
@@ -5138,20 +5127,12 @@ int main(int argc, char *argv[]) {
 			g_printerr("Error: --additional-from-stdin conflicts with --actions-from-stdin.\n");
 			exit(1);
 		}
-		#if GLIB_CHECK_VERSION(2, 32, 0)
-			g_thread_new("command-reader", read_commands_thread, NULL);
-		#else
-			g_thread_create(read_commands_thread, NULL, FALSE, NULL);
-		#endif
+		g_thread_new("command-reader", read_commands_thread, NULL);
 	}
 #endif
 
 	if(option_lazy_load) {
-		#if GLIB_CHECK_VERSION(2, 32, 0)
-			g_thread_new("image-loader", load_images_thread, GINT_TO_POINTER(1));
-		#else
-			g_thread_create(load_images_thread, NULL, FALSE, GINT_TO_POINTER(1));
-		#endif
+		g_thread_new("image-loader", load_images_thread, GINT_TO_POINTER(1));
 	}
 	else {
 		load_images_thread(NULL);
