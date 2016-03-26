@@ -516,7 +516,7 @@ GHashTable *key_bindings;
 struct {
 	key_binding_t *key_binding;
 	gint timeout_id;
-} active_key_binding;
+} active_key_binding = { NULL, -1 };
 #endif
 
 const struct pqiv_action_descriptor {
@@ -615,6 +615,9 @@ gboolean read_commands_thread_helper(gpointer command);
 void recreate_window();
 static void status_output();
 void handle_input_event(guint key_binding_value);
+static void continue_active_input_event_action_chain();
+static void block_active_input_event_action_chain();
+static void unblock_active_input_event_action_chain();
 // }}}
 /* Command line handling, creation of the image list {{{ */
 gboolean options_keyboard_alias_set_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error) {/*{{{*/
@@ -2938,7 +2941,7 @@ void jump_dialog_open_image_callback(GtkTreeModel *model, GtkTreePath *path, Gtk
 	BOSNode *jump_to = (BOSNode *)g_value_get_pointer(&col_data);
 	g_value_unset(&col_data);
 
-	gdk_threads_add_timeout(200, (GSourceFunc)absolute_image_movement, bostree_node_weak_ref(jump_to));
+	g_idle_add((GSourceFunc)absolute_image_movement, bostree_node_weak_ref(jump_to));
 } /* }}} */
 void do_jump_dialog() { /* {{{ */
 	/**
@@ -2946,6 +2949,10 @@ void do_jump_dialog() { /* {{{ */
 	 * to an image
 	 */
 	GtkTreeIter search_list_iter;
+
+	// For the duration of the dialog, inhibit the input action chain from
+	// continuing
+	block_active_input_event_action_chain();
 
 	// If in fullscreen, show the cursor again
 	if(main_window_in_fullscreen) {
@@ -3061,6 +3068,8 @@ void do_jump_dialog() { /* {{{ */
 	gtk_widget_destroy(dlg_window);
 	g_object_unref(search_list);
 	g_object_unref(search_list_filter);
+
+	unblock_active_input_event_action_chain();
 } /* }}} */
 #endif
 // }}}
@@ -3224,6 +3233,21 @@ void calculate_base_draw_pos_and_size(int *image_transform_width, int *image_tra
 	}
 }/*}}}*/
 gboolean window_draw_callback(GtkWidget *widget, cairo_t *cr_arg, gpointer user_data) {/*{{{*/
+	// Continue an action chain, if one exists The placement of this is a
+	// compromise: What we really want is to perform actions that follow an
+	// action that changes the current file only after the change has been
+	// performed. image_loaded_handler() is the natural place to do this. But
+	// the window hasn't been adjusted to its final size there, so any action
+	// that aligns the image would fail. The configure event would be the next
+	// obvious place, but tiling WMs never send one, because they do not honor
+	// the resize request. Hence this place: The new image will always be drawn
+	// eventually. Performing the action inline here rather than just adding
+	// it as an idle callback is to prevent the image from flickering in its
+	// initial position.
+	if(CURRENT_FILE->is_loaded) {
+		continue_active_input_event_action_chain();
+	}
+
 	// Draw image
 	int x = 0;
 	int y = 0;
@@ -3652,6 +3676,7 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 			CURRENT_FILE->force_reload = TRUE;
 			update_info_text("Reloading image..");
 			queue_image_load(relative_image_pointer(0));
+			return;
 			break;
 
 		case ACTION_RESET_SCALE_LEVEL:
@@ -3672,6 +3697,7 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 			else {
 				window_unfullscreen();
 			}
+			return;
 			break;
 
 		case ACTION_FLIP_HORIZONTALLY:
@@ -3733,6 +3759,7 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 #ifndef CONFIGURED_WITHOUT_JUMP_DIALOG
 		case ACTION_JUMP_DIALOG:
 			do_jump_dialog();
+			return;
 			break;
 #endif
 
@@ -3759,14 +3786,17 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 
 		case ACTION_GOTO_DIRECTORY_RELATIVE:
 			directory_image_movement(parameter.pint);
+			return;
 			break;
 
 		case ACTION_GOTO_FILE_RELATIVE:
 			relative_image_movement(parameter.pint);
+			return;
 			break;
 
 		case ACTION_QUIT:
 			gtk_widget_destroy(GTK_WIDGET(main_window));
+			return;
 			break;
 
 #ifndef CONFIGURED_WITHOUT_EXTERNAL_COMMANDS
@@ -3778,6 +3808,7 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 				}
 				gchar *command = external_image_filter_commands[parameter.pint - 1];
 				action(ACTION_COMMAND, (pqiv_action_parameter_t)( command));
+				return;
 			}
 			break;
 
@@ -3804,6 +3835,7 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 					command = g_strdup(command);
 
 					g_thread_new("image-filter", apply_external_image_filter_thread, command);
+					return;
 				}
 			}
 			break;
@@ -3841,6 +3873,7 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 				}
 			}
 
+			return;
 			break;
 
 		case ACTION_GOTO_FILE_BYNAME:
@@ -3866,6 +3899,8 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 					}
 				}
 			}
+
+			return;
 			break;
 
 		case ACTION_OUTPUT_FILE_LIST:
@@ -3980,6 +4015,10 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 		default:
 			break;
 	}
+
+	// By default execute the next action from a chain of actions bound to a key
+	// immediately; unless an action explicitly return'ed above.
+	continue_active_input_event_action_chain();
 }/*}}}*/
 gboolean window_configure_callback(GtkWidget *widget, GdkEventConfigure *event, gpointer user_data) {/*{{{*/
 	/*
@@ -4040,9 +4079,33 @@ void handle_input_event(guint key_binding_value);
 gboolean handle_input_event_timeout_callback(gpointer user_data) {/*{{{*/
 	handle_input_event(0);
 	active_key_binding.key_binding = NULL;
+	active_key_binding.timeout_id = -1;
 	return FALSE;
 }/*}}}*/
 #endif
+static void continue_active_input_event_action_chain() {/*{{{*/
+#ifndef CONFIGURED_WITHOUT_ACTIONS
+	if(active_key_binding.timeout_id == -1 && active_key_binding.key_binding) {
+		key_binding_t *binding = active_key_binding.key_binding;
+		active_key_binding.key_binding = binding->next_action;
+		action(binding->action, binding->parameter);
+	}
+#endif
+}/*}}}*/
+static void block_active_input_event_action_chain() {/*{{{*/
+#ifndef CONFIGURED_WITHOUT_ACTIONS
+	if(active_key_binding.timeout_id == -1 && active_key_binding.key_binding) {
+		active_key_binding.timeout_id = -2;
+	}
+#endif
+}/*}}}*/
+static void unblock_active_input_event_action_chain() {/*{{{*/
+#ifndef CONFIGURED_WITHOUT_ACTIONS
+	if(active_key_binding.timeout_id == -2 && active_key_binding.key_binding) {
+		active_key_binding.timeout_id = -1;
+	}
+#endif
+}/*}}}*/
 void handle_input_event(guint key_binding_value) {/*{{{*/
 	gboolean is_mouse = (key_binding_value >> 31) & 1;
 	guint state = (key_binding_value >> 28) & 7;
@@ -4056,8 +4119,9 @@ void handle_input_event(guint key_binding_value) {/*{{{*/
 #ifndef CONFIGURED_WITHOUT_ACTIONS
 	key_binding_t *binding = NULL;
 
-	if(active_key_binding.key_binding) {
+	if(active_key_binding.timeout_id >= 0 && active_key_binding.key_binding) {
 		g_source_remove(active_key_binding.timeout_id);
+		active_key_binding.timeout_id = -1;
 		if(active_key_binding.key_binding->next_key_bindings) {
 			binding = g_hash_table_lookup(active_key_binding.key_binding->next_key_bindings, GUINT_TO_POINTER(key_binding_value));
 
@@ -4067,9 +4131,10 @@ void handle_input_event(guint key_binding_value) {/*{{{*/
 			}
 		}
 		if(!binding) {
-			for(key_binding_t *binding = active_key_binding.key_binding; binding; binding = binding->next_action) {
-				action(binding->action, binding->parameter);
-			}
+			key_binding_t *binding = active_key_binding.key_binding;
+			active_key_binding.key_binding = binding->next_action;
+			action(binding->action, binding->parameter);
+			return;
 		}
 		active_key_binding.key_binding = NULL;
 	}
@@ -4093,9 +4158,8 @@ void handle_input_event(guint key_binding_value) {/*{{{*/
 			active_key_binding.timeout_id = gdk_threads_add_timeout(400, handle_input_event_timeout_callback, NULL);
 		}
 		else {
-			for(; binding; binding = binding->next_action) {
-				action(binding->action, binding->parameter);
-			}
+			active_key_binding.key_binding = binding->next_action;
+			action(binding->action, binding->parameter);
 		}
 	}
 
