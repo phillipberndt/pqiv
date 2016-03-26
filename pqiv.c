@@ -2882,16 +2882,28 @@ gboolean jump_dialog_search_list_filter_callback(GtkTreeModel *model, GtkTreeIte
 		return TRUE;
 	}
 
-	entry_text = g_ascii_strdown(entry_text, -1);
-	GValue col_data;
-	memset(&col_data, 0, sizeof(GValue));
-	gtk_tree_model_get_value(model, iter, 1, &col_data);
-	gchar *compare_in = (char*)g_value_get_string(&col_data);
-	compare_in = g_ascii_strdown(compare_in, -1);
-	gboolean retval = (g_strstr_len(compare_in, -1, entry_text) != NULL);
-	g_free(compare_in);
-	g_value_unset(&col_data);
-	g_free(entry_text);
+	gboolean retval;
+	if(entry_text[0] == '#') {
+		ssize_t desired_index = atoi(&entry_text[1]);
+
+		GValue col_data;
+		memset(&col_data, 0, sizeof(GValue));
+		gtk_tree_model_get_value(model, iter, 0, &col_data);
+		retval = g_value_get_long(&col_data) == desired_index;
+		g_value_unset(&col_data);
+	}
+	else {
+		entry_text = g_ascii_strdown(entry_text, -1);
+		GValue col_data;
+		memset(&col_data, 0, sizeof(GValue));
+		gtk_tree_model_get_value(model, iter, 1, &col_data);
+		gchar *compare_in = (char*)g_value_get_string(&col_data);
+		compare_in = g_ascii_strdown(compare_in, -1);
+		retval = (g_strstr_len(compare_in, -1, entry_text) != NULL);
+		g_free(compare_in);
+		g_value_unset(&col_data);
+		g_free(entry_text);
+	}
 
 	return retval;
 } /* }}} */
