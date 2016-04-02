@@ -1191,11 +1191,11 @@ void load_images_handle_parameter(char *param, load_images_state_t state, gint d
 			}
 
 			// Display progress
-			if(g_timer_elapsed(load_images_timer, NULL) > 5.) {
+			if(load_images_timer && g_timer_elapsed(load_images_timer, NULL) > 5.) {
 				#ifdef _WIN32
 					g_print("Loading in %-50.50s ...\r", param);
 				#else
-					g_print("\033[s\033[JLoading in %s ...\033[u", param);
+					g_print("\033[s\033[?7lLoading in %s ...\033[J\033[u\033[?7h", param);
 				#endif
 			}
 
@@ -1399,8 +1399,10 @@ void load_images() {/*{{{*/
 	directory_tree = bostree_new((BOSTree_cmp_function)g_strcmp0, directory_tree_free_helper);
 
 	// Allocate memory for the timer
-	load_images_timer = g_timer_new();
-	g_timer_start(load_images_timer);
+	if(!option_actions_from_stdin) {
+		load_images_timer = g_timer_new();
+		g_timer_start(load_images_timer);
+	}
 
 	// Prepare the file filter info structure used for handler detection
 	load_images_file_filter_info = g_new0(GtkFileFilterInfo, 1);
@@ -1450,7 +1452,9 @@ void load_images() {/*{{{*/
 		bostree_destroy(directory_tree);
 	}
 
-	g_timer_destroy(load_images_timer);
+	if(load_images_timer) {
+		g_timer_destroy(load_images_timer);
+	}
 }/*}}}*/
 // }}}
 /* (A-)synchronous image loading and image operations {{{ */
