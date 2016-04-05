@@ -128,7 +128,7 @@ Known bugs
 Changelog
 ---------
 
-pqiv 2.5 (wip; see #58)
+pqiv 2.5
  * Added a configure option to build the backends as shared libraries
  * Added a configure option to remove unneeded/unwanted features
  * Added --watch-files to make the file-changed-on-disk action configurable
