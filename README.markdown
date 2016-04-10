@@ -35,7 +35,7 @@ Features
  * Transparency and animation support
  * Moving, zooming, rotation, flipping
  * Slideshows
- * Highly customizable and scriptable (see `--commands-from-stdin` and `--bind-key`)
+ * Highly customizable and scriptable (see `--actions-from-stdin` and `--bind-key`)
  * Supports external image filters (e.g. `convert`)
  * Preloads the next image in the background
  * Fade between images
