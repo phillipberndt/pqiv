@@ -128,6 +128,9 @@ Known bugs
 Changelog
 ---------
 
+pqiv 2.5.1
+ * Prevent a crash in --lazy-load mode if many images fail to load
+
 pqiv 2.5
  * Added a configure option to build the backends as shared libraries
  * Added a configure option to remove unneeded/unwanted features

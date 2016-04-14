@@ -1838,7 +1838,7 @@ gboolean image_loader_load_single(BOSNode *node, gboolean called_from_main) {/*{
 		if(node == current_file_node) {
 			current_file_node = next_file();
 			if(current_file_node == node) {
-				if(bostree_node_count(file_tree) > 0) {
+				if(bostree_node_count(file_tree) > 1) {
 					// This can be triggered in shuffle mode if images are deleted and the end of
 					// a shuffle cycle is reached, such that next_file() starts a new one. Fall
 					// back to display the first image. See bug #35 in github.
@@ -1949,6 +1949,7 @@ gpointer image_loader_thread(gpointer user_data) {/*{{{*/
 			current_image_drawn = FALSE;
 			gdk_threads_add_idle((GSourceFunc)image_loaded_handler, node);
 		}
+
 		D_LOCK(file_tree);
 		bostree_node_weak_unref(file_tree, node);
 		D_UNLOCK(file_tree);
@@ -1979,7 +1980,7 @@ gboolean initialize_image_loader() {/*{{{*/
 	}
 	current_file_node = bostree_node_weak_ref(current_file_node);
 	D_UNLOCK(file_tree);
-	while(!image_loader_load_single(current_file_node, TRUE) && bostree_node_count(file_tree) > 0);
+	while(!image_loader_load_single(current_file_node, TRUE) && bostree_node_count(file_tree) > 0) usleep(10000);
 	if(bostree_node_count(file_tree) == 0) {
 		return FALSE;
 	}
