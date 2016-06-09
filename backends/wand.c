@@ -282,6 +282,9 @@ void file_type_wand_initializer(file_type_handler_t *info) {/*{{{*/
 		if(!strcmp(formats[i], "DJVU")) continue;              // DJVU crashes my development PC
 		if(!strcmp(formats[i], "TXT")) continue;               // Ridiculous formats for an image viewer
 		if(!strcmp(formats[i], "HTML")) continue;
+		if(!strcmp(formats[i], "HTM")) continue;
+		if(!strcmp(formats[i], "SHTML")) continue;
+		if(!strcmp(formats[i], "MAT")) continue;               // Matlab format is long broken as well
 		if(formats[i][0] != 0 && formats[i][1] == 0) continue; // One letter extensions are too random to be sure it's an image,
 		                                                       // and hence they are raw format's would always succeed to load
 
