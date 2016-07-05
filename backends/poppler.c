@@ -81,6 +81,10 @@ BOSNode *file_type_poppler_alloc(load_images_state_t state, file_t *file) {/*{{{
 			}
 		}
 	}
+	else if(error_pointer) {
+		g_printerr("Failed to load PDF %s: %s\n", file->display_name, error_pointer->message);
+		g_clear_error(&error_pointer);
+	}
 
 	#if POPPLER_CHECK_VERSION(0, 26, 5)
 		g_object_unref(data);
