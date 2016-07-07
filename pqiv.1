@@ -187,6 +187,16 @@ As wrap, but do not reshuffle in random mode.
 .RE
 .\"
 .TP
+.BR \-\-enforce\-window\-aspect\-ratio
+Tell the window manager to enforce the aspect ratio of the window. If this flag
+is set, then a compliant window manager will not allow users to resize
+\fBpqiv\fR's window to a different aspect ratio.
+This used to be the default behaviour, but window managers tend to have bugs in
+the code handling forced aspect ratios. If the flag is not set and the aspect
+ratios of the window and image do not match, then the image will be still be
+drawn with the correct aspect ratio, with black borders added at the sides.
+.\"
+.TP
 .BR \-\-fade\-duration=\fISECONDS\fR
 With \fB\-\-fade\fR, make each fade this long. Floating point values are
 accepted, e.g. 0.5 makes each fade take half a second.

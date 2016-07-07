@@ -128,6 +128,10 @@ Known bugs
 Changelog
 ---------
 
+pqiv 2.6 (wip)
+ * Added --enforce-window-aspect-ratio
+ * Do not enforce the aspect ratio of the window to match the image's by default
+
 pqiv 2.5.1
  * Prevent a crash in --lazy-load mode if many images fail to load
 

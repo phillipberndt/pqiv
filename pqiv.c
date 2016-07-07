@@ -337,6 +337,7 @@ gboolean option_lazy_load = FALSE;
 gboolean option_lowmem = FALSE;
 gboolean option_addl_from_stdin = FALSE;
 gboolean option_recreate_window = FALSE;
+gboolean option_enforce_window_aspect_ratio = FALSE;
 #ifndef CONFIGURED_WITHOUT_ACTIONS
 gboolean option_actions_from_stdin = FALSE;
 gboolean option_status_output = FALSE;
@@ -411,6 +412,7 @@ GOptionEntry options[] = {
 	{ "browse", 0, 0, G_OPTION_ARG_NONE, &option_browse, "For each command line argument, additionally load all images from the image's directory", NULL },
 	{ "disable-scaling", 0, G_OPTION_FLAG_NO_ARG, G_OPTION_ARG_CALLBACK, (gpointer)&option_scale_level_callback, "Disable scaling of images", NULL },
 	{ "end-of-files-action", 0, 0, G_OPTION_ARG_CALLBACK, (gpointer)&option_end_of_files_action_callback, "Action to take after all images have been viewed. (`quit', `wait', `wrap', `wrap-no-reshuffle')", "ACTION" },
+	{ "enforce-window-aspect-ratio", 0, 0, G_OPTION_ARG_NONE, &option_enforce_window_aspect_ratio, "Fix the aspect ratio of the window to match the current image's", NULL },
 	{ "fade-duration", 0, 0, G_OPTION_ARG_DOUBLE, &option_fading_duration, "Adjust fades' duration", "SECONDS" },
 	{ "low-memory", 0, 0, G_OPTION_ARG_NONE, &option_lowmem, "Try to keep memory usage to a minimum", NULL },
 	{ "max-depth", 0, 0, G_OPTION_ARG_INT, &option_max_depth, "Descend at most LEVELS levels of directories below the command line arguments", "LEVELS" },
@@ -1580,16 +1582,19 @@ void main_window_adjust_for_image() {/*{{{*/
 	int new_window_height = current_scale_level * image_height;
 
 	GdkGeometry hints;
+	if(option_enforce_window_aspect_ratio) {
 #if GTK_MAJOR_VERSION >= 3
-	hints.min_aspect = hints.max_aspect = new_window_width * 1.0 / new_window_height;
+		hints.min_aspect = hints.max_aspect = new_window_width * 1.0 / new_window_height;
 #else
-	// Fix for issue #57: Some WMs calculate aspect ratios slightly different
-	// than GTK 2, resulting in an off-by-1px result for gtk_window_resize(),
-	// which creates a loop shrinking the window until it eventually vanishes.
-	// This is mitigated by temporarily removing the aspect constraint,
-	// resizing, and reenabling it afterwards.
-	hints.min_aspect = hints.max_aspect = 0;
+		// Fix for issue #57: Some WMs calculate aspect ratios slightly different
+		// than GTK 2, resulting in an off-by-1px result for gtk_window_resize(),
+		// which creates a loop shrinking the window until it eventually vanishes.
+		// This is mitigated by temporarily removing the aspect constraint,
+		// resizing, and reenabling it afterwards.
+		hints.min_aspect = hints.max_aspect = 0;
 #endif
+	}
+
 	if(main_window_width >= 0 && (main_window_width != new_window_width || main_window_height != new_window_height)) {
 		if(option_recreate_window && main_window_visible) {
 			recreate_window();
@@ -1608,7 +1613,9 @@ void main_window_adjust_for_image() {/*{{{*/
 		}
 		if(!main_window_visible) {
 			gtk_window_set_default_size(main_window, new_window_width, new_window_height);
-			gtk_window_set_geometry_hints(main_window, NULL, &hints, GDK_HINT_ASPECT);
+			if(option_enforce_window_aspect_ratio) {
+				gtk_window_set_geometry_hints(main_window, NULL, &hints, GDK_HINT_ASPECT);
+			}
 			main_window_width = new_window_width;
 			main_window_height = new_window_height;
 
@@ -1619,11 +1626,15 @@ void main_window_adjust_for_image() {/*{{{*/
 			gdk_threads_add_idle(main_window_resize_callback, NULL);
 		}
 		else {
-			gtk_window_set_geometry_hints(main_window, NULL, &hints, GDK_HINT_ASPECT);
+			if(option_enforce_window_aspect_ratio) {
+				gtk_window_set_geometry_hints(main_window, NULL, &hints, GDK_HINT_ASPECT);
+			}
 			gtk_window_resize(main_window, new_window_width, new_window_height);
 #if GTK_MAJOR_VERSION < 3
-			hints.min_aspect = hints.max_aspect = image_width * 1.0 / image_height;
-			gtk_window_set_geometry_hints(main_window, NULL, &hints, GDK_HINT_ASPECT);
+			if(option_enforce_window_aspect_ratio) {
+				hints.min_aspect = hints.max_aspect = image_width * 1.0 / image_height;
+				gtk_window_set_geometry_hints(main_window, NULL, &hints, GDK_HINT_ASPECT);
+			}
 #endif
 		}
 
@@ -3093,7 +3104,9 @@ void do_jump_dialog() { /* {{{ */
 /* Main window functions {{{ */
 void window_fullscreen() {/*{{{*/
 	// Bugfix for Awesome WM: If hints are active, windows are fullscreen'ed honoring the aspect ratio
-	gtk_window_set_geometry_hints(main_window, NULL, NULL, 0);
+	if(option_enforce_window_aspect_ratio) {
+		gtk_window_set_geometry_hints(main_window, NULL, NULL, 0);
+	}
 
 	#ifndef _WIN32
 		if(!wm_supports_fullscreen) {
