@@ -77,6 +77,10 @@ There are experimental, nightly [static builds available for
 download](http://page.mi.fu-berlin.de/pberndt/pqiv-builds/) for Windows and
 Linux: ![Build status](http://page.mi.fu-berlin.de/pberndt/pqiv-builds/ci.php)
 
+For Fedora and Suse Linux, you can use [the build
+service](https://build.opensuse.org/package/show/home:phillipberndt/pqiv)
+to obtain the latest stable release.
+
 Thanks
 ------
 
