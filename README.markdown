@@ -85,7 +85,7 @@ Thanks
 ------
 
 This program uses Martin Pool's natsort algorithm
-<http://sourcefrog.net/projects/natsort/>
+<https://www.github.com/sourcefrog/natsort/>.
 
 
 Contributors
