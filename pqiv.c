@@ -405,7 +405,7 @@ GOptionEntry options[] = {
 #endif
 
 #ifndef CONFIGURED_WITHOUT_ACTIONS
-	{ "action", 0, 0, G_OPTION_ARG_CALLBACK, &option_action_callback, "Read actions from stdin", "ACTION" },
+	{ "action", 0, 0, G_OPTION_ARG_CALLBACK, &option_action_callback, "Perform a given action", "ACTION" },
 	{ "actions-from-stdin", 0, 0, G_OPTION_ARG_NONE, &option_actions_from_stdin, "Read actions from stdin", NULL },
 	{ "bind-key", 0, 0, G_OPTION_ARG_CALLBACK, &options_bind_key_callback, "Rebind a key to another action, see manpage and --show-keybindings output for details.", "KEY BINDING" },
 #endif
