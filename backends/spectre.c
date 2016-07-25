@@ -38,6 +38,9 @@ typedef struct {
 	struct SpectrePage *page;
 } file_private_data_spectre_t;
 
+#if defined(__GNUC__)
+__attribute__((used))
+#endif
 void cmsPluginTHR(void *context, void *plugin) {
 	// This symbol is required to prevent gs from registering its own memory handler,
 	// causing a crash if poppler is also used
@@ -48,8 +51,14 @@ void cmsPluginTHR(void *context, void *plugin) {
 	// which has value 0x6D656D48 == "memH". To verify that no other plugins interfere,
 	// we check that.
 	//
-	if(*((uint32_t*)plugin + 2) != 0x6D656D48) {
+	// Newer versions of ghostscript also try to set a mutex handler, which has type
+	// mtzH (which is a typo, mtxH was intended)
+	//
+	const uint32_t type = *((uint32_t*)plugin + 2);
+	if(type != 0x6D656D48 && type != 0x6D747A48) {
+		#ifdef DEBUG
 		g_printerr("Warning: cmsPluginTHR call was redirected because of a poppler/gs interaction bug, but was called in an unexpected manner.\n");
+		#endif
 	}
 }
 
