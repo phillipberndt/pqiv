@@ -269,6 +269,7 @@ gdouble current_scale_level = 1.0;
 gint current_shift_x = 0;
 gint current_shift_y = 0;
 guint32 last_button_press_time = 0;
+guint32 last_button_release_time = 0;
 guint current_image_animation_timeout_id = 0;
 
 // -1 means no slideshow, 0 means active slideshow but no current timeout
@@ -4326,10 +4327,14 @@ gboolean window_button_press_callback(GtkWidget *widget, GdkEventButton *event, 
 	return FALSE;
 }/*}}}*/
 gboolean window_button_release_callback(GtkWidget *widget, GdkEventButton *event, gpointer user_data) {/*{{{*/
-	if(!main_window_in_fullscreen || event->time - last_button_press_time > 250) {
+	if(!main_window_in_fullscreen || event->time - last_button_press_time > 250 || (event->time == last_button_release_time && last_button_release_time > 0)) {
 		// Do nothing if the button was pressed for a long time or if not in fullscreen
+		// Also, fix a bug where GTK reports the same release event twice -- by
+		// assuming that no user would ever be able to press and release
+		// buttons sufficiently fast for time to have the same (millis) value.
 		return FALSE;
 	}
+	last_button_release_time = event->time;
 	handle_input_event(KEY_BINDING_VALUE(1, event->state, event->button));
 	return FALSE;
 }/*}}}*/
