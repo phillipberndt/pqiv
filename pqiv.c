@@ -347,6 +347,7 @@ gint64 fading_initial_time;
 
 #ifndef CONFIGURED_WITHOUT_ACTIONS
 gboolean options_bind_key_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error);
+char *key_binding_sequence_to_string(guint key_binding_value, gchar *prefix);
 gboolean help_show_key_bindings(const gchar *option_name, const gchar *value, gpointer data, GError **error);
 #endif
 gboolean option_window_position_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error);
@@ -418,7 +419,8 @@ GOptionEntry options[] = {
 };
 
 /* Key bindings & actions {{{ */
-#define KEY_BINDING_VALUE(is_mouse, state, keycode) ((guint)(((is_mouse & 1) << 31) | ((state & 7) << 28) | (keycode & 0xfffffff)))
+#define KEY_BINDING_STATE_BITS 4
+#define KEY_BINDING_VALUE(is_mouse, state, keycode) ((guint)(((is_mouse & 1) << 31) | (((state & ((1 << KEY_BINDING_STATE_BITS) - 1)) << (31 - KEY_BINDING_STATE_BITS)) | (keycode & ((1 << (31 - KEY_BINDING_STATE_BITS)) - 1)))))
 
 static const struct default_key_bindings_struct {
 	guint key_binding_value;
@@ -4110,9 +4112,15 @@ static void unblock_active_input_event_action_chain() {/*{{{*/
 #endif
 }/*}}}*/
 void handle_input_event(guint key_binding_value) {/*{{{*/
+	/* Debug
+	char *debug_keybinding = key_binding_sequence_to_string(key_binding_value, NULL);
+	printf("You pressed %s\n", debug_keybinding);
+	free(debug_keybinding);
+	// */
+
 	gboolean is_mouse = (key_binding_value >> 31) & 1;
-	guint state = (key_binding_value >> 28) & 7;
-	guint keycode = key_binding_value & 0xfffffff;
+	guint state = (key_binding_value >> (31 - KEY_BINDING_STATE_BITS)) & ((1 << KEY_BINDING_STATE_BITS) - 1);
+	guint keycode = key_binding_value & ((1 << (31 - KEY_BINDING_STATE_BITS)) - 1);
 
 	// Filter unwanted state variables out
 	state &= gtk_accelerator_get_default_mod_mask();
@@ -4502,28 +4510,34 @@ gboolean initialize_gui_or_quit_callback(gpointer user_data) {/*{{{*/
 	return FALSE;
 }/*}}}*/
 #ifndef CONFIGURED_WITHOUT_ACTIONS
-void help_show_key_bindings_helper(gpointer key, gpointer value, gpointer user_data) {/*{{{*/
-	guint key_binding_value = GPOINTER_TO_UINT(key);
+char *key_binding_sequence_to_string(guint key_binding_value, gchar *prefix) {/*{{{*/
 	gboolean is_mouse = (key_binding_value >> 31) & 1;
-	guint state = (key_binding_value >> 28) & 7;
-	guint keycode = key_binding_value & 0xfffffff;
-	key_binding_t *key_binding = (key_binding_t *)value;
+	guint state = (key_binding_value >> (31 - KEY_BINDING_STATE_BITS)) & ((1 << KEY_BINDING_STATE_BITS) - 1);
+	guint keycode = key_binding_value & ((1 << (31 - KEY_BINDING_STATE_BITS)) - 1);
 
 	gchar *str_key;
 	gchar modifier[255];
 	snprintf(modifier, 255, "%s%s%s", state & GDK_SHIFT_MASK ? "<Shift>" : "", state & GDK_CONTROL_MASK ? "<Control>" : "", state & GDK_MOD1_MASK ? "<Alt>" : "");
 	if(is_mouse) {
 		if(keycode >> 2 == 0) {
-			str_key = g_strdup_printf("%s%s<Mouse-%d> ", user_data ? (gchar*)user_data : "", modifier, keycode);
+			str_key = g_strdup_printf("%s%s<Mouse-%d> ", prefix ? prefix : "", modifier, keycode);
 		}
 		else {
-			str_key = g_strdup_printf("%s%s<Mouse-Scroll-%d> ", user_data ? (gchar*)user_data : "", modifier, keycode >> 2);
+			str_key = g_strdup_printf("%s%s<Mouse-Scroll-%d> ", prefix ? prefix : "", modifier, keycode >> 2);
 		}
 	}
 	else {
 		char *keyval_name = gdk_keyval_name(keycode);
-		str_key = g_strdup_printf("%s%s%s%s%s ", user_data ? (gchar*)user_data : "", modifier, keyval_name[1] == 0 ? "" : "<", keyval_name, keyval_name[1] == 0 ? "" : ">");
+		str_key = g_strdup_printf("%s%s%s%s%s ", prefix ? prefix : "", modifier, keyval_name[1] == 0 ? "" : "<", keyval_name, keyval_name[1] == 0 ? "" : ">");
 	}
+
+	return str_key;
+}/*}}}*/
+void help_show_key_bindings_helper(gpointer key, gpointer value, gpointer user_data) {/*{{{*/
+	guint key_binding_value = GPOINTER_TO_UINT(key);
+	key_binding_t *key_binding = (key_binding_t *)value;
+
+	char *str_key = key_binding_sequence_to_string(key_binding_value, user_data);
 
 	if(key_binding->next_key_bindings) {
 		g_hash_table_foreach(key_binding->next_key_bindings, help_show_key_bindings_helper, str_key);
