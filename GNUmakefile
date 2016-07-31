@@ -6,7 +6,7 @@ CFLAGS=-O2 -g
 CROSS=
 DESTDIR=
 GTK_VERSION=0
-PQIV_WARNING_FLAGS=-Wall -Wextra -Wfloat-equal -Wpointer-arith -Wcast-align -Wstrict-overflow=5 -Wwrite-strings -Waggregate-return -Wunreachable-code -Wno-unused-parameter
+PQIV_WARNING_FLAGS=-Wall -Wextra -Wfloat-equal -Wpointer-arith -Wcast-align -Wstrict-overflow=1 -Wwrite-strings -Waggregate-return -Wunreachable-code -Wno-unused-parameter
 LDLIBS=-lm
 PREFIX=/usr
 MANDIR=$(PREFIX)/share/man
