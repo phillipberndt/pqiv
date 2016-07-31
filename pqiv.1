@@ -287,6 +287,19 @@ commands are:
 .BR add_file(STRING)
 Add a file or directory.
 .TP
+.BR animation_step(INT)
+Stop an animation, and advance by the given number of frames plus one.
+.TP
+.BR animation_continue()
+Continue a stopped animation.
+.TP
+.BR animation_set_speed_relative(DOUBLE)
+Scale the animation's display speed.
+.TP
+.BR animation_set_speed_absolute(DOUBLE)
+Set the animation's display speed scale level to an absolute value. 1.0 is the
+animation's natural speed.
+.TP
 .BR bind_key(STRING)
 Override a key binding. Remember to quote closing parenthesis inside the new
 definition by prepending a backslash. Useful in conjunction with

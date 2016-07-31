@@ -271,6 +271,7 @@ gint current_shift_y = 0;
 guint32 last_button_press_time = 0;
 guint32 last_button_release_time = 0;
 guint current_image_animation_timeout_id = 0;
+gdouble current_image_animation_speed_scale = 1.0;
 
 // -1 means no slideshow, 0 means active slideshow but no current timeout
 // source set, anything bigger than that actually is a slideshow id.
@@ -450,10 +451,14 @@ static const struct default_key_bindings_struct {
 	{ KEY_BINDING_VALUE(0 , GDK_CONTROL_MASK , GDK_KEY_KP_Right         ), ACTION_SHIFT_X                         , { -50 }},
 	{ KEY_BINDING_VALUE(0 , GDK_CONTROL_MASK , GDK_KEY_plus             ), ACTION_SET_SLIDESHOW_INTERVAL_RELATIVE , { .pdouble = 1.  }},
 	{ KEY_BINDING_VALUE(0 , GDK_CONTROL_MASK , GDK_KEY_KP_Add           ), ACTION_SET_SLIDESHOW_INTERVAL_RELATIVE , { .pdouble = 1.  }},
+	{ KEY_BINDING_VALUE(0 , GDK_MOD1_MASK    , GDK_KEY_KP_Add           ), ACTION_ANIMATION_SET_SPEED_RELATIVE    , { .pdouble = 1.1  }},
+	{ KEY_BINDING_VALUE(0 , GDK_MOD1_MASK    , GDK_KEY_plus             ), ACTION_ANIMATION_SET_SPEED_RELATIVE    , { .pdouble = 1.1  }},
 	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_plus             ), ACTION_SET_SCALE_LEVEL_RELATIVE        , { .pdouble = 1.1 }},
 	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_KP_Add           ), ACTION_SET_SCALE_LEVEL_RELATIVE        , { .pdouble = 1.1 }},
 	{ KEY_BINDING_VALUE(0 , GDK_CONTROL_MASK , GDK_KEY_minus            ), ACTION_SET_SLIDESHOW_INTERVAL_RELATIVE , { .pdouble = -1. }},
 	{ KEY_BINDING_VALUE(0 , GDK_CONTROL_MASK , GDK_KEY_KP_Subtract      ), ACTION_SET_SLIDESHOW_INTERVAL_RELATIVE , { .pdouble = -1. }},
+	{ KEY_BINDING_VALUE(0 , GDK_MOD1_MASK    , GDK_KEY_minus            ), ACTION_ANIMATION_SET_SPEED_RELATIVE    , { .pdouble = 0.9  }},
+	{ KEY_BINDING_VALUE(0 , GDK_MOD1_MASK    , GDK_KEY_KP_Subtract      ), ACTION_ANIMATION_SET_SPEED_RELATIVE    , { .pdouble = 0.9  }},
 	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_minus            ), ACTION_SET_SCALE_LEVEL_RELATIVE        , { .pdouble = 0.9 }},
 	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_KP_Subtract      ), ACTION_SET_SCALE_LEVEL_RELATIVE        , { .pdouble = 0.9 }},
 	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_t                ), ACTION_TOGGLE_SCALE_MODE               , { 0   }},
@@ -469,6 +474,8 @@ static const struct default_key_bindings_struct {
 	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_j                ), ACTION_JUMP_DIALOG                     , { 0   }},
 	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_s                ), ACTION_TOGGLE_SLIDESHOW                , { 0   }},
 	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_a                ), ACTION_HARDLINK_CURRENT_IMAGE          , { 0   }},
+	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_period           ), ACTION_ANIMATION_STEP                  , { 1   }},
+	{ KEY_BINDING_VALUE(0 , GDK_CONTROL_MASK , GDK_KEY_period           ), ACTION_ANIMATION_CONTINUE              , { 0   }},
 	{ KEY_BINDING_VALUE(0 , GDK_CONTROL_MASK , GDK_KEY_BackSpace        ), ACTION_GOTO_DIRECTORY_RELATIVE         , { -1  }},
 	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_BackSpace        ), ACTION_GOTO_FILE_RELATIVE              , { -1  }},
 	{ KEY_BINDING_VALUE(0 , GDK_CONTROL_MASK , GDK_KEY_space            ), ACTION_GOTO_DIRECTORY_RELATIVE         , { 1   }},
@@ -560,6 +567,10 @@ const struct pqiv_action_descriptor {
 	{ "send_keys", PARAMETER_CHARPTR },
 	{ "set_shift_align_corner", PARAMETER_CHARPTR },
 	{ "set_interpolation_quality", PARAMETER_INT },
+	{ "animation_step", PARAMETER_INT },
+	{ "animation_continue", PARAMETER_NONE },
+	{ "animation_set_speed_absolute", PARAMETER_DOUBLE },
+	{ "animation_set_speed_relative", PARAMETER_DOUBLE },
 	{ NULL, 0 }
 };
 /* }}} */
@@ -1460,10 +1471,10 @@ gboolean image_animation_timeout_callback(gpointer user_data) {/*{{{*/
 		return FALSE;
 	}
 
-	double delay = CURRENT_FILE->file_type->animation_next_frame_fn(CURRENT_FILE);
+	double delay = (1./current_image_animation_speed_scale) * CURRENT_FILE->file_type->animation_next_frame_fn(CURRENT_FILE);
 	D_UNLOCK(file_tree);
 
-	if(delay >= 0) {
+	if(delay >= 0 && current_image_animation_speed_scale > 0) {
 		current_image_animation_timeout_id = gdk_threads_add_timeout(
 			delay,
 			image_animation_timeout_callback,
@@ -1680,6 +1691,7 @@ gboolean image_loaded_handler(gconstpointer node) {/*{{{*/
 			CURRENT_FILE->file_type->animation_initialize_fn(CURRENT_FILE),
 			image_animation_timeout_callback,
 			(gpointer)current_file_node);
+		current_image_animation_speed_scale = 1.0;
 	}
 
 	// Update geometry hints, calculate initial window size and place window
@@ -4076,6 +4088,72 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 			invalidate_current_scaled_image_surface();
 			gtk_widget_queue_draw(GTK_WIDGET(main_window));
 
+		case ACTION_ANIMATION_STEP:
+			if(!(CURRENT_FILE->file_flags & FILE_FLAGS_ANIMATION)) {
+				break;
+			}
+			if(current_image_animation_timeout_id > 0) {
+				g_source_remove(current_image_animation_timeout_id);
+				current_image_animation_timeout_id = 0;
+			}
+			current_image_animation_speed_scale = 0;
+			D_LOCK(file_tree);
+			if(parameter.pint > 0 && CURRENT_FILE->file_type->animation_next_frame_fn != NULL) {
+				for(int i=0; i<parameter.pint; i++) {
+					CURRENT_FILE->file_type->animation_next_frame_fn(CURRENT_FILE);
+				}
+			}
+			D_UNLOCK(file_tree);
+			image_animation_timeout_callback(current_file_node);
+			update_info_text(NULL);
+			break;
+
+		case ACTION_ANIMATION_CONTINUE:
+			if(!(CURRENT_FILE->file_flags & FILE_FLAGS_ANIMATION)) {
+				break;
+			}
+			current_image_animation_speed_scale = 1.0;
+			if(current_image_animation_timeout_id == 0
+					&& (CURRENT_FILE->file_flags & FILE_FLAGS_ANIMATION) != 0
+					&& CURRENT_FILE->file_type->animation_initialize_fn != NULL) {
+				current_image_animation_timeout_id = gdk_threads_add_timeout(
+					CURRENT_FILE->file_type->animation_initialize_fn(CURRENT_FILE),
+					image_animation_timeout_callback,
+					(gpointer)current_file_node);
+			}
+			update_info_text(NULL);
+			break;
+
+		case ACTION_ANIMATION_SET_SPEED_ABSOLUTE:
+			if(!(CURRENT_FILE->file_flags & FILE_FLAGS_ANIMATION)) {
+				break;
+			}
+			current_image_animation_speed_scale = parameter.pdouble;
+			if(current_image_animation_speed_scale < 0) {
+				current_image_animation_speed_scale = 0;
+			}
+
+			{
+				gchar info_text[255];
+				snprintf(info_text, 255, "Animation speed adjusted to %03.1f%%", current_image_animation_speed_scale * 100.);
+				update_info_text(info_text);
+			}
+			break;
+
+		case ACTION_ANIMATION_SET_SPEED_RELATIVE:
+			if(!(CURRENT_FILE->file_flags & FILE_FLAGS_ANIMATION)) {
+				break;
+			}
+			current_image_animation_speed_scale *= parameter.pdouble;
+			if(current_image_animation_speed_scale < 0) {
+				current_image_animation_speed_scale = 0;
+			}
+
+			{
+				gchar info_text[255];
+				snprintf(info_text, 255, "Animation speed adjusted to %03.1f%%", current_image_animation_speed_scale * 100.);
+				update_info_text(info_text);
+			}
 			break;
 #endif
 		default:

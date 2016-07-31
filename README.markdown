@@ -138,6 +138,7 @@ pqiv 2.7 (wip)
  * Added new action `set_interpolation_quality` to change interpolation/filter
    mode
  * pqiv now by default uses `nearest` interpolation for small images
+ * Added actions and key bindings to control animation playback speed
 
 pqiv 2.6
  * Added --enforce-window-aspect-ratio

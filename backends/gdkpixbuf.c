@@ -31,6 +31,7 @@ typedef struct {
 	// for the current, previous and next image.
 	GdkPixbufAnimation *pixbuf_animation;
 	GdkPixbufAnimationIter *animation_iter;
+	GTimeVal animation_time;
 } file_private_data_gdkpixbuf_t;
 
 BOSNode *file_type_gdkpixbuf_alloc(load_images_state_t state, file_t *file) {/*{{{*/
@@ -58,7 +59,7 @@ void file_type_gdkpixbuf_unload(file_t *file) {/*{{{*/
 double file_type_gdkpixbuf_animation_initialize(file_t *file) {/*{{{*/
 	file_private_data_gdkpixbuf_t *private = file->private;
 	if(private->animation_iter == NULL) {
-		private->animation_iter = gdk_pixbuf_animation_get_iter(private->pixbuf_animation, NULL);
+		private->animation_iter = gdk_pixbuf_animation_get_iter(private->pixbuf_animation, &private->animation_time);
 	}
 	return gdk_pixbuf_animation_iter_get_delay_time(private->animation_iter);
 }/*}}}*/
@@ -67,7 +68,20 @@ double file_type_gdkpixbuf_animation_next_frame(file_t *file) {/*{{{*/
 
 	cairo_surface_t *surface = cairo_surface_reference(private->image_surface);
 
-	gdk_pixbuf_animation_iter_advance(private->animation_iter, NULL);
+	// We keep track of time manually to allow the user to adjust the playback speed:
+	// It is assumed that this function is called exactly at the right time, each time.
+	// TODO The downside from this is that animations won't play smoothly on slow X11 connections.
+	// Maybe I should extend the API to allow to switch between auto and manual time?
+	int millis_until_next = gdk_pixbuf_animation_iter_get_delay_time(private->animation_iter);
+	if(millis_until_next > 0) {
+		private->animation_time.tv_usec += millis_until_next * 1000;
+		if(private->animation_time.tv_usec >= 1000000) {
+			private->animation_time.tv_sec += private->animation_time.tv_usec / 1000000;
+			private->animation_time.tv_usec %= 1000000;
+		}
+	}
+
+	gdk_pixbuf_animation_iter_advance(private->animation_iter, &private->animation_time);
 	GdkPixbuf *pixbuf = gdk_pixbuf_animation_iter_get_pixbuf(private->animation_iter);
 
 	cairo_t *sf_cr = cairo_create(surface);
