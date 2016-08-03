@@ -1,4 +1,5 @@
 #include <string.h>
+#include <stdlib.h>
 #include "../pqiv.h"
 
 static const char *available_backends[] = {
@@ -27,5 +28,9 @@ void initialize_file_type_handlers() {
 		}
 
 		g_free(backend_candidate);
+	}
+	if(i == 0) {
+		g_printerr("Failed to load any of the image backends.\n");
+		exit(1);
 	}
 }
