@@ -38,6 +38,10 @@
 #define av_packet_unref av_free_packet
 #endif
 
+#if LIBAVCODEC_VERSION_INT >= AV_VERSION_INT(57, 41, 0)
+#define AV_COMPAT_CODEC_DEPRECATED
+#endif
+
 // This is a list of extensions that are never handled by this backend
 // It is not a complete list of audio formats supported by ffmpeg,
 // only those I recognized right away.
@@ -117,18 +121,35 @@ void file_type_libav_load(file_t *file, GInputStream *data, GError **error_point
 
 	private->video_stream_id = -1;
 	for(size_t i=0; i<private->avcontext->nb_streams; i++) {
-        if(private->avcontext->streams[i]->codec->codec_type == AVMEDIA_TYPE_VIDEO) {
+        if(
+#ifndef AV_COMPAT_CODEC_DEPRECATED
+				private->avcontext->streams[i]->codec->codec_type == AVMEDIA_TYPE_VIDEO
+#else
+				private->avcontext->streams[i]->codecpar->codec_type == AVMEDIA_TYPE_VIDEO
+#endif
+			) {
 			private->video_stream_id = i;
 			break;
 		}
 	}
-	if(private->video_stream_id < 0 || private->avcontext->streams[private->video_stream_id]->codec->width == 0) {
+	if(private->video_stream_id < 0 || (
+#ifndef AV_COMPAT_CODEC_DEPRECATED
+				private->avcontext->streams[private->video_stream_id]->codec->width == 0
+#else
+				private->avcontext->streams[private->video_stream_id]->codecpar->width == 0
+#endif
+				)) {
 		*error_pointer = g_error_new(g_quark_from_static_string("pqiv-libav-error"), 1, "This is not a video file.");
 		avformat_close_input(&(private->avcontext));
 		return;
 	}
+#ifndef AV_COMPAT_CODEC_DEPRECATED
+	AVCodec *codec = avcodec_find_decoder(private->avcontext->streams[private->video_stream_id]->codec->codec_id);
 	private->cocontext = private->avcontext->streams[private->video_stream_id]->codec;
-	AVCodec *codec = avcodec_find_decoder(private->cocontext->codec_id);
+#else
+	AVCodec *codec = avcodec_find_decoder(private->avcontext->streams[private->video_stream_id]->codecpar->codec_id);
+	private->cocontext = avcodec_alloc_context3(codec);
+#endif
 	if(!codec || avcodec_open2(private->cocontext, codec, NULL) < 0) {
 		*error_pointer = g_error_new(g_quark_from_static_string("pqiv-libav-error"), 1, "Failed to open codec.");
 		avformat_close_input(&(private->avcontext));
@@ -138,7 +159,9 @@ void file_type_libav_load(file_t *file, GInputStream *data, GError **error_point
 	private->frame = av_frame_alloc();
 	private->rgb_frame = av_frame_alloc();
 
-#ifdef AV_COMPAT_USE_PICTURE
+#ifdef AV_COMPAT_CODEC_DEPRECATED
+	size_t num_bytes = av_image_get_buffer_size(AV_PIX_FMT_RGB32, private->avcontext->streams[private->video_stream_id]->codecpar->width, private->avcontext->streams[private->video_stream_id]->codecpar->height, 1);
+#elif defined(AV_COMPAT_USE_PICTURE)
 	size_t num_bytes = avpicture_get_size(AV_PIX_FMT_RGB32, private->cocontext->width, private->cocontext->height);
 #else
 	size_t num_bytes = av_image_get_buffer_size(AV_PIX_FMT_RGB32, private->cocontext->width, private->cocontext->height, 1);
@@ -146,8 +169,13 @@ void file_type_libav_load(file_t *file, GInputStream *data, GError **error_point
 	private->buffer = (uint8_t *)g_malloc(num_bytes * sizeof(uint8_t));
 
 	file->file_flags |= FILE_FLAGS_ANIMATION;
+#ifdef AV_COMPAT_CODEC_DEPRECATED
+	file->width = private->avcontext->streams[private->video_stream_id]->codecpar->width;
+	file->height = private->avcontext->streams[private->video_stream_id]->codecpar->height;
+#else
 	file->width = private->cocontext->width;
 	file->height = private->cocontext->height;
+#endif
 	file->is_loaded = TRUE;
 }/*}}}*/
 double file_type_libav_animation_next_frame(file_t *file) {/*{{{*/
@@ -204,7 +232,14 @@ void file_type_libav_draw(file_t *file, cairo_t *cr) {/*{{{*/
 
 		int got_picture_ptr = 0;
 		// Decode a frame
-		if(avcodec_decode_video2(private->cocontext, frame, &got_picture_ptr, &(private->pkt)) >= 0 && got_picture_ptr) {
+		if(
+#ifndef AV_COMPAT_CODEC_DEPRECATED
+				avcodec_decode_video2(private->cocontext, frame, &got_picture_ptr, &(private->pkt)) >= 0
+#else
+				avcodec_send_packet(private->cocontext, &(private->pkt)) >= 0 &&
+				(got_picture_ptr = (avcodec_receive_frame(private->cocontext, frame) >= 0))
+#endif
+			&& got_picture_ptr) {
 			// Prepare buffer for RGB32 version
 			uint8_t *buffer = private->buffer;
 #ifdef AV_COMPAT_USE_PICTURE
