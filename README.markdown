@@ -132,6 +132,9 @@ Known bugs
 Changelog
 ---------
 
+pqiv 2.7 (wip)
+ * Fixed window decoration toggling with --transparent-background
+
 pqiv 2.6
  * Added --enforce-window-aspect-ratio
  * Do not enforce the aspect ratio of the window to match the image's by default

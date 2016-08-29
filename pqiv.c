@@ -4237,27 +4237,37 @@ gboolean window_motion_notify_callback(GtkWidget *widget, GdkEventMotion *event,
 	return FALSE;
 }/*}}}*/
 gboolean window_button_press_callback(GtkWidget *widget, GdkEventButton *event, gpointer user_data) {/*{{{*/
-	if(!main_window_in_fullscreen) {
-		if(option_transparent_background) {
-			gtk_window_set_decorated(main_window, !gtk_window_get_decorated(main_window));
-		}
+	if(event->time - last_button_press_time < 250) {
+		// GTK double-reported this. Ignore.
 		return FALSE;
 	}
-
-	window_center_mouse();
 	last_button_press_time = event->time;
+
+	if(main_window_in_fullscreen) {
+		window_center_mouse();
+	}
 
 	return FALSE;
 }/*}}}*/
 gboolean window_button_release_callback(GtkWidget *widget, GdkEventButton *event, gpointer user_data) {/*{{{*/
-	if(!main_window_in_fullscreen || event->time - last_button_press_time > 250 || (event->time == last_button_release_time && last_button_release_time > 0)) {
-		// Do nothing if the button was pressed for a long time or if not in fullscreen
+	if(event->time - last_button_press_time > 250 || (event->time == last_button_release_time && last_button_release_time > 0)) {
+		// Do nothing if the button was pressed for a long time
 		// Also, fix a bug where GTK reports the same release event twice -- by
 		// assuming that no user would ever be able to press and release
 		// buttons sufficiently fast for time to have the same (millis) value.
 		return FALSE;
 	}
 	last_button_release_time = event->time;
+
+	if(!main_window_in_fullscreen) {
+		if(option_transparent_background) {
+			gtk_window_set_decorated(main_window, !gtk_window_get_decorated(main_window));
+		}
+
+		// All other bindings are only handled in fullscreen.
+		return FALSE;
+	}
+
 	handle_input_event(KEY_BINDING_VALUE(1, event->state, event->button));
 	return FALSE;
 }/*}}}*/
