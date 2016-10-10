@@ -24,7 +24,11 @@
 #include <stdint.h>
 #include <string.h>
 #include <strings.h>
-#include <wand/MagickWand.h>
+#if defined(WAND_VERSION) && WAND_VERSION > 6
+	#include <MagickWand/MagickWand.h>
+#else
+	#include <wand/MagickWand.h>
+#endif
 #include <cairo/cairo.h>
 
 // ImageMagick's multithreading is broken. To test this, open a multi-page

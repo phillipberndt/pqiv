@@ -110,6 +110,12 @@ else
 	OBJECTS+=$(BACKENDS_INITIALIZER).o
 endif
 
+# MagickWand changed their directory structure with version 7, pass the version
+# to the build
+ifneq ($(findstring wand, $(BACKENDS)),)
+backends/wand.o: CFLAGS+=-DWAND_VERSION=$(shell $(PKG_CONFIG) --modversion MagickWand | sed -re 's!(\.[0-9]+)+$$!!')
+endif
+
 # Add version information to builds from git
 PQIV_VERSION_STRING=$(shell [ -d .git ] && (which git 2>&1 >/dev/null) && git describe --dirty --tags)
 ifneq ($(PQIV_VERSION_STRING),)
