@@ -113,7 +113,7 @@ endif
 # MagickWand changed their directory structure with version 7, pass the version
 # to the build
 ifneq ($(findstring wand, $(BACKENDS)),)
-backends/wand.o: CFLAGS+=-DWAND_VERSION=$(shell $(PKG_CONFIG) --modversion MagickWand | sed -re 's!(\.[0-9]+)+$$!!')
+backends/wand.o: CFLAGS_REAL+=-DWAND_VERSION=$(shell $(PKG_CONFIG) --modversion MagickWand | sed -re 's!(\.[0-9]+)+$$!!')
 endif
 
 # Add version information to builds from git
