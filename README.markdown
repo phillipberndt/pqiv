@@ -134,6 +134,7 @@ Changelog
 
 pqiv 2.7 (wip)
  * Fixed window decoration toggling with --transparent-background
+ * Work around bug #67, poppler bug #96884
 
 pqiv 2.6
  * Added --enforce-window-aspect-ratio
