@@ -2856,6 +2856,7 @@ static void status_output() {/*{{{*/
 	D_LOCK(file_tree);
 	if(file_tree_valid && current_file_node) {
 		printf("CURRENT_FILE_NAME=\"%s\"\nCURRENT_FILE_INDEX=%d\n\n", CURRENT_FILE->file_name, bostree_rank(current_file_node));
+		fflush(stdout);
 	}
 	D_UNLOCK(file_tree);
 #endif
