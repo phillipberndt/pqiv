@@ -4448,20 +4448,36 @@ void window_screen_window_manager_changed_callback(gpointer user_data) {/*{{{*/
 void window_screen_changed_callback(GtkWidget *widget, GdkScreen *previous_screen, gpointer user_data) {/*{{{*/
 	GdkScreen *screen = gtk_widget_get_screen(GTK_WIDGET(main_window));
 	GdkWindow *window = gtk_widget_get_window(GTK_WIDGET(main_window));
-	guint monitor = gdk_screen_get_monitor_at_window(screen, window);
 
 	#ifndef _WIN32
-	g_signal_connect(screen, "window-manager-changed", G_CALLBACK(window_screen_window_manager_changed_callback), screen);
+		g_signal_connect(screen, "window-manager-changed", G_CALLBACK(window_screen_window_manager_changed_callback), screen);
 	#endif
 	window_screen_window_manager_changed_callback(screen);
 
-	static guint old_monitor = 9999;
-	if(old_monitor != 9999 && option_transparent_background) {
-		window_screen_activate_rgba();
-	}
-	if(old_monitor != monitor) {
-		gdk_screen_get_monitor_geometry(screen, monitor, &screen_geometry);
-	}
+	#if GTK_CHECK_VERSION(3, 22, 0)
+		GdkDisplay *display = gdk_window_get_display(window);
+		GdkMonitor *monitor = gdk_display_get_monitor_at_window(display, window);
+
+		static GdkMonitor *old_monitor = NULL;
+		if(old_monitor != NULL && option_transparent_background) {
+			window_screen_activate_rgba();
+		}
+		if(old_monitor != monitor) {
+			gdk_monitor_get_geometry(monitor, &screen_geometry);
+			old_monitor = monitor;
+		}
+	#else
+		guint monitor = gdk_screen_get_monitor_at_window(screen, window);
+
+		static guint old_monitor = 9999;
+		if(old_monitor != 9999 && option_transparent_background) {
+			window_screen_activate_rgba();
+		}
+		if(old_monitor != monitor) {
+			gdk_screen_get_monitor_geometry(screen, monitor, &screen_geometry);
+			old_monitor = monitor;
+		}
+	#endif
 }/*}}}*/
 void window_realize_callback(GtkWidget *widget, gpointer user_data) {/*{{{*/
 	if(option_start_fullscreen) {
@@ -4517,8 +4533,14 @@ void create_window() { /*{{{*/
 	// Initialize the screen geometry variable to the primary screen
 	// Useful if no WM is present
 	GdkScreen *screen = gdk_screen_get_default();
-	guint monitor = gdk_screen_get_primary_monitor(screen);
-	gdk_screen_get_monitor_geometry(screen, monitor, &screen_geometry);
+	#if GTK_CHECK_VERSION(3, 22, 0)
+		GdkDisplay *display = gdk_screen_get_display(screen);
+		GdkMonitor *monitor = gdk_display_get_primary_monitor(display);
+		gdk_monitor_get_geometry(monitor, &screen_geometry);
+	#else
+		guint monitor = gdk_screen_get_primary_monitor(screen);
+		gdk_screen_get_monitor_geometry(screen, monitor, &screen_geometry);
+	#endif
 	window_screen_window_manager_changed_callback(screen);
 
 	if(option_start_fullscreen) {
