@@ -171,6 +171,9 @@ GBytes *g_input_stream_read_completely(GInputStream *input_stream, GCancellable 
 // Free a file
 void file_free(file_t *file);
 
+// Set the interpolation filter in a cairo context for the current file based on the user settings
+void apply_interpolation_quality(cairo_t *cr);
+
 // }}}
 
 // File type handlers, used in the initializer and file type guessing
@@ -218,7 +221,8 @@ typedef enum {
 	ACTION_SET_SHIFT_Y,
 	ACTION_BIND_KEY,
 	ACTION_SEND_KEYS,
-	ACTION_SET_SHIFT_ALIGN_CORNER
+	ACTION_SET_SHIFT_ALIGN_CORNER,
+	ACTION_SET_INTERPOLATION_QUALITY
 } pqiv_action_t;
 
 typedef union {

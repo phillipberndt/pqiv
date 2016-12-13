@@ -345,6 +345,11 @@ enum { ON, OFF, CHANGES_ONLY } option_watch_files = ON;
 double fading_current_alpha_stage = 0;
 gint64 fading_initial_time;
 
+#ifdef CONFIGURED_WITHOUT_ACTIONS
+const
+#endif
+enum { AUTO, FAST, GOOD, BEST } option_interpolation_quality = AUTO;
+
 #ifndef CONFIGURED_WITHOUT_ACTIONS
 gboolean options_bind_key_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error);
 char *key_binding_sequence_to_string(guint key_binding_value, gchar *prefix);
@@ -554,6 +559,7 @@ const struct pqiv_action_descriptor {
 	{ "bind_key", PARAMETER_CHARPTR },
 	{ "send_keys", PARAMETER_CHARPTR },
 	{ "set_shift_align_corner", PARAMETER_CHARPTR },
+	{ "set_interpolation_quality", PARAMETER_INT },
 	{ NULL, 0 }
 };
 /* }}} */
@@ -2799,6 +2805,27 @@ void calculate_current_image_transformed_size(int *image_width, int *image_heigh
 	*image_width = (int)fabs(transform_width);
 	*image_height = (int)fabs(transform_height);
 }/*}}}*/
+void apply_interpolation_quality(cairo_t *cr) {/*{{{*/
+	switch(option_interpolation_quality) {
+		case AUTO:
+			if(CURRENT_FILE->width < 100 || CURRENT_FILE->height < 100) {
+				cairo_pattern_set_filter(cairo_get_source(cr), CAIRO_FILTER_NEAREST);
+			}
+			else {
+				cairo_pattern_set_filter(cairo_get_source(cr), CAIRO_FILTER_GOOD);
+			}
+			break;
+		case FAST:
+			cairo_pattern_set_filter(cairo_get_source(cr), CAIRO_FILTER_FAST);
+			break;
+		case GOOD:
+			cairo_pattern_set_filter(cairo_get_source(cr), CAIRO_FILTER_GOOD);
+			break;
+		case BEST:
+			cairo_pattern_set_filter(cairo_get_source(cr), CAIRO_FILTER_BEST);
+			break;
+	}
+}/*}}}*/
 void draw_current_image_to_context(cairo_t *cr) {/*{{{*/
 	if(CURRENT_FILE->file_type->draw_fn != NULL) {
 		CURRENT_FILE->file_type->draw_fn(CURRENT_FILE, cr);
@@ -4016,6 +4043,39 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 				gtk_widget_queue_draw(GTK_WIDGET(main_window));
 				update_info_text(NULL);
 			}
+			break;
+
+		case ACTION_SET_INTERPOLATION_QUALITY:
+			if(parameter.pint > BEST || parameter.pint < 0) {
+				g_printerr("Interpolation quality `%d' not supported.\n", parameter.pint);
+			}
+			else if(parameter.pint == 0) {
+				if(++option_interpolation_quality > BEST) {
+					option_interpolation_quality = AUTO;
+				}
+			}
+			else {
+				option_interpolation_quality = parameter.pint - 1;
+			}
+
+			switch(option_interpolation_quality) {
+				case AUTO:
+					update_info_text("Interpolation quality set to auto-determine.");
+					break;
+				case FAST:
+					update_info_text("Interpolation quality set to fast.");
+					break;
+				case GOOD:
+					update_info_text("Interpolation quality set to good.");
+					break;
+				case BEST:
+					update_info_text("Interpolation quality set to best.");
+					break;
+			}
+
+			invalidate_current_scaled_image_surface();
+			gtk_widget_queue_draw(GTK_WIDGET(main_window));
+
 			break;
 #endif
 		default:

@@ -156,6 +156,7 @@ void file_type_poppler_draw(file_t *file, cairo_t *cr) {/*{{{*/
 
 	cairo_set_source_rgb(cr, 1., 1., 1.);
 	cairo_paint(cr);
+	apply_interpolation_quality(cr);
 	poppler_page_render(private->page, cr);
 }/*}}}*/
 

@@ -186,6 +186,7 @@ void file_type_spectre_draw(file_t *file, cairo_t *cr) {/*{{{*/
 
 	cairo_scale(cr, 1 / current_scale_level, 1 / current_scale_level);
 	cairo_set_source_surface(cr, image_surface, 0, 0);
+	apply_interpolation_quality(cr);
 	cairo_paint(cr);
 
 	cairo_surface_destroy(image_surface);

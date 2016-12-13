@@ -277,6 +277,7 @@ void file_type_libav_draw(file_t *file, cairo_t *cr) {/*{{{*/
 		// Draw to a temporary image surface and then to cr
 		cairo_surface_t *image_surface = cairo_image_surface_create_for_data(rgb_frame->data[0], CAIRO_FORMAT_ARGB32, file->width, file->height, rgb_frame->linesize[0]);
 		cairo_set_source_surface(cr, image_surface, 0, 0);
+		apply_interpolation_quality(cr);
 		cairo_paint(cr);
 		cairo_surface_destroy(image_surface);
 	}

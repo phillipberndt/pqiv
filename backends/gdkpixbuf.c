@@ -192,6 +192,7 @@ void file_type_gdkpixbuf_draw(file_t *file, cairo_t *cr) {/*{{{*/
 
 	cairo_surface_t *current_image_surface = private->image_surface;
 	cairo_set_source_surface(cr, current_image_surface, 0, 0);
+	apply_interpolation_quality(cr);
 	cairo_paint(cr);
 }/*}}}*/
 

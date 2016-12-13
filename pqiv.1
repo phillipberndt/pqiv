@@ -357,6 +357,12 @@ with \fBbind_key(STRING)\fR to set up cyclic key bindings.
 .BR set_cursor_visibility(INT)
 Set the visibility of the cursor; 0 disables, other values enable visibility.
 .TP
+.BR set_interpolation_quality(INT)
+Set the interpolation quality for resized images. Options are: 0 to cycle
+between the different modes, 1 for an automated choice based on the image size
+(small images use nearest interpolation, large ones Cairo's `good' mode), 2 for
+`fast', 3 for `good' and 4 for `best'.
+.TP
 .BR set_scale_level_absolute(DOUBLE)
 Set the scale level to the parameter value. 1.0 is 100%. See also
 \fB\-\-zoom\-level\fR.

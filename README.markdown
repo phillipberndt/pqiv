@@ -135,6 +135,9 @@ Changelog
 pqiv 2.7 (wip)
  * Fixed window decoration toggling with --transparent-background
  * Work around bug #67, poppler bug #96884
+ * Added new action `set_interpolation_quality` to change interpolation/filter
+   mode
+ * pqiv now by default uses `nearest` interpolation for small images
 
 pqiv 2.6
  * Added --enforce-window-aspect-ratio

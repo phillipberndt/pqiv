@@ -265,6 +265,7 @@ void file_type_wand_draw(file_t *file, cairo_t *cr) {/*{{{*/
 			cairo_set_operator(cr, CAIRO_OPERATOR_OVER);
 		}
 		cairo_set_source_surface(cr, private->rendered_image_surface, 0, 0);
+		apply_interpolation_quality(cr);
 		cairo_paint(cr);
 	}
 }/*}}}*/
