@@ -109,16 +109,18 @@ BOSNode *file_type_archive_cbx_alloc(load_images_state_t state, file_t *file) {/
 }/*}}}*/
 void file_type_archive_cbx_free(file_t *file) {/*{{{*/
 	if(file->private) {
+		file_private_data_archive_t *private = (file_private_data_archive_t *)file->private;
+
+		if(private->entry_name) {
+			g_free(private->entry_name);
+			private->entry_name = NULL;
+		}
+
 		g_slice_free(file_private_data_archive_t, file->private);
 	}
 }/*}}}*/
 void file_type_archive_cbx_unload(file_t *file) {/*{{{*/
 	file_private_data_archive_t *private = (file_private_data_archive_t *)file->private;
-
-	if(private->entry_name) {
-		g_free(private->entry_name);
-		private->entry_name = NULL;
-	}
 
 	if(private->image_surface != NULL) {
 		cairo_surface_destroy(private->image_surface);
