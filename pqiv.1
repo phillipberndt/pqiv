@@ -306,7 +306,8 @@ definition by prepending a backslash. Useful in conjunction with
 \fBsend_keys(STRING)\fR to set up cyclic bindings.
 .TP
 .BR command(STRING)
-Execute the given command.
+Execute the given shell command. The syntax of the argument is the same as for
+the \fB\-\-command\-1\fR option.
 .TP
 .BR flip_horizontally()
 Flip the current image horizontally.
@@ -327,7 +328,8 @@ Jump to a file given by its displayed name.
 Jump to the \fIn\fR'th next or previous file.
 .TP
 .BR hardlink_current_image()
-Hardlink the current image to \fI./.pqiv-select/\fR, or copy it if hardlinking is not possible.
+Hardlink the current image to \fI./.pqiv-select/\fR, or copy it if hardlinking
+is not possible.
 .TP
 .BR jump_dialog()
 Display the jump dialog.
@@ -523,8 +525,9 @@ Comments at the end of a line are not supported.
 .SH EXAMPLES
 .\"
 .TP
-\fBpqiv \-\-bind\-key="a { goto_file_byindex(0) }" \-\-sort foo bar.pdf\fR
-Rebinds \fBa\fR to go back to the first image, and loads all files from the
+\fBpqiv \-\-bind\-key="a { goto_file_byindex(0) }" \-\-bind\-key='c { command(echo -n $1 | xclip) }' \-\-sort foo bar.pdf\fR
+Rebinds \fBa\fR to go back to the first image, \fBc\fR to store the path to the
+current image to the clipboard using \fIxclip\fR and loads all files from the
 \fIfoo\fR folder and \fIbar.pdf\fR, sorted.
 .TP
 \fBpqiv \-\-slideshow \-\-watch\-directories \-\-end\-of\-files\-action=wait \-\-slideshow\-interval=0.001 test\fR
