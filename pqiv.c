@@ -425,6 +425,15 @@ GOptionEntry options[] = {
 };
 
 /* Key bindings & actions {{{ */
+
+#define  KEY_BINDINGS_KEY_TOKEN_BEGIN_SYMBOL           '<'
+#define  KEY_BINDINGS_KEY_TOKEN_END_SYMBOL             '>'
+#define  KEY_BINDINGS_COMMANDS_BEGIN_SYMBOL            '{'
+#define  KEY_BINDINGS_COMMANDS_END_SYMBOL              '}'
+#define  KEY_BINDINGS_COMMAND_SEPARATOR_SYMBOL         ';'
+#define  KEY_BINDINGS_COMMAND_PARAMETER_BEGIN_SYMBOL   '('
+#define  KEY_BINDINGS_COMMAND_PARAMETER_END_SYMBOL     ')'
+
 #define KEY_BINDING_STATE_BITS 4
 #define KEY_BINDING_VALUE(is_mouse, state, keycode) ((guint)(((is_mouse & 1) << 31) | (((state & ((1 << KEY_BINDING_STATE_BITS) - 1)) << (31 - KEY_BINDING_STATE_BITS)) | (keycode & ((1 << (31 - KEY_BINDING_STATE_BITS)) - 1)))))
 
@@ -4714,33 +4723,33 @@ void help_show_key_bindings_helper(gpointer key, gpointer value, gpointer user_d
 		g_hash_table_foreach(key_binding->next_key_bindings, help_show_key_bindings_helper, str_key);
 	}
 
-	g_print("%30s { ", str_key);
+	g_print("%30s %c ", str_key, KEY_BINDINGS_COMMANDS_BEGIN_SYMBOL);
 	for(key_binding_t *current_action = key_binding; current_action; current_action = current_action->next_action) {
-		g_print("%s(", pqiv_action_descriptors[current_action->action].name);
+		g_print("%s%c", pqiv_action_descriptors[current_action->action].name, KEY_BINDINGS_COMMAND_PARAMETER_BEGIN_SYMBOL);
 		switch(pqiv_action_descriptors[current_action->action].parameter_type) {
 			case PARAMETER_NONE:
-				g_print(") ");
+				g_print("%c ", KEY_BINDINGS_COMMAND_PARAMETER_END_SYMBOL);
 				break;
 			case PARAMETER_INT:
-				g_print("%d) ", current_action->parameter.pint);
+				g_print("%d%c ", current_action->parameter.pint, KEY_BINDINGS_COMMAND_PARAMETER_END_SYMBOL);
 				break;
 			case PARAMETER_DOUBLE:
-				g_print("%g) ", current_action->parameter.pdouble);
+				g_print("%g%c ", current_action->parameter.pdouble, KEY_BINDINGS_COMMAND_PARAMETER_END_SYMBOL);
 				break;
 			case PARAMETER_CHARPTR:
 				for(const char *p = current_action->parameter.pcharptr; *p; p++) {
-					if(*p == ')' || *p == '\\') {
+					if(*p == KEY_BINDINGS_COMMAND_PARAMETER_END_SYMBOL || *p == '\\') {
 						g_print("\\");
 					}
 					g_print("%c", *p);
 				}
-				g_print(") ");
+				g_print("%c ", KEY_BINDINGS_COMMAND_PARAMETER_END_SYMBOL);
 				break;
 			case PARAMETER_2SHORT:
-				g_print("%d, %d) ", current_action->parameter.p2short.p1, current_action->parameter.p2short.p2);
+				g_print("%d, %d%c ", current_action->parameter.p2short.p1, current_action->parameter.p2short.p2, KEY_BINDINGS_COMMAND_PARAMETER_END_SYMBOL);
 		}
 	}
-	g_print("} \n");
+	g_print("%c \n", KEY_BINDINGS_COMMANDS_END_SYMBOL);
 
 	g_free(str_key);
 }/*}}}*/
@@ -4798,14 +4807,14 @@ void parse_key_bindings(const gchar *bindings) {/*{{{*/
 
 			case 1: // Expecting continuation of key description or start of command
 				switch(*scan) {
-					case '<':
+					case KEY_BINDINGS_KEY_TOKEN_BEGIN_SYMBOL: /* < */
 						token_start = scan + 1;
 						state = 2;
 						break;
 
-					case '{':
+					case KEY_BINDINGS_COMMANDS_BEGIN_SYMBOL: /* { */
 						if(state == 0) {
-							error_message = g_strdup("Unallowed { before keyboard binding was given");
+							error_message = g_strdup_printf("Unallowed %c before keyboard binding was given", KEY_BINDINGS_COMMANDS_END_SYMBOL);
 							state = -1;
 							break;
 						}
@@ -4843,7 +4852,7 @@ void parse_key_bindings(const gchar *bindings) {/*{{{*/
 			case 2: // Expecting identifier identifying a special key
 				// That's either Shift, Control, Alt, Mouse-%d, Mouse-Scroll-%d or gdk_keyval_name
 				// Closed by `>'
-				if(*scan == '>') {
+				if(*scan == KEY_BINDINGS_KEY_TOKEN_END_SYMBOL) {  /* > */
 					identifier_length = scan - token_start;
 					if(identifier_length == 7 && g_ascii_strncasecmp(token_start, "mouse-", 6) == 0) {
 						// Is Mouse-
@@ -4889,13 +4898,13 @@ void parse_key_bindings(const gchar *bindings) {/*{{{*/
 
 			case 3: // Expecting command identifier, ended by `(', or closing parenthesis
 			case 5: // Expecting further commands
-				if(token_start == scan && *scan == ';') {
+				if(token_start == scan && *scan == KEY_BINDINGS_COMMAND_SEPARATOR_SYMBOL) {
 					token_start = scan + 1;
 					continue;
 				}
 
 				switch(*scan) {
-					case '(':
+					case KEY_BINDINGS_COMMAND_PARAMETER_BEGIN_SYMBOL: /* ( */
 						identifier_length = scan - token_start;
 						identifier = g_malloc(identifier_length + 1);
 						memcpy(identifier, token_start, identifier_length);
@@ -4929,7 +4938,7 @@ void parse_key_bindings(const gchar *bindings) {/*{{{*/
 
 						break;
 
-					case '}':
+					case KEY_BINDINGS_COMMANDS_END_SYMBOL: /* } */
 						active_key_bindings_table = &key_bindings;
 						binding = NULL;
 						state = 0;
@@ -4943,7 +4952,7 @@ void parse_key_bindings(const gchar *bindings) {/*{{{*/
 					continue;
 				}
 
-				if(*scan == ')') {
+				if(*scan == KEY_BINDINGS_COMMAND_PARAMETER_END_SYMBOL) { /* ) */
 					identifier_length = scan - token_start;
 					identifier = g_malloc(identifier_length + 1);
 					for(int i=0, j=0; j<identifier_length; i++, j++) {
