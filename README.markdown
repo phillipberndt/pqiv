@@ -139,6 +139,9 @@ pqiv 2.7 (wip)
    mode
  * pqiv now by default uses `nearest` interpolation for small images
  * Added actions and key bindings to control animation playback speed
+ * Added a general archive backend for reading images from archives
+   (this is experimental and won't be enabled automatically until at least 2.7
+    is released! Compile with --with-archive to enable.)
 
 pqiv 2.6
  * Added --enforce-window-aspect-ratio
