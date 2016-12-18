@@ -53,7 +53,7 @@ BOSNode *file_type_poppler_alloc(load_images_state_t state, file_t *file) {/*{{{
 			g_printerr("Failed to load PDF %s: %s\n", file->display_name, error_pointer->message);
 			g_clear_error(&error_pointer);
 			file_free(file);
-			return NULL;
+			return FALSE_POINTER;
 		}
 		gsize data_size;
 		char *data_ptr = (char *)g_bytes_get_data(data_bytes, &data_size);
@@ -68,6 +68,7 @@ BOSNode *file_type_poppler_alloc(load_images_state_t state, file_t *file) {/*{{{
 
 		for(int n=0; n<n_pages; n++) {
 			file_t *new_file = image_loader_duplicate_file(file,
+					NULL,
 					n == 0 ? NULL :  g_strdup_printf("%s[%d]", file->display_name, n + 1),
 					g_strdup_printf("%s[%d]", file->sort_name, n + 1));
 			new_file->private = g_slice_new0(file_private_data_poppler_t);
@@ -84,6 +85,7 @@ BOSNode *file_type_poppler_alloc(load_images_state_t state, file_t *file) {/*{{{
 	else if(error_pointer) {
 		g_printerr("Failed to load PDF %s: %s\n", file->display_name, error_pointer->message);
 		g_clear_error(&error_pointer);
+		first_node = FALSE_POINTER;
 	}
 
 	#if 0 && POPPLER_CHECK_VERSION(0, 26, 5)

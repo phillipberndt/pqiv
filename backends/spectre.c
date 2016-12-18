@@ -63,7 +63,7 @@ void cmsPluginTHR(void *context, void *plugin) {
 }
 
 BOSNode *file_type_spectre_alloc(load_images_state_t state, file_t *file) {/*{{{*/
-	BOSNode *first_node = NULL;
+	BOSNode *first_node = FALSE_POINTER;
 	GError *error_pointer = NULL;
 
 	// Load the document to get the number of pages
@@ -72,7 +72,7 @@ BOSNode *file_type_spectre_alloc(load_images_state_t state, file_t *file) {/*{{{
 	if(!file_name) {
 		g_printerr("Failed to load PS file %s: %s\n", file->file_name, error_pointer->message);
 		g_clear_error(&error_pointer);
-		return NULL;
+		return FALSE_POINTER;
 	}
 	spectre_document_load(document, file_name);
 	if(spectre_document_status(document)) {
@@ -80,7 +80,7 @@ BOSNode *file_type_spectre_alloc(load_images_state_t state, file_t *file) {/*{{{
 		spectre_document_free(document);
 		buffered_file_unref(file);
 		file_free(file);
-		return NULL;
+		return FALSE_POINTER;
 	}
 	int n_pages = spectre_document_get_n_pages(document);
 	spectre_document_free(document);
@@ -88,6 +88,7 @@ BOSNode *file_type_spectre_alloc(load_images_state_t state, file_t *file) {/*{{{
 
 	for(int n=0; n<n_pages; n++) {
 		file_t *new_file = image_loader_duplicate_file(file,
+				NULL,
 				n == 0 ? NULL :  g_strdup_printf("%s[%d]", file->display_name, n + 1),
 				g_strdup_printf("%s[%d]", file->sort_name, n + 1));
 		new_file->private = g_slice_new0(file_private_data_spectre_t);

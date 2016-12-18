@@ -35,9 +35,14 @@
 #define FILE_FLAGS_ANIMATION      (guint)(1)
 #define FILE_FLAGS_MEMORY_IMAGE   (guint)(1<<1)
 
+#define FALSE_POINTER ((void*)-1)
+
 // The structure for images {{{
+typedef struct _file file_t;
+typedef GBytes *(*file_data_loader_fn_t)(file_t *file, GError **error_pointer);
+
 typedef struct file_type_handler_struct_t file_type_handler_t;
-typedef struct {
+struct _file {
 	// File type
 	const file_type_handler_t *file_type;
 
@@ -59,8 +64,14 @@ typedef struct {
 	// The URI or file name of the file
 	gchar *file_name;
 
-	// If the file is a memory image, the actual image data
+	// If the file is a memory image, the actual image data _or_ data for the
+	// file_data_loader callback to use to construct the _actual_ bytes object
+	// to use.
 	GBytes *file_data;
+
+	// If the image is a memory image that can be generated at load time,
+	// store a pointer to the generator.
+	file_data_loader_fn_t file_data_loader;
 
 	// The file monitor structure is used for inotify-watching of
 	// the files
@@ -82,7 +93,7 @@ typedef struct {
 
 	// File-type specific data, allocated and freed by the file type handlers
 	void *private;
-} file_t;
+};
 // }}}
 // Definition of the built-in file types {{{
 
@@ -158,12 +169,16 @@ extern gdouble current_scale_level;
 GInputStream *image_loader_stream_file(file_t *file, GError **error_pointer);
 
 // Duplicate a file_t; the private section does not get duplicated, only the pointer gets copied
-file_t *image_loader_duplicate_file(file_t *file, gchar *custom_display_name, gchar *custom_sort_name);
+file_t *image_loader_duplicate_file(file_t *file, gchar *custom_file_name, gchar *custom_display_name, gchar *custom_sort_name);
 
 // Add a file to the list of loaded files
 // Should be called at least once in a file_type_alloc_fn_t, with the state being
 // forwarded unaltered.
 BOSNode *load_images_handle_parameter_add_file(load_images_state_t state, file_t *file);
+
+// Find a handler for a given file; useful for handler redirection, see archive
+// file type
+BOSNode *load_images_handle_parameter_find_handler(const char *param, load_images_state_t state, file_t *file, GtkFileFilterInfo *file_filter_info);
 
 // Load all data from an input stream into memory, conveinience function
 GBytes *g_input_stream_read_completely(GInputStream *input_stream, GCancellable *cancellable, GError **error_pointer);

@@ -93,7 +93,8 @@ BOSNode *file_type_wand_alloc(load_images_state_t state, file_t *file) {/*{{{*/
 			g_printerr("Failed to read image %s: %s\n", file->file_name, error_pointer->message);
 			g_clear_error(&error_pointer);
 			G_UNLOCK(magick_wand_global_lock);
-			return NULL;
+			file_free(file);
+			return FALSE_POINTER;
 		}
 		size_t image_size;
 		const gchar *image_data = g_bytes_get_data(image_bytes, &image_size);
@@ -106,16 +107,18 @@ BOSNode *file_type_wand_alloc(load_images_state_t state, file_t *file) {/*{{{*/
 			DestroyMagickWand(wand);
 			buffered_file_unref(file);
 			G_UNLOCK(magick_wand_global_lock);
-			return NULL;
+			file_free(file);
+			return FALSE_POINTER;
 		}
 
 		int n_pages = MagickGetNumberImages(wand);
 		DestroyMagickWand(wand);
 		buffered_file_unref(file);
 
-		BOSNode *first_node = NULL;
+		BOSNode *first_node = FALSE_POINTER;
 		for(int n=0; n<n_pages; n++) {
 			file_t *new_file = image_loader_duplicate_file(file,
+					NULL,
 					n == 0 ? NULL :  g_strdup_printf("%s[%d]", file->display_name, n + 1),
 					g_strdup_printf("%s[%d]", file->sort_name, n + 1));
 			new_file->private = g_slice_new0(file_private_data_wand_t);

@@ -1054,7 +1054,7 @@ GFile *gfile_for_commandline_arg(const char *parameter) {/*{{{*/
 			return g_file_new_for_commandline_arg(parameter);
 		}
 }/*}}}*/
-gboolean load_images_handle_parameter_find_handler(const char *param, load_images_state_t state, file_t *file, GtkFileFilterInfo *file_filter_info) {/*{{{*/
+BOSNode *load_images_handle_parameter_find_handler(const char *param, load_images_state_t state, file_t *file, GtkFileFilterInfo *file_filter_info) {/*{{{*/
 	// Check if one of the file type handlers can handle this file
 	file_type_handler_t *file_type_handler = &file_type_handlers[0];
 	while(file_type_handler->file_types_handled) {
@@ -1063,18 +1063,17 @@ gboolean load_images_handle_parameter_find_handler(const char *param, load_image
 
 			// Handle using this handler
 			if(file_type_handler->alloc_fn != NULL) {
-				file_type_handler->alloc_fn(state, file);
+				return file_type_handler->alloc_fn(state, file);
 			}
 			else {
-				load_images_handle_parameter_add_file(state, file);
+				return load_images_handle_parameter_add_file(state, file);
 			}
-			return TRUE;
 		}
 
 		file_type_handler++;
 	}
 
-	return FALSE;
+	return NULL;
 }/*}}}*/
 gpointer load_images_handle_parameter_thread(char *param) {/*{{{*/
 	// Thread version of load_images_handle_parameter
@@ -1742,13 +1741,23 @@ GInputStream *image_loader_stream_file(file_t *file, GError **error_pointer) {/*
 
 	if((file->file_flags & FILE_FLAGS_MEMORY_IMAGE) != 0) {
 		// Memory view on a memory image
+		GBytes *bytes_source;
+		if(file->file_data_loader) {
+			bytes_source = file->file_data_loader(file, error_pointer);
+		}
+		else {
+			bytes_source = g_bytes_ref(file->file_data);
+		}
+
 		#if GLIB_CHECK_VERSION(2, 34, 0)
-		data = g_memory_input_stream_new_from_bytes(file->file_data);
+			data = g_memory_input_stream_new_from_bytes(bytes_source);
 		#else
-		gsize size = 0;
-		// TODO Is it possible to use this fallback and still refcount file_data?
-		data = g_memory_input_stream_new_from_data(g_bytes_get_data(file->file_data, &size), size, NULL);;
+			gsize size = 0;
+			gpointer *data = g_memdup(g_bytes_get_data(bytes_source, &size), size);
+			data = g_memory_input_stream_new_from_data(data, size, g_free);
 		#endif
+
+		g_bytes_unref(bytes_source);
 	}
 	else {
 		// Classical file or URI
@@ -1770,16 +1779,20 @@ GInputStream *image_loader_stream_file(file_t *file, GError **error_pointer) {/*
 
 	return data;
 }/*}}}*/
-file_t *image_loader_duplicate_file(file_t *file, gchar *custom_display_name, gchar *custom_sort_name) {/*{{{*/
+file_t *image_loader_duplicate_file(file_t *file, gchar *custom_file_name, gchar *custom_display_name, gchar *custom_sort_name) {/*{{{*/
 	file_t *new_file = g_slice_new(file_t);
 	*new_file = *file;
 
-	if((file->file_flags & FILE_FLAGS_MEMORY_IMAGE)) {
+	if(file->file_data) {
 		g_bytes_ref(new_file->file_data);
 	}
-	new_file->file_name = g_strdup(file->file_name);
+	new_file->file_name = custom_file_name ? custom_file_name : g_strdup(file->file_name);
 	new_file->display_name = custom_display_name ? custom_display_name : g_strdup(file->display_name);
 	new_file->sort_name = custom_sort_name ? custom_sort_name : (file->sort_name ? g_strdup(file->sort_name) : NULL);
+
+	new_file->private = NULL;
+	new_file->file_monitor = NULL;
+	new_file->is_loaded = FALSE;
 
 	return new_file;
 }/*}}}*/

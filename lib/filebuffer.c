@@ -65,7 +65,12 @@ GBytes *buffered_file_as_bytes(file_t *file, GInputStream *data, GError **error_
 		GBytes *data_bytes = NULL;
 
 		if((file->file_flags & FILE_FLAGS_MEMORY_IMAGE)) {
-			data_bytes = g_bytes_ref(file->file_data);
+			if(file->file_data_loader) {
+				data_bytes = file->file_data_loader(file, error_pointer);
+			}
+			else {
+				data_bytes = g_bytes_ref(file->file_data);
+			}
 		}
 		else {
 

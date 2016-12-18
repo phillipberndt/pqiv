@@ -72,26 +72,26 @@ BOSNode *file_type_archive_cbx_alloc(load_images_state_t state, file_t *file) {/
 		g_printerr("Failed to load archive %s: %s\n", file->display_name, error_pointer ? error_pointer->message : "Unknown error");
 		g_clear_error(&error_pointer);
 		file_free(file);
-		return NULL;
+		return FALSE_POINTER;
 	}
 
 	struct archive *archive = file_type_archive_cbx_gen_archive(data);
 	if(!archive) {
 		file_free(file);
-		return NULL;
+		return FALSE_POINTER;
 	}
 
-	BOSNode *first_node = NULL;
+	BOSNode *first_node = FALSE_POINTER;
 
 	struct archive_entry *entry;
 	while(archive_read_next_header(archive, &entry) == ARCHIVE_OK) {
 		const gchar *entry_name = archive_entry_pathname(entry);
 
-		file_t *new_file = image_loader_duplicate_file(file, g_strdup_printf("%s#%s", file->display_name, entry_name), g_strdup_printf("%s#%s", file->sort_name, entry_name));
+		file_t *new_file = image_loader_duplicate_file(file, NULL, g_strdup_printf("%s#%s", file->display_name, entry_name), g_strdup_printf("%s#%s", file->sort_name, entry_name));
 		new_file->private = g_slice_new0(file_private_data_archive_t);
 		((file_private_data_archive_t *)new_file->private)->entry_name = g_strdup(entry_name);
 
-		if(!first_node) {
+		if(first_node == FALSE_POINTER) {
 			first_node = load_images_handle_parameter_add_file(state, new_file);
 		}
 		else {
@@ -105,7 +105,7 @@ BOSNode *file_type_archive_cbx_alloc(load_images_state_t state, file_t *file) {/
 	archive_read_free(archive);
 	buffered_file_unref(file);
 	file_free(file);
-	return NULL;
+	return first_node;
 }/*}}}*/
 void file_type_archive_cbx_free(file_t *file) {/*{{{*/
 	if(file->private) {
