@@ -164,6 +164,8 @@
 #define GDK_KEY_y 0x079
 #define GDK_KEY_z 0x07a
 
+#define GDK_KEY_period 0x02e
+
 #endif // }}}
 
 // Global variables and function signatures {{{
