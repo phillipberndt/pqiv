@@ -36,9 +36,14 @@ LIBS_spectre=libspectre
 LIBS_wand=MagickWand
 LIBS_libav=libavformat libavcodec libswscale libavutil
 LIBS_archive_cbx=libarchive gdk-pixbuf-2.0 >= 2.2
+LIBS_archive=libarchive gdk-pixbuf-2.0 >= 2.2
 
 # Disable the automated compilation of the libav backend
 DISABLE_AUTOMATED_BUILD_libav=yes
+
+# Disable the automated compilation of the archive backend
+# (As long as it's in beta)
+DISABLE_AUTOMATED_BUILD_archive=yes
 
 # This might be required if you use mingw, and is required as of
 # Aug 2014 for mxe, but IMHO shouldn't be required / is a bug in

@@ -15,19 +15,12 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *
- * libarchive backend
+ * libarchive backend for comic books
  *
- * TODO:
- * This currently forceably uses gdkpixbuf to draw the contents. Since the
- * major format that this supports is cb*, which should only contain PNG/JPG.
- * this isn't much of an issue, but it would be nice to dynamically use other
- * backends. This currently does not work, at least not for backends that can
- * handle multi-page documents, because they expect to access image data by
- * either access to a memory region (which this backend can of course offer,
- * but keeping all archives as a whole in memory is not really a good solution)
- * or as something that can be accessed by an URI/filename. I'd have to
- * refactor this to support arbitrary callbacks, or finally bring myself to
- * use GIOs abstractions..
+ * This is a stripped down variant of the more advanced archive backend
+ * which can only handle *.cb? files, archives for comic book storage.
+ * Such files are guaranteed to contain _only_ jpg/png files, which allows
+ * to handle them directly using a gdkpixbuf.
  *
  */
 
