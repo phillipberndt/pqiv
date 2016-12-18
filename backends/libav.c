@@ -22,6 +22,7 @@
    http://hasanaga.info/tag/ffmpeg-libavcodec-avformat_open_input-example/ */
 
 #include "../pqiv.h"
+#include "../lib/filebuffer.h"
 #include <assert.h>
 #include <libavformat/avformat.h>
 #include <libavcodec/avcodec.h>
@@ -53,7 +54,11 @@ static const char * const ignore_extensions[] = {
 };
 
 typedef struct {
+	GBytes *file_data;
+	gsize file_data_pos;
+
 	AVFormatContext *avcontext;
+	AVIOContext *aviocontext;
 	AVCodecContext *cocontext;
 	int video_stream_id;
 
@@ -65,6 +70,60 @@ typedef struct {
 	uint8_t *buffer;
 } file_private_data_libav_t;
 
+static int file_type_libav_memory_access_reader(void *opaque, uint8_t *buf, int buf_size) {/*{{{*/
+	file_private_data_libav_t *private = opaque;
+
+	gsize data_size = 0;
+	gconstpointer data = g_bytes_get_data(private->file_data, &data_size);
+
+	if(buf_size < 0) {
+		return -1;
+	}
+
+	if((unsigned)buf_size > data_size - private->file_data_pos) {
+		buf_size = data_size - private->file_data_pos;
+	}
+
+	if(private->file_data_pos < data_size) {
+		memcpy(buf, (const char*)data + private->file_data_pos, buf_size);
+		private->file_data_pos += buf_size;
+	}
+
+	return buf_size;
+}/*}}}*/
+
+static int64_t file_type_libav_memory_access_seeker(void *opaque, int64_t offset, int whence) {/*{{{*/
+	file_private_data_libav_t *private = opaque;
+	whence &= (SEEK_CUR | SEEK_SET | SEEK_END);
+
+	gsize data_size = 0;
+	g_bytes_get_data(private->file_data, &data_size);
+
+	switch(whence) {
+		case SEEK_CUR:
+			if(0 <= (ssize_t)private->file_data_pos + offset && private->file_data_pos + offset < data_size) {
+				private->file_data_pos += offset;
+			}
+			return 0;
+			break;
+
+		case SEEK_SET:
+			if(offset >= 0 && offset < (ssize_t)data_size) {
+				private->file_data_pos = offset;
+			}
+			return 0;
+			break;
+
+		case SEEK_END:
+			if(offset <= 0) {
+				private->file_data_pos = data_size + offset;
+			}
+			break;
+	}
+
+	return -1;
+}/*}}}*/
+
 BOSNode *file_type_libav_alloc(load_images_state_t state, file_t *file) {/*{{{*/
 	file->private = g_slice_new0(file_private_data_libav_t);
 	return load_images_handle_parameter_add_file(state, file);
@@ -74,6 +133,13 @@ void file_type_libav_free(file_t *file) {/*{{{*/
 }/*}}}*/
 void file_type_libav_unload(file_t *file) {/*{{{*/
 	file_private_data_libav_t *private = (file_private_data_libav_t *)file->private;
+
+	if(private->file_data) {
+		g_bytes_unref(private->file_data);
+		buffered_file_unref(file);
+		private->file_data = NULL;
+		private->file_data_pos = 0;
+	}
 
 	if(private->pkt_valid) {
 		av_packet_unref(&(private->pkt));
@@ -94,6 +160,12 @@ void file_type_libav_unload(file_t *file) {/*{{{*/
 		avformat_close_input(&(private->avcontext));
 	}
 
+	if(private->aviocontext) {
+		av_freep(&private->aviocontext->buffer);
+		av_freep(&private->aviocontext);
+		private->aviocontext = NULL;
+	}
+
 	if(private->buffer) {
 		g_free(private->buffer);
 		private->buffer = NULL;
@@ -109,9 +181,25 @@ void file_type_libav_load(file_t *file, GInputStream *data, GError **error_point
 		file_type_libav_unload(file);
 	}
 
-	if(avformat_open_input(&(private->avcontext), file->file_name, NULL, NULL) < 0) {
-		*error_pointer = g_error_new(g_quark_from_static_string("pqiv-libav-error"), 1, "Failed to load image using libav.");
-		return;
+	if(file->file_flags & FILE_FLAGS_MEMORY_IMAGE) {
+		if(!private->file_data) {
+			private->file_data = buffered_file_as_bytes(file, data, error_pointer);
+		}
+		private->file_data_pos = 0;
+
+		private->avcontext = avformat_alloc_context();
+		private->aviocontext = avio_alloc_context(av_malloc(4096), 4096, 0, private, &file_type_libav_memory_access_reader, NULL, &file_type_libav_memory_access_seeker);
+		private->avcontext->pb = private->aviocontext;
+		if(avformat_open_input(&(private->avcontext), NULL, NULL, NULL) < 0) {
+			*error_pointer = g_error_new(g_quark_from_static_string("pqiv-libav-error"), 1, "Failed to load image using libav.");
+			return;
+		}
+	}
+	else {
+		if(avformat_open_input(&(private->avcontext), file->file_name, NULL, NULL) < 0) {
+			*error_pointer = g_error_new(g_quark_from_static_string("pqiv-libav-error"), 1, "Failed to load image using libav.");
+			return;
+		}
 	}
 
 	if(avformat_find_stream_info(private->avcontext, NULL) < 0) {
@@ -324,6 +412,9 @@ void file_type_libav_initializer(file_type_handler_t *info) {/*{{{*/
 			g_strfreev(fmts);
 		}
 	}
+
+	// Register as general handler for video/* MIME types
+	gtk_file_filter_add_mime_type(info->file_types_handled, "video/*");
 
 	// Assign the handlers
 	info->alloc_fn                 =  file_type_libav_alloc;
