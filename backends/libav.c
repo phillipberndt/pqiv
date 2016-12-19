@@ -35,7 +35,6 @@
 #endif
 
 #if LIBAVCODEC_VERSION_INT < AV_VERSION_INT(57, 0, 0)
-#define AV_COMPAT_USE_PICTURE
 #define av_packet_unref av_free_packet
 #endif
 
@@ -68,6 +67,10 @@ typedef struct {
 	AVFrame *frame;
 	AVFrame *rgb_frame;
 	uint8_t *buffer;
+
+	guint pixel_width;
+	guint pixel_height;
+	AVRational sample_aspect_ratio;
 } file_private_data_libav_t;
 
 static int file_type_libav_memory_access_reader(void *opaque, uint8_t *buf, int buf_size) {/*{{{*/
@@ -252,23 +255,33 @@ void file_type_libav_load(file_t *file, GInputStream *data, GError **error_point
 	private->frame = av_frame_alloc();
 	private->rgb_frame = av_frame_alloc();
 
-#ifdef AV_COMPAT_CODEC_DEPRECATED
-	size_t num_bytes = av_image_get_buffer_size(AV_PIX_FMT_RGB32, private->avcontext->streams[private->video_stream_id]->codecpar->width, private->avcontext->streams[private->video_stream_id]->codecpar->height, 1);
-#elif defined(AV_COMPAT_USE_PICTURE)
-	size_t num_bytes = avpicture_get_size(AV_PIX_FMT_RGB32, private->avcontext->streams[private->video_stream_id]->codec->width, private->avcontext->streams[private->video_stream_id]->codec->height);
-#else
-	size_t num_bytes = av_image_get_buffer_size(AV_PIX_FMT_RGB32, private->avcontext->streams[private->video_stream_id]->codec->width, private->avcontext->streams[private->video_stream_id]->codec->height, 1);
-#endif
-	private->buffer = (uint8_t *)g_malloc(num_bytes * sizeof(uint8_t));
-
 	file->file_flags |= FILE_FLAGS_ANIMATION;
 #ifdef AV_COMPAT_CODEC_DEPRECATED
-	file->width = private->avcontext->streams[private->video_stream_id]->codecpar->width;
-	file->height = private->avcontext->streams[private->video_stream_id]->codecpar->height;
+	private->pixel_width = private->avcontext->streams[private->video_stream_id]->codecpar->width;
+	private->pixel_height = private->avcontext->streams[private->video_stream_id]->codecpar->height;
+	private->sample_aspect_ratio = private->avcontext->streams[private->video_stream_id]->codecpar->sample_aspect_ratio;
 #else
-	file->width = private->avcontext->streams[private->video_stream_id]->codec->width;
-	file->height = private->avcontext->streams[private->video_stream_id]->codec->height;
+	private->pixel_width = private->avcontext->streams[private->video_stream_id]->codec->width;
+	private->pixel_height = private->avcontext->streams[private->video_stream_id]->codec->height;
+	private->sample_aspect_ratio = private->avcontext->streams[private->video_stream_id]->codec->sample_aspect_ratio;
 #endif
+	if(private->sample_aspect_ratio.num == 0 || private->sample_aspect_ratio.den == 0) {
+		private->sample_aspect_ratio.num = private->sample_aspect_ratio.den = 1;
+		file->width  = private->pixel_width;
+		file->height = private->pixel_height;
+	}
+	else if(private->sample_aspect_ratio.num > private->sample_aspect_ratio.den) {
+		file->width  = private->sample_aspect_ratio.num * private->pixel_width / private->sample_aspect_ratio.den;
+		file->height = private->pixel_height;
+	}
+	else {
+		file->width  = private->pixel_width;
+		file->height = private->sample_aspect_ratio.den * private->pixel_height / private->sample_aspect_ratio.num;
+	}
+
+	size_t num_bytes = av_image_get_buffer_size(AV_PIX_FMT_RGB32, file->width, file->height, 16);
+	private->buffer = (uint8_t *)g_malloc(num_bytes * sizeof(uint8_t));
+
 	if(file->width == 0 || file->height == 0) {
 		file_type_libav_unload(file);
 		file->is_loaded = FALSE;
@@ -339,28 +352,23 @@ void file_type_libav_draw(file_t *file, cairo_t *cr) {/*{{{*/
 		AVFrame *rgb_frame = private->rgb_frame;
 
 #ifdef AV_COMPAT_CODEC_DEPRECATED
-		const unsigned height = private->avcontext->streams[private->video_stream_id]->codecpar->height;
-		const unsigned width = private->avcontext->streams[private->video_stream_id]->codecpar->width;
 		const int pix_fmt = private->avcontext->streams[private->video_stream_id]->codecpar->format;
 #else
-		const unsigned height = private->avcontext->streams[private->video_stream_id]->codec->height;
-		const unsigned width = private->avcontext->streams[private->video_stream_id]->codec->width;
 		const int pix_fmt = private->avcontext->streams[private->video_stream_id]->codec->pix_fmt;
 #endif
 
 		// Prepare buffer for RGB32 version
 		uint8_t *buffer = private->buffer;
-#ifdef AV_COMPAT_USE_PICTURE
-		avpicture_fill((AVPicture *)rgb_frame, buffer, AV_PIX_FMT_RGB32, width, height);
-#else
-		av_image_fill_arrays(rgb_frame->data, rgb_frame->linesize, buffer, AV_PIX_FMT_RGB32, width, height, 1);
-#endif
+		av_image_fill_arrays(rgb_frame->data, rgb_frame->linesize, buffer, AV_PIX_FMT_RGB32, file->width, file->height, 16);
 
-		// Convert to RGB32
-		struct SwsContext *img_convert_ctx = sws_getCachedContext(NULL, width, height, pix_fmt, width,
-				height, AV_PIX_FMT_RGB32, SWS_BICUBIC, NULL, NULL, NULL);
-		sws_scale(img_convert_ctx, (const uint8_t * const*)frame->data, frame->linesize, 0, height, rgb_frame->data, rgb_frame->linesize);
-		sws_freeContext(img_convert_ctx);
+		// If a valid frame is available..
+		if(frame->data[0]) {
+			// ..convert to RGB32
+			struct SwsContext *img_convert_ctx = sws_getCachedContext(NULL, private->pixel_width, private->pixel_height, pix_fmt, file->width,
+					file->height, AV_PIX_FMT_RGB32, SWS_BICUBIC, NULL, NULL, NULL);
+			sws_scale(img_convert_ctx, (const uint8_t * const*)frame->data, frame->linesize, 0, private->pixel_height, rgb_frame->data, rgb_frame->linesize);
+			sws_freeContext(img_convert_ctx);
+		}
 
 		// Draw to a temporary image surface and then to cr
 		cairo_surface_t *image_surface = cairo_image_surface_create_for_data(rgb_frame->data[0], CAIRO_FORMAT_ARGB32, file->width, file->height, rgb_frame->linesize[0]);
