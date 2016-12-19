@@ -530,8 +530,9 @@ struct key_binding {
 GHashTable *key_bindings;
 struct {
 	key_binding_t *key_binding;
+	BOSNode *associated_image;
 	gint timeout_id;
-} active_key_binding = { NULL, -1 };
+} active_key_binding = { NULL, NULL, -1 };
 #endif
 
 const struct pqiv_action_descriptor {
@@ -2127,6 +2128,12 @@ gboolean absolute_image_movement(BOSNode *ref) {/*{{{*/
 	}
 	current_file_node = bostree_node_weak_ref(node);
 	D_UNLOCK(file_tree);
+
+#ifndef CONFIGURED_WITHOUT_ACTIONS
+	// Update the active key binding such that redraws of the old image do not
+	// continue an active action chain anymore
+	active_key_binding.associated_image = current_file_node;
+#endif
 
 #ifndef CONFIGURED_WITHOUT_INFO_TEXT
 	// If the new image has not been loaded yet, prepare to display an information message
@@ -4253,7 +4260,7 @@ gboolean handle_input_event_timeout_callback(gpointer user_data) {/*{{{*/
 #endif
 static void continue_active_input_event_action_chain() {/*{{{*/
 #ifndef CONFIGURED_WITHOUT_ACTIONS
-	if(active_key_binding.timeout_id == -1 && active_key_binding.key_binding) {
+	if(active_key_binding.timeout_id == -1 && active_key_binding.key_binding && (active_key_binding.associated_image == current_file_node || !active_key_binding.associated_image)) {
 		key_binding_t *binding = active_key_binding.key_binding;
 		active_key_binding.key_binding = binding->next_action;
 		action(binding->action, binding->parameter);
@@ -4329,10 +4336,12 @@ void handle_input_event(guint key_binding_value) {/*{{{*/
 	if(binding) {
 		if(binding->next_key_bindings) {
 			active_key_binding.key_binding = binding;
+			active_key_binding.associated_image = current_file_node;
 			active_key_binding.timeout_id = gdk_threads_add_timeout(400, handle_input_event_timeout_callback, NULL);
 		}
 		else {
 			active_key_binding.key_binding = binding->next_action;
+			active_key_binding.associated_image = current_file_node;
 			action(binding->action, binding->parameter);
 		}
 	}
