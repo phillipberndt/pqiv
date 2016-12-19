@@ -289,12 +289,15 @@ Add a file or directory.
 .TP
 .BR animation_step(INT)
 Stop an animation, and advance by the given number of frames plus one.
+(This is by default bound to the \fIPeriod\fR key.)
 .TP
 .BR animation_continue()
 Continue a stopped animation.
+(This is by default bound to \fIControl+Period\fR.)
 .TP
 .BR animation_set_speed_relative(DOUBLE)
 Scale the animation's display speed.
+(This is by default bound to \fIAlt+Plus/Minus\fR.)
 .TP
 .BR animation_set_speed_absolute(DOUBLE)
 Set the animation's display speed scale level to an absolute value. 1.0 is the
@@ -317,6 +320,7 @@ Flip the current image vertically.
 .TP
 .BR goto_directory_relative(INT)
 Jump to the \fIn\fR'th next or previous directory.
+(This is by default bound to \fIControl+(Back-)Space\fR.)
 .TP
 .BR goto_file_byindex(INT)
 Jump to a file given by its number.
@@ -407,6 +411,7 @@ Set the slideshow interval to the parameter value, in seconds.
 .BR set_slideshow_interval_relative(DOUBLE)
 Adjust the slideshow interval additively by the parameter value. See also
 \fB\-\-slideshow\-interval\fR.
+(This is by default bound to \fIControl+Plus/Minus\fR.)
 .TP
 .BR set_status_output(INT)
 Set this to non-zero to make pqiv print status information for scripts to
@@ -474,7 +479,8 @@ Zoom.
 .IP "Arrow keys"
 Move the image.
 .PP
-This list omitted some advanced default bindings. Run `\fBpqiv
+This list omitted some advanced default bindings. The descriptions of the
+actions above is annotated with those bindings. You can also run `\fBpqiv
 \-\-show\-bindings\fR' to display a complete list.
 .\"
 .SH CONFIGURATION FILE
