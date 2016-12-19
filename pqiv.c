@@ -197,6 +197,7 @@ G_LOCK_DEFINE_STATIC(file_tree);
 BOSTree *file_tree;
 BOSTree *directory_tree;
 BOSNode *current_file_node = NULL;
+BOSNode *earlier_file_node = NULL;
 BOSNode *image_loader_thread_currently_loading = NULL;
 gboolean file_tree_valid = FALSE;
 
@@ -475,6 +476,7 @@ static const struct default_key_bindings_struct {
 	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_t                ), ACTION_TOGGLE_SCALE_MODE               , { 0   }},
 	{ KEY_BINDING_VALUE(0 , GDK_CONTROL_MASK , GDK_KEY_r                ), ACTION_TOGGLE_SHUFFLE_MODE             , { 0   }},
 	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_r                ), ACTION_RELOAD                          , { 0   }},
+	{ KEY_BINDING_VALUE(0 , GDK_CONTROL_MASK , GDK_KEY_r                ), ACTION_GOTO_EARLIER_FILE               , { 0   }},
 	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_0                ), ACTION_RESET_SCALE_LEVEL               , { 0   }},
 	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_f                ), ACTION_TOGGLE_FULLSCREEN               , { 0   }},
 	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_h                ), ACTION_FLIP_HORIZONTALLY               , { 0   }},
@@ -583,6 +585,7 @@ const struct pqiv_action_descriptor {
 	{ "animation_continue", PARAMETER_NONE },
 	{ "animation_set_speed_absolute", PARAMETER_DOUBLE },
 	{ "animation_set_speed_relative", PARAMETER_DOUBLE },
+	{ "goto_earlier_file", PARAMETER_NONE },
 	{ NULL, 0 }
 };
 /* }}} */
@@ -2122,17 +2125,24 @@ gboolean absolute_image_movement(BOSNode *ref) {/*{{{*/
 	// No need to continue the other pending loads
 	abort_pending_image_loads(node);
 
+#ifndef CONFIGURED_WITHOUT_ACTIONS
 	// Set the new image as current
+	if(earlier_file_node != NULL) {
+		bostree_node_weak_unref(file_tree, earlier_file_node);
+	}
+	earlier_file_node = current_file_node;
+	current_file_node = bostree_node_weak_ref(node);
+	D_UNLOCK(file_tree);
+
+	// Update the active key binding such that redraws of the old image do not
+	// continue an active action chain anymore
+	active_key_binding.associated_image = current_file_node;
+#else
 	if(current_file_node != NULL) {
 		bostree_node_weak_unref(file_tree, current_file_node);
 	}
 	current_file_node = bostree_node_weak_ref(node);
 	D_UNLOCK(file_tree);
-
-#ifndef CONFIGURED_WITHOUT_ACTIONS
-	// Update the active key binding such that redraws of the old image do not
-	// continue an active action chain anymore
-	active_key_binding.associated_image = current_file_node;
 #endif
 
 #ifndef CONFIGURED_WITHOUT_INFO_TEXT
@@ -4184,6 +4194,12 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 				gchar info_text[255];
 				snprintf(info_text, 255, "Animation speed adjusted to %03.1f%%", current_image_animation_speed_scale * 100.);
 				update_info_text(info_text);
+			}
+			break;
+
+		case ACTION_GOTO_EARLIER_FILE:
+			if(earlier_file_node != NULL) {
+				absolute_image_movement(bostree_node_weak_ref(earlier_file_node));
 			}
 			break;
 #endif

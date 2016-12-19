@@ -142,6 +142,8 @@ pqiv 2.7 (wip)
  * Added a general archive backend for reading images from archives
    (this is experimental and won't be enabled automatically until at least 2.7
     is released! Compile with --with-archive to enable.)
+ * Added a new action `goto_earlier_file()` to return to the image that was
+   shown before the current one
 
 pqiv 2.6
  * Added --enforce-window-aspect-ratio
