@@ -335,6 +335,8 @@ gboolean option_addl_from_stdin = FALSE;
 gboolean option_recreate_window = FALSE;
 gboolean option_enforce_window_aspect_ratio = FALSE;
 #ifndef CONFIGURED_WITHOUT_ACTIONS
+gboolean option_cursor_auto_hide = TRUE;
+int cursor_auto_hide_timer_id = 0;
 gboolean option_actions_from_stdin = FALSE;
 gboolean option_status_output = FALSE;
 #else
@@ -586,6 +588,7 @@ const struct pqiv_action_descriptor {
 	{ "animation_set_speed_absolute", PARAMETER_DOUBLE },
 	{ "animation_set_speed_relative", PARAMETER_DOUBLE },
 	{ "goto_earlier_file", PARAMETER_NONE },
+	{ "set_cursor_auto_hide", PARAMETER_INT },
 	{ NULL, 0 }
 };
 /* }}} */
@@ -642,6 +645,9 @@ void handle_input_event(guint key_binding_value);
 static void continue_active_input_event_action_chain();
 static void block_active_input_event_action_chain();
 static void unblock_active_input_event_action_chain();
+#ifndef CONFIGURED_WITHOUT_ACTIONS
+gboolean window_auto_hide_cursor_callback(gpointer user_data);
+#endif
 // }}}
 /* Command line handling, creation of the image list {{{ */
 #ifndef CONFIGURED_WITHOUT_ACTIONS /* option --without-actions: Do not include support for configurable key/mouse bindings and actions */
@@ -4202,6 +4208,24 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 				absolute_image_movement(bostree_node_weak_ref(earlier_file_node));
 			}
 			break;
+
+		case ACTION_SET_CURSOR_AUTO_HIDE:
+			option_cursor_auto_hide = !!parameter.pint;
+
+			if(option_cursor_auto_hide) {
+				gtk_widget_add_events(GTK_WIDGET(main_window), GDK_POINTER_MOTION_MASK);
+			}
+			else {
+				gtk_widget_add_events(GTK_WIDGET(main_window), gtk_widget_get_events(GTK_WIDGET(main_window)) & ~GDK_POINTER_MOTION_MASK);
+			}
+
+			window_show_cursor();
+			if(cursor_auto_hide_timer_id) {
+				g_source_remove(cursor_auto_hide_timer_id);
+			}
+			cursor_auto_hide_timer_id = gdk_threads_add_timeout(1000, window_auto_hide_cursor_callback, NULL);
+			break;
+
 #endif
 		default:
 			break;
@@ -4391,7 +4415,24 @@ void window_center_mouse() {/*{{{*/
 
 	#endif
 }/*}}}*/
+#ifndef CONFIGURED_WITHOUT_ACTIONS
+gboolean window_auto_hide_cursor_callback(gpointer user_data) {/*{{{*/
+	cursor_auto_hide_timer_id = 0;
+	window_hide_cursor();
+	return FALSE;
+}/*}}}*/
+#endif
 gboolean window_motion_notify_callback(GtkWidget *widget, GdkEventMotion *event, gpointer user_data) {/*{{{*/
+#ifndef CONFIGURED_WITHOUT_ACTIONS
+	if(option_cursor_auto_hide) {
+		window_show_cursor();
+		if(cursor_auto_hide_timer_id) {
+			g_source_remove(cursor_auto_hide_timer_id);
+		}
+		cursor_auto_hide_timer_id = gdk_threads_add_timeout(1000, window_auto_hide_cursor_callback, NULL);
+	}
+#endif
+
 	if(!main_window_in_fullscreen) {
 		return FALSE;
 	}

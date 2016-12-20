@@ -380,6 +380,12 @@ with \fBbind_key(STRING)\fR to set up cyclic key bindings.
 .BR set_cursor_visibility(INT)
 Set the visibility of the cursor; 0 disables, other values enable visibility.
 .TP
+.BR set_cursor_auto_hide(INT)
+Automatically show the cursor when the pointer moves, and hide it after one
+second of inactivity. Set to 0 to disable this feature or any other value to
+enable it. Note that this enables pointer movement events, which might slow
+down pqiv if it is used over slow network links.
+.TP
 .BR set_interpolation_quality(INT)
 Set the interpolation quality for resized images. Options are: 0 to cycle
 between the different modes, 1 for an automated choice based on the image size

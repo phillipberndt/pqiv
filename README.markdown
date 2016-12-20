@@ -144,6 +144,8 @@ pqiv 2.7 (wip)
     is released! Compile with --with-archive to enable.)
  * Added a new action `goto_earlier_file()` to return to the image that was
    shown before the current one
+ * Added a new action `set_cursor_auto_hide()` to automatically hide the pointer
+   when it is not moved for some time
 
 pqiv 2.6
  * Added --enforce-window-aspect-ratio
