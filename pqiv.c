@@ -5238,6 +5238,9 @@ gboolean perform_string_action(const gchar *string_action) {/*{{{*/
 	return TRUE;
 }/*}}}*/
 gboolean read_commands_thread_helper(gpointer command) {/*{{{*/
+	if(!main_window_visible) {
+		return TRUE;
+	}
 	perform_string_action((gchar *)command);
 	g_free(command);
 	return FALSE;
