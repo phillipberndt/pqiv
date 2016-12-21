@@ -908,6 +908,15 @@ void parse_configuration_file_callback(char *section, char *key, config_parser_v
 		config_parser_strip_comments(value->chrpval);
 		parse_key_bindings(value->chrpval);
 	}
+	else if(strcmp(section, "actions") == 0 && !key) {
+		config_parser_strip_comments(value->chrpval);
+
+		gchar **actions = g_strsplit(value->chrpval, ";", 0);
+		for(size_t i=0; actions[i]; i++) {
+			gdk_threads_add_idle(read_commands_thread_helper, actions[i]);
+		}
+		g_free(actions);
+	}
 #endif
 }
 void parse_configuration_file() {/*{{{*/
