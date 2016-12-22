@@ -144,7 +144,7 @@ CFLAGS_REAL=-std=gnu99 $(PQIV_WARNING_FLAGS) $(PQIV_VERSION_FLAG) $(CFLAGS) $(CF
 LDLIBS_REAL=$(shell $(PKG_CONFIG) --libs "$(LIBS)") $(LDLIBS)
 LDFLAGS_REAL=$(LDFLAGS) $(LDFLAGS_RPATH)
 
-all: pqiv$(EXECUTABLE_EXTENSION) $(SHARED_OBJECTS)
+all: pqiv$(EXECUTABLE_EXTENSION) pqiv.desktop $(SHARED_OBJECTS)
 .PHONY: get_libs get_available_backends _build_variables clean distclean install uninstall all
 .SECONDARY:
 
@@ -176,11 +176,29 @@ $(BACKENDS_INITIALIZER).c:
 		echo "}" \
 	) > $@
 
+pqiv.desktop: $(HEADERS)
+	$(SILENT_GEN) ( \
+		echo "[Desktop Entry]"; \
+		echo "Version=1.0"; \
+		echo "Type=Application"; \
+		echo "Comment=Simple image viewer"; \
+		echo "Name=pqiv"; \
+		echo "NoDisplay=true"; \
+		echo "Icon=emblem-photos"; \
+		echo "TryExec=$(PREFIX)/bin/pqiv"; \
+		echo "Exec=$(PREFIX)/bin/pqiv %F"; \
+		echo "MimeType=$(shell cat $(foreach BACKEND, $(sort $(BACKENDS)), backends/$(BACKEND).mime) | sort | uniq | awk 'ORS=";"')"; \
+		echo "Categories=Graphics;"; \
+		echo "Keywords=Viewer;" \
+	) > $@
+
 install: all
 	mkdir -p $(DESTDIR)$(PREFIX)/bin
 	install pqiv$(EXECUTABLE_EXTENSION) $(DESTDIR)$(PREFIX)/bin/pqiv$(EXECUTABLE_EXTENSION)
 	-mkdir -p $(DESTDIR)$(MANDIR)/man1
 	-install --mode=644 pqiv.1 $(DESTDIR)$(MANDIR)/man1/pqiv.1
+	-mkdir -p $(DESTDIR)$(PREFIX)/share/applications
+	-install --mode=644 pqiv.desktop $(DESTDIR)$(PREFIX)/share/applications/pqiv.desktop
 ifeq ($(BACKENDS_BUILD), shared)
 	mkdir -p $(DESTDIR)$(PREFIX)/lib/pqiv
 	install $(SHARED_OBJECTS) $(DESTDIR)$(PREFIX)/lib/pqiv/
@@ -189,13 +207,14 @@ endif
 uninstall:
 	rm -f $(DESTDIR)$(PREFIX)/bin/pqiv$(EXECUTABLE_EXTENSION)
 	rm -f $(DESTDIR)$(MANDIR)/man1/pqiv.1
+	rm -f $(DESTDIR)$(PREFIX)/share/applications/pqiv.desktop
 ifeq ($(BACKENDS_BUILD), shared)
 	rm -f $(foreach SO_FILE, $(SHARED_OBJECTS), $(DESTDIR)$(PREFIX)/lib/pqiv/$(notdir $(SO_FILE)))
 	rmdir $(DESTDIR)$(PREFIX)/lib/pqiv
 endif
 
 clean:
-	rm -f pqiv$(EXECUTABLE_EXTENSION) *.o backends/*.o backends/*.so lib/*.o backends/initializer-*.c
+	rm -f pqiv$(EXECUTABLE_EXTENSION) *.o backends/*.o backends/*.so lib/*.o backends/initializer-*.c pqiv.desktop
 
 distclean: clean
 	rm -f config.make
