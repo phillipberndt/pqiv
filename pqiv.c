@@ -3560,6 +3560,11 @@ gboolean window_draw_callback(GtkWidget *widget, cairo_t *cr_arg, gpointer user_
 	}
 #endif
 
+	// TODO Maybe this will need to be changed someday; the GDK Wayland backend
+	// currently does not draw window borders if the draw callback reports
+	// success. Anyway, it also draws the borders at the wrong place (well
+	// within the window rather than around it), so I'll leave things as they
+	// are for the time being.
 	return TRUE;
 }/*}}}*/
 #if GTK_MAJOR_VERSION < 3
@@ -4627,7 +4632,9 @@ void window_screen_changed_callback(GtkWidget *widget, GdkScreen *previous_scree
 	GdkWindow *window = gtk_widget_get_window(GTK_WIDGET(main_window));
 
 	#ifndef _WIN32
-		g_signal_connect(screen, "window-manager-changed", G_CALLBACK(window_screen_window_manager_changed_callback), screen);
+		if(GDK_IS_X11_DISPLAY(gdk_screen_get_display(screen))) {
+			g_signal_connect(screen, "window-manager-changed", G_CALLBACK(window_screen_window_manager_changed_callback), screen);
+		}
 	#endif
 	window_screen_window_manager_changed_callback(screen);
 
@@ -4713,6 +4720,9 @@ void create_window() { /*{{{*/
 	#if GTK_CHECK_VERSION(3, 22, 0)
 		GdkDisplay *display = gdk_screen_get_display(screen);
 		GdkMonitor *monitor = gdk_display_get_primary_monitor(display);
+		if(!monitor) {
+			monitor = gdk_display_get_monitor(display, 0);
+		}
 		gdk_monitor_get_geometry(monitor, &screen_geometry);
 	#else
 		guint monitor = gdk_screen_get_primary_monitor(screen);
