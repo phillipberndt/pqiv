@@ -147,6 +147,7 @@ pqiv 2.7 (wip)
  * Added a new action `set_cursor_auto_hide()` to automatically hide the pointer
    when it is not moved for some time
  * Support an `actions` section in the configuration file for default actions
+ * Create and install a desktop file for pqiv during install
 
 pqiv 2.6
  * Added --enforce-window-aspect-ratio
