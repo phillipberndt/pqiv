@@ -386,6 +386,11 @@ second of inactivity. Set to 0 to disable this feature or any other value to
 enable it. Note that this enables pointer movement events, which might slow
 down pqiv if it is used over slow network links.
 .TP
+.BR set_fade_duration(DOUBLE)
+Set the duration of fades between images. In contrast to the command line
+option, this action also implicitly enables fading. Set the duration to zero to
+disable the feature.
+.TP
 .BR set_interpolation_quality(INT)
 Set the interpolation quality for resized images. Options are: 0 to cycle
 between the different modes, 1 for an automated choice based on the image size

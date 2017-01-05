@@ -589,6 +589,7 @@ const struct pqiv_action_descriptor {
 	{ "animation_set_speed_relative", PARAMETER_DOUBLE },
 	{ "goto_earlier_file", PARAMETER_NONE },
 	{ "set_cursor_auto_hide", PARAMETER_INT },
+	{ "set_fade_duration", PARAMETER_DOUBLE },
 	{ NULL, 0 }
 };
 /* }}} */
@@ -4240,6 +4241,11 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 			cursor_auto_hide_timer_id = gdk_threads_add_timeout(1000, window_auto_hide_cursor_callback, NULL);
 			break;
 
+		case ACTION_SET_FADE_DURATION:
+			option_fading_duration = parameter.pdouble;
+			option_fading = fabs(option_fading_duration) <= 0;
+			break;
+
 #endif
 		default:
 			break;
@@ -5399,6 +5405,10 @@ int main(int argc, char *argv[]) {
 		current_scale_level = option_initial_scale;
 	}
 	cairo_matrix_init_identity(&current_transformation);
+
+	if(option_fading_duration > option_slideshow_interval) {
+		g_printerr("Warning: Fade durations larger than the slideslow interval won't work as expected.\n");
+	}
 
 #ifndef CONFIGURED_WITHOUT_ACTIONS
 	if(option_actions_from_stdin) {
