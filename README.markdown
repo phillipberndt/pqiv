@@ -148,6 +148,7 @@ pqiv 2.7 (wip)
    when it is not moved for some time
  * Support an `actions` section in the configuration file for default actions
  * Create and install a desktop file for pqiv during install
+ * Disable GTK's transparent scaling on HiDpi monitors
 
 pqiv 2.6
  * Added --enforce-window-aspect-ratio

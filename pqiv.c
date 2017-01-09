@@ -241,6 +241,7 @@ gint main_window_width = 10;
 gint main_window_height = 10;
 gboolean main_window_in_fullscreen = FALSE;
 GdkRectangle screen_geometry = { 0, 0, 0, 0 };
+gint screen_scale_factor = 1;
 gboolean wm_supports_fullscreen = TRUE;
 
 // If a WM indicates no moveresize support that's a hint it's a tiling WM
@@ -1557,7 +1558,7 @@ void image_file_updated_callback(GFileMonitor *monitor, GFile *file, GFile *othe
 	D_UNLOCK(file_tree);
 }/*}}}*/
 gboolean window_move_helper_callback(gpointer user_data) {/*{{{*/
-	gtk_window_move(main_window, option_window_position.x, option_window_position.y);
+	gtk_window_move(main_window, option_window_position.x / screen_scale_factor, option_window_position.y / screen_scale_factor);
 	option_window_position.x = -1;
 	return FALSE;
 }/*}}}*/
@@ -1584,7 +1585,7 @@ gboolean main_window_resize_callback(gpointer user_data) {/*{{{*/
 
 	// Resize if this has not worked before, but accept a slight deviation (might be round-off error)
 	if(main_window_width >= 0 && abs(main_window_width - new_window_width) + abs(main_window_height - new_window_height) > 1) {
-		gtk_window_resize(main_window, new_window_width, new_window_height);
+		gtk_window_resize(main_window, new_window_width / screen_scale_factor, new_window_height / screen_scale_factor);
 	}
 
 	return FALSE;
@@ -1634,7 +1635,7 @@ void main_window_adjust_for_image() {/*{{{*/
 			gtk_window_set_position(main_window, GTK_WIN_POS_CENTER_ALWAYS);
 		}
 		if(!main_window_visible) {
-			gtk_window_set_default_size(main_window, new_window_width, new_window_height);
+			gtk_window_set_default_size(main_window, new_window_width / screen_scale_factor, new_window_height / screen_scale_factor);
 			if(option_enforce_window_aspect_ratio) {
 				gtk_window_set_geometry_hints(main_window, NULL, &hints, GDK_HINT_ASPECT);
 			}
@@ -1651,7 +1652,7 @@ void main_window_adjust_for_image() {/*{{{*/
 			if(option_enforce_window_aspect_ratio) {
 				gtk_window_set_geometry_hints(main_window, NULL, &hints, GDK_HINT_ASPECT);
 			}
-			gtk_window_resize(main_window, new_window_width, new_window_height);
+			gtk_window_resize(main_window, new_window_width / screen_scale_factor, new_window_height / screen_scale_factor);
 #if GTK_MAJOR_VERSION < 3
 			if(option_enforce_window_aspect_ratio) {
 				hints.min_aspect = hints.max_aspect = image_width * 1.0 / image_height;
@@ -3184,8 +3185,8 @@ void window_fullscreen() {/*{{{*/
 		if(!wm_supports_fullscreen) {
 			// WM does not support _NET_WM_ACTION_FULLSCREEN or no WM present
 			main_window_in_fullscreen = TRUE;
-			gtk_window_move(main_window, screen_geometry.x, screen_geometry.y);
-			gtk_window_resize(main_window, screen_geometry.width, screen_geometry.height);
+			gtk_window_move(main_window, screen_geometry.x / screen_scale_factor, screen_geometry.y / screen_scale_factor);
+			gtk_window_resize(main_window, screen_geometry.width / screen_scale_factor, screen_geometry.height / screen_scale_factor);
 			window_state_into_fullscreen_actions();
 			return;
 		}
@@ -3355,6 +3356,12 @@ gboolean window_draw_callback(GtkWidget *widget, cairo_t *cr_arg, gpointer user_
 	int y = 0;
 	D_LOCK(file_tree);
 
+	// We draw ignoring GDK_SCALE
+	// Note that there also is cairo_surface_get_device_scale(). We
+	// deliberately do not temper with that to keep the gtk <-> pqiv
+	// coordinate transformations consistent in all places.
+	cairo_scale(cr_arg, 1./screen_scale_factor, 1./screen_scale_factor);
+
 	if(CURRENT_FILE->is_loaded) {
 		// Calculate where to draw the image and the transformation matrix to use
 		int image_transform_width, image_transform_height;
@@ -3515,7 +3522,7 @@ gboolean window_draw_callback(GtkWidget *widget, cairo_t *cr_arg, gpointer user_
 		cairo_save(cr_arg);
 		// Attempt this multiple times: If it does not fit the window,
 		// retry with a smaller font size
-		for(int font_size=12; font_size > 6; font_size--) {
+		for(int font_size=12*screen_scale_factor; font_size > 6; font_size--) {
 			cairo_set_font_size(cr_arg, font_size);
 
 			if(main_window_in_fullscreen == FALSE) {
@@ -3525,12 +3532,12 @@ gboolean window_draw_callback(GtkWidget *widget, cairo_t *cr_arg, gpointer user_
 			}
 
 			cairo_set_source_rgb(cr_arg, 1., 1., 0.);
-			cairo_translate(cr_arg, 10, 20);
+			cairo_translate(cr_arg, 10 * screen_scale_factor, 20 * screen_scale_factor);
 			cairo_text_path(cr_arg, current_info_text);
 			cairo_path_t *text_path = cairo_copy_path(cr_arg);
 			cairo_path_extents(cr_arg, &x1, &y1, &x2, &y2);
 
-			if(x2 > main_window_width && !main_window_in_fullscreen) {
+			if(x2 > main_window_width - 10 * screen_scale_factor && !main_window_in_fullscreen) {
 				cairo_new_path(cr_arg);
 				cairo_restore(cr_arg);
 				cairo_save(cr_arg);
@@ -3731,7 +3738,7 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 				int image_width, image_height;
 				calculate_current_image_transformed_size(&image_width, &image_height);
 
-				gtk_window_resize(main_window, current_scale_level * image_width, current_scale_level * image_height);
+				gtk_window_resize(main_window, current_scale_level * image_width / screen_scale_factor, current_scale_level * image_height / screen_scale_factor);
 				if(!wm_supports_moveresize) {
 					queue_draw();
 				}
@@ -4267,6 +4274,14 @@ gboolean window_configure_callback(GtkWidget *widget, GdkEventConfigure *event, 
 	 };
 	 */
 
+	// Revert scale factor
+	if(screen_scale_factor != 1) {
+		event->x *= screen_scale_factor;
+		event->y *= screen_scale_factor;
+		event->width *= screen_scale_factor;
+		event->height *= screen_scale_factor;
+	}
+
 	static gint old_window_x, old_window_y;
 	if(old_window_x != event->x || old_window_y != event->y) {
 		// Window was moved. Reset automatic positioning to allow
@@ -4424,14 +4439,14 @@ void window_center_mouse() {/*{{{*/
 	GdkScreen *screen = gtk_widget_get_screen(GTK_WIDGET(main_window));
 
 	#if GTK_MAJOR_VERSION < 3
-		gdk_display_warp_pointer(display, screen, screen_geometry.x + screen_geometry.width / 2., screen_geometry.y + screen_geometry.height / 2.);
+		gdk_display_warp_pointer(display, screen, (screen_geometry.x + screen_geometry.width / 2.) / screen_scale_factor, (screen_geometry.y + screen_geometry.height / 2.) / screen_scale_factor);
 	#else
 		#if GTK_MAJOR_VERSION == 3 && GTK_MINOR_VERSION < 20
 			GdkDevice *device = gdk_device_manager_get_client_pointer(gdk_display_get_device_manager(display));
 		#else
 			GdkDevice *device = gdk_seat_get_pointer(gdk_display_get_default_seat(display));
 		#endif
-		gdk_device_warp(device, screen, screen_geometry.x + screen_geometry.width / 2., screen_geometry.y + screen_geometry.height / 2.);
+		gdk_device_warp(device, screen, (screen_geometry.x + screen_geometry.width / 2.) / screen_scale_factor, (screen_geometry.y + screen_geometry.height / 2.) / screen_scale_factor);
 
 	#endif
 }/*}}}*/
@@ -4458,6 +4473,12 @@ gboolean window_motion_notify_callback(GtkWidget *widget, GdkEventMotion *event,
 	}
 
 	if(event->state & (GDK_BUTTON1_MASK | GDK_BUTTON2_MASK | GDK_BUTTON3_MASK)) {
+		// Revert scale factor
+		if(screen_scale_factor != 1) {
+			event->x_root *= screen_scale_factor;
+			event->y_root *= screen_scale_factor;
+		}
+
 		gdouble dev_x = screen_geometry.width / 2 + screen_geometry.x - event->x_root;
 		gdouble dev_y = screen_geometry.height / 2 + screen_geometry.y - event->y_root;
 
@@ -4655,6 +4676,13 @@ void window_screen_changed_callback(GtkWidget *widget, GdkScreen *previous_scree
 		if(old_monitor != monitor) {
 			gdk_monitor_get_geometry(monitor, &screen_geometry);
 			old_monitor = monitor;
+			screen_scale_factor = gdk_monitor_get_scale_factor(monitor);
+			if(screen_scale_factor != 1) {
+				screen_geometry.x *= screen_scale_factor;
+				screen_geometry.y *= screen_scale_factor;
+				screen_geometry.width *= screen_scale_factor;
+				screen_geometry.height *= screen_scale_factor;
+			}
 		}
 	#else
 		guint monitor = gdk_screen_get_monitor_at_window(screen, window);
@@ -4666,6 +4694,15 @@ void window_screen_changed_callback(GtkWidget *widget, GdkScreen *previous_scree
 		if(old_monitor != monitor) {
 			gdk_screen_get_monitor_geometry(screen, monitor, &screen_geometry);
 			old_monitor = monitor;
+			#if GTK_CHECK_VERSION(3, 10, 0)
+				screen_scale_factor = gdk_screen_get_monitor_scale_factor(screen, monitor);
+				if(screen_scale_factor != 1) {
+					screen_geometry.x *= screen_scale_factor;
+					screen_geometry.y *= screen_scale_factor;
+					screen_geometry.width *= screen_scale_factor;
+					screen_geometry.height *= screen_scale_factor;
+				}
+			#endif
 		}
 	#endif
 }/*}}}*/
@@ -4730,10 +4767,20 @@ void create_window() { /*{{{*/
 			monitor = gdk_display_get_monitor(display, 0);
 		}
 		gdk_monitor_get_geometry(monitor, &screen_geometry);
+		screen_scale_factor = gdk_monitor_get_scale_factor(monitor);
 	#else
 		guint monitor = gdk_screen_get_primary_monitor(screen);
 		gdk_screen_get_monitor_geometry(screen, monitor, &screen_geometry);
+		#if GTK_CHECK_VERSION(3, 10, 0)
+			screen_scale_factor = gdk_screen_get_monitor_scale_factor(screen, monitor);
+		#endif
 	#endif
+	if(screen_scale_factor != 1) {
+		screen_geometry.x *= screen_scale_factor;
+		screen_geometry.y *= screen_scale_factor;
+		screen_geometry.width *= screen_scale_factor;
+		screen_geometry.height *= screen_scale_factor;
+	}
 	window_screen_window_manager_changed_callback(screen);
 
 	if(option_start_fullscreen) {
