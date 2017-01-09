@@ -336,7 +336,7 @@ gboolean option_addl_from_stdin = FALSE;
 gboolean option_recreate_window = FALSE;
 gboolean option_enforce_window_aspect_ratio = FALSE;
 #ifndef CONFIGURED_WITHOUT_ACTIONS
-gboolean option_cursor_auto_hide = TRUE;
+gboolean option_cursor_auto_hide = FALSE;
 int cursor_auto_hide_timer_id = 0;
 gboolean option_actions_from_stdin = FALSE;
 gboolean option_status_output = FALSE;
