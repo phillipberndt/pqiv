@@ -74,8 +74,8 @@ the binaries, use the `--backends-build=shared` option. This is only supported
 on Linux platforms currently.
 
 There are experimental, nightly [static builds available for
-download](http://page.mi.fu-berlin.de/pberndt/pqiv-builds/) for Windows and
-Linux: ![Build status](http://page.mi.fu-berlin.de/pberndt/pqiv-builds/ci.php)
+download](https://intern.pberndt.com/pqiv_builds/) for Windows and
+Linux: ![Build status](https://intern.pberndt.com/pqiv_builds/ci.php)
 
 There are experimental, [nightly packages
 available](https://build.opensuse.org/package/show/home:phillipberndt/pqiv)
