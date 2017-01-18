@@ -153,6 +153,8 @@ pqiv 2.7
  * Support an `actions` section in the configuration file for default actions
  * Create and install a desktop file for pqiv during install
  * Disable GTK's transparent scaling on HiDpi monitors
+ * New option --wait-for-images-to-appear to wait for images to appear if none
+   are found
 
 pqiv 2.6
  * Added --enforce-window-aspect-ratio

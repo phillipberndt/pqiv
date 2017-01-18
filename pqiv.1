@@ -248,6 +248,12 @@ To sort by file modification date.
 .RE
 .\"
 .TP
+.BR \-\-wait\-for\-images\-to\-appear
+If no images are found in the directories specified on the command line,
+instead of exiting, wait for some to appear. This option only works in
+conjunction with \fB\-\-lazy\-load\fR and \fB\-\-watch\-directories\fR.
+.\"
+.TP
 .BR \-\-watch\-directories
 Watch all directories supplied as parameters to \fBpqiv\fR for new files and
 add them as they appear. In \fB\-\-sort\fR mode, files are sorted into the

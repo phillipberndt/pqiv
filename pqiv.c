@@ -334,6 +334,7 @@ enum { NAME, MTIME } option_sort_key = NAME;
 gboolean option_shuffle = FALSE;
 gboolean option_transparent_background = FALSE;
 gboolean option_watch_directories = FALSE;
+gboolean option_wait_for_images_to_appear = FALSE;
 gboolean option_fading = FALSE;
 gboolean option_lazy_load = FALSE;
 gboolean option_lowmem = FALSE;
@@ -429,6 +430,7 @@ GOptionEntry options[] = {
 	{ "show-bindings", 0, G_OPTION_FLAG_NO_ARG, G_OPTION_ARG_CALLBACK, &help_show_key_bindings, "Display the keyboard and mouse bindings and exit", NULL },
 #endif
 	{ "sort-key", 0, 0, G_OPTION_ARG_CALLBACK, (gpointer)&option_sort_key_callback, "Key to use for sorting", "PROPERTY" },
+	{ "wait-for-images-to-appear", 0, 0, G_OPTION_ARG_NONE, &option_wait_for_images_to_appear, "If no images are found, wait until at least one appears", NULL },
 	{ "watch-directories", 0, 0, G_OPTION_ARG_NONE, &option_watch_directories, "Watch directories for new files", NULL },
 	{ "watch-files", 0, 0, G_OPTION_ARG_CALLBACK, (gpointer)&option_watch_files_callback, "Watch files for changes on disk (`on`, `off', `changes-only', i.e. do nothing on deletetion)", "VALUE" },
 
@@ -3228,7 +3230,7 @@ inline void queue_draw() {/*{{{*/
 }/*}}}*/
 #ifndef CONFIGURED_WITHOUT_INFO_TEXT /* option --without-info-text: Build without support for the info text */
 inline void info_text_queue_redraw() {/*{{{*/
-	if(!option_hide_info_box) {
+	if(!option_hide_info_box && main_window_visible) {
 		gtk_widget_queue_draw_area(GTK_WIDGET(main_window),
 			current_info_text_bounding_box.x,
 			current_info_text_bounding_box.y,
@@ -3239,6 +3241,15 @@ inline void info_text_queue_redraw() {/*{{{*/
 }/*}}}*/
 void update_info_text(const gchar *action) {/*{{{*/
 	D_LOCK(file_tree);
+
+	if(!current_file_node) {
+		if(current_info_text != NULL) {
+			g_free(current_info_text);
+		}
+		current_info_text = g_strdup_printf("%s - No image loaded", action);
+		D_UNLOCK(file_tree);
+		return;
+	}
 
 	gchar *file_name;
 	if((CURRENT_FILE->file_flags & FILE_FLAGS_MEMORY_IMAGE) != 0) {
@@ -5422,15 +5433,20 @@ gpointer load_images_thread(gpointer user_data) {/*{{{*/
 
 	load_images();
 
+	gboolean tree_empty = TRUE;
 	if(file_tree_valid) {
-		if(bostree_node_count(file_tree) == 0) {
+		tree_empty = bostree_node_count(file_tree) == 0;
+	}
+
+	if(!option_wait_for_images_to_appear) {
+		if(tree_empty) {
 			g_printerr("No images left to display.\n");
 			exit(1);
 		}
-	}
 
-	if(option_lazy_load) {
-		gdk_threads_add_idle(initialize_gui_or_quit_callback, NULL);
+		if(option_lazy_load) {
+			gdk_threads_add_idle(initialize_gui_or_quit_callback, NULL);
+		}
 	}
 
 #ifndef CONFIGURED_WITHOUT_INFO_TEXT
@@ -5477,6 +5493,17 @@ int main(int argc, char *argv[]) {
 
 	if(option_fading_duration > option_slideshow_interval) {
 		g_printerr("Warning: Fade durations larger than the slideslow interval won't work as expected.\n");
+	}
+
+	if(option_wait_for_images_to_appear) {
+		if(!option_watch_directories) {
+			g_printerr("Warning: --wait-for-images-to-appear implies --watch-directories.\n");
+			option_watch_directories = TRUE;
+		}
+		if(!option_lazy_load) {
+			g_printerr("Warning: --wait-for-images-to-appear implies --lazy-load.\n");
+			option_lazy_load = TRUE;
+		}
 	}
 
 #ifndef CONFIGURED_WITHOUT_ACTIONS
