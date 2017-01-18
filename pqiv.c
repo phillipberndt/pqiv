@@ -792,6 +792,7 @@ void parse_configuration_file_callback(char *section, char *key, config_parser_v
 						if(iter->long_name != NULL && iter->arg == G_OPTION_ARG_NONE && g_strcmp0(iter->long_name, argv_val + 2) == 0) {
 							*(gboolean *)(iter->arg_data) = TRUE;
 							iter->flags |= G_OPTION_FLAG_REVERSE;
+							iter->description = g_strdup_printf("[Set to do not/disable:] %s", iter->description);
 							direct_parsing_successfull = TRUE;
 							break;
 						}
@@ -808,6 +809,7 @@ void parse_configuration_file_callback(char *section, char *key, config_parser_v
 								if(iter->arg == G_OPTION_ARG_NONE) {
 									*(gboolean *)(iter->arg_data) = TRUE;
 									iter->flags |= G_OPTION_FLAG_REVERSE;
+									iter->description = g_strdup_printf("[Set to do not/disable:] %s", iter->description);
 								}
 								else {
 									direct_parsing_successfull = FALSE;
@@ -870,6 +872,7 @@ void parse_configuration_file_callback(char *section, char *key, config_parser_v
 						*(gboolean *)(iter->arg_data) = !!value->intval;
 						if(value->intval) {
 							iter->flags |= G_OPTION_FLAG_REVERSE;
+							iter->description = g_strdup_printf("[Set to do not/disable:] %s", iter->description);
 						}
 					} break;
 					case G_OPTION_ARG_CALLBACK:
