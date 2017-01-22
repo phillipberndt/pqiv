@@ -64,7 +64,7 @@ and optionally also
  * libspectre (any version, for ps/eps support)
  * poppler (any version, for pdf support)
  * MagickWand (any version, for additional image formats like psd)
- * libarchive (for cbX comic book files)
+ * libarchive (for images in archives and cbX comic book files)
  * ffmpeg / libav (for video support, only included if explicitly compiled in)
 
 The backends are per default linked statically into the code, so all backend
@@ -132,7 +132,7 @@ Known bugs
 Changelog
 ---------
 
-pqiv 2.7 (wip)
+pqiv 2.7
  * Fixed window decoration toggling with --transparent-background
  * Work around bug #67, poppler bug #96884
  * Added new action `set_interpolation_quality` to change interpolation/filter
@@ -140,8 +140,6 @@ pqiv 2.7 (wip)
  * pqiv now by default uses `nearest` interpolation for small images
  * Added actions and key bindings to control animation playback speed
  * Added a general archive backend for reading images from archives
-   (this is experimental and won't be enabled automatically until at least 2.7
-    is released! Compile with --with-archive to enable.)
  * Added a new action `goto_earlier_file()` to return to the image that was
    shown before the current one
  * Added a new action `set_cursor_auto_hide()` to automatically hide the pointer
