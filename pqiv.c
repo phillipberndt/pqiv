@@ -4662,9 +4662,13 @@ void window_screen_changed_callback(GtkWidget *widget, GdkScreen *previous_scree
 	GdkWindow *window = gtk_widget_get_window(GTK_WIDGET(main_window));
 
 	#ifndef _WIN32
-		if(GDK_IS_X11_DISPLAY(gdk_screen_get_display(screen))) {
+		#if GTK_CHECK_VERSION(3, 0, 0)
+			if(GDK_IS_X11_DISPLAY(gdk_screen_get_display(screen))) {
+				g_signal_connect(screen, "window-manager-changed", G_CALLBACK(window_screen_window_manager_changed_callback), screen);
+			}
+		#else
 			g_signal_connect(screen, "window-manager-changed", G_CALLBACK(window_screen_window_manager_changed_callback), screen);
-		}
+		#endif
 	#endif
 	window_screen_window_manager_changed_callback(screen);
 

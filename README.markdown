@@ -132,6 +132,9 @@ Known bugs
 Changelog
 ---------
 
+pqiv 2.7.1
+ * Fix GTK 2 compilation
+
 pqiv 2.7
  * Fixed window decoration toggling with --transparent-background
  * Work around bug #67, poppler bug #96884
