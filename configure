@@ -47,7 +47,9 @@ options to select pqiv's backends:
   --backends=..         Select which backends to include in pqiv
                         (autodetermined by default)
                         Available:
-                          libav (Video support, never included by default)
+                          archive (generic archive file support),
+                          archive_cbx (*.cb? comic book archive support),
+                          libav (Video support, never included by default),
                           gdkpixbuf (images),
                           poppler (PDF),
                           spectre (PS/EPS),
