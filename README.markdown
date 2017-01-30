@@ -132,9 +132,10 @@ Known bugs
 Changelog
 ---------
 
-pqiv 2.7.2
+pqiv 2.7.3
  * Fix GTK 2 compilation
  * Fix backends list in configure script
+ * Fix race condition upon reloading animations
 
 pqiv 2.7
  * Fixed window decoration toggling with --transparent-background

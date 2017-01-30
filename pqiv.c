@@ -1494,7 +1494,7 @@ void invalidate_current_scaled_image_surface() {/*{{{*/
 }/*}}}*/
 gboolean image_animation_timeout_callback(gpointer user_data) {/*{{{*/
 	D_LOCK(file_tree);
-	if((BOSNode *)user_data != current_file_node || FILE(current_file_node)->force_reload) {
+	if((BOSNode *)user_data != current_file_node || FILE(current_file_node)->force_reload || !FILE(current_file_node)->is_loaded) {
 		D_UNLOCK(file_tree);
 		current_image_animation_timeout_id = 0;
 		return FALSE;
