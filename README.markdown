@@ -132,10 +132,11 @@ Known bugs
 Changelog
 ---------
 
-pqiv 2.7.3
+pqiv 2.7.4
  * Fix GTK 2 compilation
  * Fix backends list in configure script
  * Fix race condition upon reloading animations
+ * Fix Ctrl-R default binding (move `goto_earlier_file()` to Ctrl-P)
 
 pqiv 2.7
  * Fixed window decoration toggling with --transparent-background

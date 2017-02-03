@@ -479,7 +479,7 @@ static const struct default_key_bindings_struct {
 	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_t                ), ACTION_TOGGLE_SCALE_MODE               , { 0   }},
 	{ KEY_BINDING_VALUE(0 , GDK_CONTROL_MASK , GDK_KEY_r                ), ACTION_TOGGLE_SHUFFLE_MODE             , { 0   }},
 	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_r                ), ACTION_RELOAD                          , { 0   }},
-	{ KEY_BINDING_VALUE(0 , GDK_CONTROL_MASK , GDK_KEY_r                ), ACTION_GOTO_EARLIER_FILE               , { 0   }},
+	{ KEY_BINDING_VALUE(0 , GDK_CONTROL_MASK , GDK_KEY_p                ), ACTION_GOTO_EARLIER_FILE               , { 0   }},
 	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_0                ), ACTION_RESET_SCALE_LEVEL               , { 0   }},
 	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_f                ), ACTION_TOGGLE_FULLSCREEN               , { 0   }},
 	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_h                ), ACTION_FLIP_HORIZONTALLY               , { 0   }},
