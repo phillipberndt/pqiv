@@ -28,6 +28,12 @@ EXTRA_DEFS=
 BACKENDS_BUILD=static
 DEBUG_DEFS=
 
+# Check if configure was called from another directory;
+# support for out-of-source-tree builds
+STARTUP_DIR="$(pwd)"
+SOURCE_DIR="$(readlink -f "$(dirname "$0")")"
+cd "$SOURCE_DIR"
+
 # For development, you can set default settings here
 [ -x ./configure-dev ] && . ./configure-dev
 
@@ -298,8 +304,18 @@ else
 	fi
 fi
 
+if [ "$SOURCE_DIR" != "$STARTUP_DIR" ]; then
+	if ! [ -e $STARTUP_DIR/GNUmakefile ]; then
+		echo "Writing GNUmakefile."
+		echo "include $SOURCE_DIR/GNUmakefile" > $STARTUP_DIR/GNUmakefile
+	else
+		echo "Not touching existing GNUmakefile."
+	fi
+fi
+
+
 echo "Writing config.make."
-cat > config.make <<EOF
+cat > $STARTUP_DIR/config.make <<EOF
 DESTDIR=$DESTDIR
 PREFIX=$PREFIX
 GTK_VERSION=$GTK_VERSION

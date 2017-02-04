@@ -18,10 +18,19 @@ BACKENDS=gdkpixbuf
 EXTRA_DEFS=
 BACKENDS_BUILD=static
 
+# Always look for source code relative to the directory of this makefile
+SOURCEDIR:=$(dir $(abspath $(lastword $(MAKEFILE_LIST))))
+ifeq ($(SOURCEDIR),$(CURDIR))
+	SOURCEDIR=
+else
+	HEADERS:=$(patsubst %, $(SOURCEDIR)%, $(HEADERS))
+endif
+
 # Load config.make (created by configure)
-ifeq ($(wildcard config.make),config.make)
-	include config.make
-	HEADERS+=config.make
+CONFIG_MAKE_NAME=config.make
+ifeq ($(wildcard $(CONFIG_MAKE_NAME)),$(CONFIG_MAKE_NAME))
+	include $(CONFIG_MAKE_NAME)
+	HEADERS+=$(CONFIG_MAKE_NAME)
 endif
 
 # pkg-config lines for the main program
@@ -78,6 +87,7 @@ endif
 # Add backend-specific libraries and objects
 SHARED_OBJECTS=
 SHARED_BACKENDS=
+HELPER_OBJECTS=
 BACKENDS_INITIALIZER:=backends/initializer
 define handle-backend
 ifneq ($(origin LIBS_$(1)),undefined)
@@ -85,6 +95,7 @@ ifneq ($(origin LIBS_$(1)),undefined)
 		ifeq ($(BACKENDS_BUILD), shared)
 			ifeq ($(shell $(PKG_CONFIG) --errors-to-stdout --print-errors "$(LIBS_$(1))" 2>&1), )
 				SHARED_OBJECTS+=backends/pqiv-backend-$(1).so
+				HELPER_OBJECTS+=backends/$(1).o
 				BACKENDS_BUILD_CFLAGS_$(1):=$(shell $(PKG_CONFIG) --errors-to-stdout --print-errors --cflags "$(LIBS_$(1))" 2>&1)
 				BACKENDS_BUILD_LDLIBS_$(1):=$(shell $(PKG_CONFIG) --errors-to-stdout --print-errors --libs "$(LIBS_$(1))" 2>&1)
 				SHARED_BACKENDS+="$(1)",
@@ -98,7 +109,7 @@ ifneq ($(origin LIBS_$(1)),undefined)
 	endif
 endif
 endef
-$(foreach BACKEND_C, $(wildcard backends/*.c), $(eval $(call handle-backend,$(basename $(notdir $(BACKEND_C))))))
+$(foreach BACKEND_C, $(wildcard $(SOURCEDIR)backends/*.c), $(eval $(call handle-backend,$(basename $(notdir $(BACKEND_C))))))
 PIXBUF_FILTER="gdkpixbuf",
 ifeq ($(BACKENDS_BUILD), shared)
 	CFLAGS_SHARED=-fPIC
@@ -118,7 +129,7 @@ backends/wand.o: CFLAGS_REAL+=-DWAND_VERSION=$(shell $(PKG_CONFIG) --modversion 
 endif
 
 # Add version information to builds from git
-PQIV_VERSION_STRING=$(shell [ -d .git ] && (which git 2>&1 >/dev/null) && git describe --dirty --tags)
+PQIV_VERSION_STRING=$(shell [ -d $(SOURCEDIR).git ] && (which git 2>&1 >/dev/null) && git -C "$(SOURCEDIR)" describe --dirty --tags)
 ifneq ($(PQIV_VERSION_STRING),)
 	PQIV_VERSION_FLAG=-DPQIV_VERSION=\"$(PQIV_VERSION_STRING)\"
 endif
@@ -148,18 +159,24 @@ pqiv$(EXECUTABLE_EXTENSION): $(OBJECTS)
 	$(SILENT_CCLD) $(CROSS)$(CC) $(CPPFLAGS) -o $@ $+ $(LDLIBS_REAL) $(LDFLAGS_REAL)
 
 ifeq ($(BACKENDS_BUILD), shared)
-backends/%.o: backends/%.c $(HEADERS)
-	$(SILENT_CC) $(CROSS)$(CC) $(CPPFLAGS) -c -o $@ $(CFLAGS_REAL) $(BACKENDS_BUILD_CFLAGS_$*) $<
+backends/%.o: CFLAGS_REAL+=$(BACKENDS_BUILD_CFLAGS_$(notdir $*))
 
-backends/pqiv-backend-%.so: backends/%.o
+$(SHARED_OBJECTS): backends/pqiv-backend-%.so: backends/%.o
+	@[ -d backends ] || mkdir backends
 	$(SILENT_CCLD) $(CROSS)$(CC) -shared $(CPPFLAGS) -o $@ $+ $(LDLIBS_REAL) $(LDFLAGS_REAL) $(BACKENDS_BUILD_LDLIBS_$*)
 endif
 
-%.o: %.c $(HEADERS)
+$(filter-out $(BACKENDS_INITIALIZER).o, $(OBJECTS)) $(HELPER_OBJECTS): %.o: $(SOURCEDIR)%.c $(HEADERS)
+	@[ -d $(dir $@) ] || mkdir $(dir $@)
 	$(SILENT_CC) $(CROSS)$(CC) $(CPPFLAGS) -c -o $@ $(CFLAGS_REAL) $<
 
+$(BACKENDS_INITIALIZER).o: $(BACKENDS_INITIALIZER).c $(HEADERS)
+	@[ -d $(dir $@) ] || mkdir $(dir $@)
+	$(SILENT_CC) $(CROSS)$(CC) $(CPPFLAGS) -I"$(SOURCEDIR)/lib" -c -o $@ $(CFLAGS_REAL) $<
+
 $(BACKENDS_INITIALIZER).c:
-	@$(foreach BACKEND, $(sort $(BACKENDS)), [ -e backends/$(BACKEND).c ] || { echo; echo "Backend $(BACKEND) not found!" >&2; exit 1; };)
+	@[ -d $(dir $(BACKENDS_INITIALIZER)) ] || mkdir $(dir $(BACKENDS_INITIALIZER))
+	@$(foreach BACKEND, $(sort $(BACKENDS)), [ -e $(SOURCEDIR)backends/$(BACKEND).c ] || { echo; echo "Backend $(BACKEND) not found!" >&2; exit 1; };)
 	$(SILENT_GEN) ( \
 		echo '/* Auto-Generated file by Make. */'; \
 		echo '#include "../pqiv.h"'; \
@@ -183,7 +200,7 @@ pqiv.desktop: $(HEADERS)
 		echo "Icon=emblem-photos"; \
 		echo "TryExec=$(PREFIX)/bin/pqiv"; \
 		echo "Exec=$(PREFIX)/bin/pqiv %F"; \
-		echo "MimeType=$(shell cat $(foreach BACKEND, $(sort $(BACKENDS)), backends/$(BACKEND).mime) | sort | uniq | awk 'ORS=";"')"; \
+		echo "MimeType=$(shell cat $(foreach BACKEND, $(sort $(BACKENDS)), $(SOURCEDIR)backends/$(BACKEND).mime) | sort | uniq | awk 'ORS=";"')"; \
 		echo "Categories=Graphics;"; \
 		echo "Keywords=Viewer;" \
 	) > $@
@@ -192,7 +209,7 @@ install: all
 	mkdir -p $(DESTDIR)$(PREFIX)/bin
 	install pqiv$(EXECUTABLE_EXTENSION) $(DESTDIR)$(PREFIX)/bin/pqiv$(EXECUTABLE_EXTENSION)
 	-mkdir -p $(DESTDIR)$(MANDIR)/man1
-	-install --mode=644 pqiv.1 $(DESTDIR)$(MANDIR)/man1/pqiv.1
+	-install --mode=644 $(SOURCEDIR)pqiv.1 $(DESTDIR)$(MANDIR)/man1/pqiv.1
 	-mkdir -p $(DESTDIR)$(PREFIX)/share/applications
 	-install --mode=644 pqiv.desktop $(DESTDIR)$(PREFIX)/share/applications/pqiv.desktop
 ifeq ($(BACKENDS_BUILD), shared)
@@ -220,7 +237,7 @@ get_libs:
 	@true
 
 get_available_backends:
-	@echo -n "BACKENDS: "; $(foreach BACKEND_C, $(wildcard backends/*.c), \
+	@echo -n "BACKENDS: "; $(foreach BACKEND_C, $(wildcard $(SOURCEDIR)backends/*.c), \
 		[ "$(DISABLE_AUTOMATED_BUILD_$(basename $(notdir $(BACKEND_C))))" != "yes" ] && \
 		[ -n "$(LIBS_$(basename $(notdir $(BACKEND_C))))" ] && \
 		$(PKG_CONFIG) --exists "$(LIBS_$(basename $(notdir $(BACKEND_C))))" \
