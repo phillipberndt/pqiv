@@ -162,20 +162,20 @@ ifeq ($(BACKENDS_BUILD), shared)
 backends/%.o: CFLAGS_REAL+=$(BACKENDS_BUILD_CFLAGS_$(notdir $*))
 
 $(SHARED_OBJECTS): backends/pqiv-backend-%.so: backends/%.o
-	@[ -d backends ] || mkdir backends
+	@[ -d backends ] || mkdir -p backends || true
 	$(SILENT_CCLD) $(CROSS)$(CC) -shared $(CPPFLAGS) -o $@ $+ $(LDLIBS_REAL) $(LDFLAGS_REAL) $(BACKENDS_BUILD_LDLIBS_$*)
 endif
 
 $(filter-out $(BACKENDS_INITIALIZER).o, $(OBJECTS)) $(HELPER_OBJECTS): %.o: $(SOURCEDIR)%.c $(HEADERS)
-	@[ -d $(dir $@) ] || mkdir $(dir $@)
+	@[ -d $(dir $@) ] || mkdir -p $(dir $@) || true
 	$(SILENT_CC) $(CROSS)$(CC) $(CPPFLAGS) -c -o $@ $(CFLAGS_REAL) $<
 
 $(BACKENDS_INITIALIZER).o: $(BACKENDS_INITIALIZER).c $(HEADERS)
-	@[ -d $(dir $@) ] || mkdir $(dir $@)
+	@[ -d $(dir $@) ] || mkdir -p $(dir $@) || true
 	$(SILENT_CC) $(CROSS)$(CC) $(CPPFLAGS) -I"$(SOURCEDIR)/lib" -c -o $@ $(CFLAGS_REAL) $<
 
 $(BACKENDS_INITIALIZER).c:
-	@[ -d $(dir $(BACKENDS_INITIALIZER)) ] || mkdir $(dir $(BACKENDS_INITIALIZER))
+	@[ -d $(dir $(BACKENDS_INITIALIZER)) ] || mkdir -p $(dir $(BACKENDS_INITIALIZER)) || true
 	@$(foreach BACKEND, $(sort $(BACKENDS)), [ -e $(SOURCEDIR)backends/$(BACKEND).c ] || { echo; echo "Backend $(BACKEND) not found!" >&2; exit 1; };)
 	$(SILENT_GEN) ( \
 		echo '/* Auto-Generated file by Make. */'; \
