@@ -329,6 +329,10 @@ ${CCFLAGS:+CCFLAGS=$CCFLAGS}
 ${MANDIR:+MANDIR=$MANDIR}
 ${BACKENDS:+BACKENDS=$BACKENDS}
 ${CC:+CC=$CC}
+${EXTRA_CFLAGS_SHARED_OBJECTS:+EXTRA_CFLAGS_SHARED_OBJECTS=$EXTRA_CFLAGS_SHARED_OBJECTS}
+${EXTRA_CFLAGS_BINARY:+EXTRA_CFLAGS_BINARY=$EXTRA_CFLAGS_BINARY}
+${EXTRA_LDFLAGS_SHARED_OBJECTS:+EXTRA_LDFLAGS_SHARED_OBJECTS=$EXTRA_LDFLAGS_SHARED_OBJECTS}
+${EXTRA_LDFLAGS_BINARY:+EXTRA_LDFLAGS_BINARY=$EXTRA_LDFLAGS_BINARY}
 ${DEBUG_DEFS}
 EOF
 
@@ -339,7 +343,7 @@ if [ "${BACKENDS_BUILD}" = "static" -a "${BACKENDS/poppler//}" != "${BACKENDS}" 
 	DIR=`tempdir`
 	cd $DIR
 	echo -e "#include <poppler.h>\n#include <libspectre/spectre.h>\nint main() { poppler_get_version(); spectre_status_to_string(SPECTRE_STATUS_SUCCESS); }" > test.c
-	${CROSS}${CC:-cc} ${CFLAGS} test.c ${LDFLAGS} $($PKG_CONFIG --libs --cflags ${LIBS}) -o test >/dev/null 2>&1
+	${CROSS}${CC:-cc} ${CFLAGS} test.c ${LDFLAGS} $(${PKG_CONFIG:-pkg-config} --libs --cflags ${LIBS}) -o test >/dev/null 2>&1
 	if [ -e test ]; then
 		if [ "$(ldd test | grep -E "liblcms[0-9]?.so" | wc -l)" -gt 1 ]; then
 			echo "yes"

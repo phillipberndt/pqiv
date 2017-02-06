@@ -17,6 +17,10 @@ HEADERS=pqiv.h lib/bostree.h lib/filebuffer.h lib/strnatcmp.h
 BACKENDS=gdkpixbuf
 EXTRA_DEFS=
 BACKENDS_BUILD=static
+EXTRA_CFLAGS_SHARED_OBJECTS=-fPIC
+EXTRA_CFLAGS_BINARY=
+EXTRA_LDFLAGS_SHARED_OBJECTS=
+EXTRA_LDFLAGS_BINARY=
 
 # Always look for source code relative to the directory of this makefile
 SOURCEDIR:=$(dir $(abspath $(lastword $(MAKEFILE_LIST))))
@@ -112,13 +116,11 @@ endef
 $(foreach BACKEND_C, $(wildcard $(SOURCEDIR)backends/*.c), $(eval $(call handle-backend,$(basename $(notdir $(BACKEND_C))))))
 PIXBUF_FILTER="gdkpixbuf",
 ifeq ($(BACKENDS_BUILD), shared)
-	CFLAGS_SHARED=-fPIC
 	OBJECTS+=backends/shared-initializer.o
 	BACKENDS_BUILD_CFLAGS_shared-initializer=-DSHARED_BACKENDS='$(filter $(PIXBUF_FILTER), $(SHARED_BACKENDS)) $(filter-out $(PIXBUF_FILTER), $(SHARED_BACKENDS))'
 	LIBS+=gmodule-2.0
 	LDFLAGS_RPATH=-Wl,-rpath,'$$ORIGIN/backends',-rpath,'$$ORIGIN/../lib/pqiv',-rpath,'$(PREFIX)/lib/pqiv'
 else
-	CFLAGS_SHARED=
 	OBJECTS+=$(BACKENDS_INITIALIZER).o
 endif
 
@@ -147,7 +149,7 @@ ifndef VERBOSE
 endif
 
 # Assemble final compiler flags
-CFLAGS_REAL=-std=gnu99 $(PQIV_WARNING_FLAGS) $(PQIV_VERSION_FLAG) $(CFLAGS) $(CFLAGS_SHARED) $(DEBUG_CFLAGS) $(EXTRA_DEFS) $(shell $(PKG_CONFIG) --cflags "$(LIBS)")
+CFLAGS_REAL=-std=gnu99 $(PQIV_WARNING_FLAGS) $(PQIV_VERSION_FLAG) $(CFLAGS) $(DEBUG_CFLAGS) $(EXTRA_DEFS) $(shell $(PKG_CONFIG) --cflags "$(LIBS)")
 LDLIBS_REAL=$(shell $(PKG_CONFIG) --libs "$(LIBS)") $(LDLIBS)
 LDFLAGS_REAL=$(LDFLAGS) $(LDFLAGS_RPATH)
 
@@ -156,14 +158,14 @@ all: pqiv$(EXECUTABLE_EXTENSION) pqiv.desktop $(SHARED_OBJECTS)
 .SECONDARY:
 
 pqiv$(EXECUTABLE_EXTENSION): $(OBJECTS)
-	$(SILENT_CCLD) $(CROSS)$(CC) $(CPPFLAGS) -o $@ $+ $(LDLIBS_REAL) $(LDFLAGS_REAL)
+	$(SILENT_CCLD) $(CROSS)$(CC) $(CPPFLAGS) $(EXTRA_CFLAGS_BINARY) $(EXTRA_LDFLAGS_BINARY) -o $@ $+ $(LDLIBS_REAL) $(LDFLAGS_REAL)
 
 ifeq ($(BACKENDS_BUILD), shared)
-backends/%.o: CFLAGS_REAL+=$(BACKENDS_BUILD_CFLAGS_$(notdir $*))
+backends/%.o: CFLAGS_REAL+=$(BACKENDS_BUILD_CFLAGS_$(notdir $*)) $(EXTRA_CFLAGS_SHARED_OBJECTS)
 
 $(SHARED_OBJECTS): backends/pqiv-backend-%.so: backends/%.o
 	@[ -d backends ] || mkdir -p backends || true
-	$(SILENT_CCLD) $(CROSS)$(CC) -shared $(CPPFLAGS) -o $@ $+ $(LDLIBS_REAL) $(LDFLAGS_REAL) $(BACKENDS_BUILD_LDLIBS_$*)
+	$(SILENT_CCLD) $(CROSS)$(CC) -shared $(CPPFLAGS) $(EXTRA_CFLAGS_SHARED_OBJECTS) $(EXTRA_LDFLAGS_SHARED_OBJECTS) -o $@ $+ $(LDLIBS_REAL) $(LDFLAGS_REAL) $(BACKENDS_BUILD_LDLIBS_$*)
 endif
 
 $(filter-out $(BACKENDS_INITIALIZER).o, $(OBJECTS)) $(HELPER_OBJECTS): %.o: $(SOURCEDIR)%.c $(HEADERS)
