@@ -1,16 +1,14 @@
 #!/usr/bin/env bash
 #
-# Configure script, for most users only needed for backwards compatibility with
-# pqiv 1.0 (pre-gtk3). I still recommend to use it in automated builds to
-# ensure continued compatibility.
+# Configure script for pqiv. Running this script is optional if you only want
+# gdk-pixbuf support, but still recommended.
 #
 
 tempdir() {
 	NAME=tmp_${RANDOM}
-	while [ -d $NAME ]; do
+	while ! mkdir "${NAME}" 2>/dev/null; do
 		NAME=tmp_${RANDOM}
 	done
-	mkdir ${NAME}
 	echo ${NAME}
 }
 
@@ -115,8 +113,16 @@ while [ $# -gt 0 ]; do
 				exit 1
 			fi
 			;;
+		--backends)
+			BACKENDS="${VALUE//,/ }"
+			for NAME in ${BACKENDS}; do
+				[ -e backends/${NAME}.c ] && continue
+				echo "Invalid argument to --backends: Backend ${NAME} was not found" >&2
+				exit 1
+			done
+			;;
 		# Undocumented options for autoconf (esp. dh_auto_configure) compatibility
-		--build)
+		--host)
 			CROSS=${VALUE}-
 			;;
 		--mandir)
@@ -126,21 +132,33 @@ while [ $# -gt 0 ]; do
 			MANDIR="${MANDIR//prefix/PREFIX}"
 			echo "Use of autoconf option --mandir is discouraged, because support is incomplete. Rewrote \`$VALUE' to \`$MANDIR' and used that as the MANDIR Make variable." >&2
 			;;
-		--includedir | --infodir | --sysconfdir | --localstatedir | --libdir | --libexecdir | --disable-maintainer-mode | --disable-dependency-tracking)
+		--includedir)
+			INCLUDEDIR=${VALUE}
+			INCLUDEDIR="${INCLUDEDIR//\{/(}"
+			INCLUDEDIR="${INCLUDEDIR//\}/)}"
+			INCLUDEDIR="${INCLUDEDIR//prefix/PREFIX}"
+			CFLAGS="${CFLAGS:+$CFLAGS }-I'${INCLUDEDIR}'"
+			echo "Use of autoconf option --includedir is discouraged, because support is incomplete. Rewrote \`$VALUE' to \`$INCLUDEDIR' and placed that into the \$CFLAGS variable." >&2
+			;;
+		--libdir)
+			LIBDIR=${VALUE}
+			LIBDIR="${LIBDIR//\{/(}"
+			LIBDIR="${LIBDIR//\}/)}"
+			LIBDIR="${LIBDIR//prefix/PREFIX}"
+			CFLAGS="${LDFLAGS:+$LDFLAGS }-L'${LIBDIR}'"
+			echo "Use of autoconf option --libdir is discouraged, because support is incomplete. Rewrote \`$VALUE' to \`$LIBDIR' and placed that into the \$LDFLAGS variable." >&2
+			;;
+		--disable-silent-rules)
+			VERBOSE=1
+			;;
+		--infodir | --sysconfdir | --localstatedir | --libexecdir | --disable-maintainer-mode | --disable-dependency-tracking | --build)
 			echo "autoconf option ${PARAMETER} ignored" >&2
 			;;
 		--no-sorting | --no-compositing | --no-fading | --no-commands | --no-config-file | --no-inotify | --no-animations | --binary-name)
 			echo "obsolete 1.0 option ${PARAMETER} ignored" >&2
 			;;
-		--backends)
-			BACKENDS="${VALUE//,/ }"
-			for NAME in ${BACKENDS}; do
-				[ -e backends/${NAME}.c ] && continue
-				echo "Invalid argument to --backends: Backend ${NAME} was not found" >&2
-				exit 1
-			done
-			;;
 		*)
+			# Check for disableable feature flag
 			DEF=$(
 				sed -n -re 's!#ifn?def (\S+)\s*/\* option (\S+): (.+) ?\*/!\1 \2 \3!p' pqiv.c | while read DEFNAME OPTFLAG DESCRIPTION; do
 					if [ "${PARAMETER}" = "${OPTFLAG}" ]; then
@@ -151,6 +169,7 @@ while [ $# -gt 0 ]; do
 			if [ -n "${DEF}" ]; then
 				EXTRA_DEFS="${EXTRA_DEFS} ${DEF}"
 			else
+				# Check for dynamic backend en-/dis-abling flag
 				if [ "${PARAMETER#--without-}" != "${PARAMETER}" ]; then
 					DISABLED_BACKENDS="${PARAMETER#--without-} ${DISABLED_BACKENDS}"
 				elif [ "${PARAMETER#--with-}" != "${PARAMETER}" ]; then
@@ -329,6 +348,7 @@ ${CCFLAGS:+CCFLAGS=$CCFLAGS}
 ${MANDIR:+MANDIR=$MANDIR}
 ${BACKENDS:+BACKENDS=$BACKENDS}
 ${CC:+CC=$CC}
+${VERBOSE:+VERBOSE=$VERBOSE}
 ${EXTRA_CFLAGS_SHARED_OBJECTS:+EXTRA_CFLAGS_SHARED_OBJECTS=$EXTRA_CFLAGS_SHARED_OBJECTS}
 ${EXTRA_CFLAGS_BINARY:+EXTRA_CFLAGS_BINARY=$EXTRA_CFLAGS_BINARY}
 ${EXTRA_LDFLAGS_SHARED_OBJECTS:+EXTRA_LDFLAGS_SHARED_OBJECTS=$EXTRA_LDFLAGS_SHARED_OBJECTS}
