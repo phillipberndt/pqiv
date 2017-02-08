@@ -68,6 +68,11 @@
 	#define PQIV_VERSION_DEBUG ""
 #endif
 
+#if defined(__clang__) || defined(__GNUC__)
+	#define UNUSED_FUNCTION __attribute__((unused))
+#else
+	#define UNUSED_FUNCTION
+#endif
 
 #if !GLIB_CHECK_VERSION(2, 32, 0)
 	#define g_thread_new(name, func, data) g_thread_create(func, data, FALSE, NULL)
@@ -645,8 +650,8 @@ void recreate_window();
 static void status_output();
 void handle_input_event(guint key_binding_value);
 static void continue_active_input_event_action_chain();
-static void block_active_input_event_action_chain();
-static void unblock_active_input_event_action_chain();
+static void UNUSED_FUNCTION block_active_input_event_action_chain();
+static void UNUSED_FUNCTION unblock_active_input_event_action_chain();
 #ifndef CONFIGURED_WITHOUT_ACTIONS
 gboolean window_auto_hide_cursor_callback(gpointer user_data);
 #endif
@@ -4345,14 +4350,14 @@ static void continue_active_input_event_action_chain() {/*{{{*/
 	}
 #endif
 }/*}}}*/
-static void block_active_input_event_action_chain() {/*{{{*/
+static void UNUSED_FUNCTION block_active_input_event_action_chain() {/*{{{*/
 #ifndef CONFIGURED_WITHOUT_ACTIONS
 	if(active_key_binding.timeout_id == -1 && active_key_binding.key_binding) {
 		active_key_binding.timeout_id = -2;
 	}
 #endif
 }/*}}}*/
-static void unblock_active_input_event_action_chain() {/*{{{*/
+static void UNUSED_FUNCTION unblock_active_input_event_action_chain() {/*{{{*/
 #ifndef CONFIGURED_WITHOUT_ACTIONS
 	if(active_key_binding.timeout_id == -2 && active_key_binding.key_binding) {
 		active_key_binding.timeout_id = -1;
@@ -5267,6 +5272,7 @@ gboolean perform_string_action(const gchar *string_action) {/*{{{*/
 						g_free(parameter);
 						return FALSE;
 					}
+					parsed_parameter.pint = 0; // To calm clang
 					break;
 
 				case PARAMETER_INT:
