@@ -67,15 +67,14 @@ options to select pqiv's backends:
 options to remove features from pqiv:
 EOF
 
-sed -n -re 's!#ifn?def (\S+)\s*/\* option (\S+): (.+) ?\*/!\1 \2 \3!p' pqiv.c | while read DEFNAME OPTFLAG DESCRIPTION; do
-	if [ ${#DESCRIPTION} -gt 50 ]; then
-		printf "  %-22s\n  %-22s%s\n" $OPTFLAG "" "$DESCRIPTION" >&2
-	else
-		printf "  %-22s%s\n" $OPTFLAG "$DESCRIPTION" >&2
-	fi
-done
-echo >&2
-
+	sed -n -re 's!#ifn?def (\S+)\s*/\* option (\S+): (.+) ?\*/!\1 \2 \3!p' pqiv.c | while read DEFNAME OPTFLAG DESCRIPTION; do
+		if [ ${#DESCRIPTION} -gt 50 ]; then
+			printf "  %-22s\n  %-22s%s\n" $OPTFLAG "" "$DESCRIPTION" >&2
+		else
+			printf "  %-22s%s\n" $OPTFLAG "$DESCRIPTION" >&2
+		fi
+	done
+	echo >&2
 }
 
 while [ $# -gt 0 ]; do
@@ -121,7 +120,11 @@ while [ $# -gt 0 ]; do
 				exit 1
 			done
 			;;
-		# Undocumented options for autoconf (esp. dh_auto_configure) compatibility
+		# Undocumented options for autoconf (esp. dh_auto_configure)
+		# compatibility Note to maintainers: These options are here to make it
+		# simpler to package pqiv, because they allow to run autotools wrappers
+		# against this package.  I will maintain them, but I'd recommend
+		# against using them if you can avoid it.
 		--host)
 			CROSS=${VALUE}-
 			;;
@@ -344,7 +347,7 @@ EXTRA_DEFS=${EXTRA_DEFS}
 BACKENDS_BUILD=$BACKENDS_BUILD
 ${CFLAGS:+CFLAGS=$CFLAGS}
 ${LDFLAGS:+LDFLAGS=$LDFLAGS}
-${CCFLAGS:+CCFLAGS=$CCFLAGS}
+${CPPFLAGS:+CPPFLAGS=$CPPFLAGS}
 ${MANDIR:+MANDIR=$MANDIR}
 ${BACKENDS:+BACKENDS=$BACKENDS}
 ${CC:+CC=$CC}
