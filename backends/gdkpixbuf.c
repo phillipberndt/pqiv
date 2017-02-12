@@ -214,8 +214,8 @@ void file_type_gdkpixbuf_initializer(file_type_handler_t *info) {/*{{{*/
 	// Fill the file filter pattern
 	info->file_types_handled = gtk_file_filter_new();
 	gtk_file_filter_add_pixbuf_formats(info->file_types_handled);
-	GSList *file_formats_iterator = gdk_pixbuf_get_formats();
-	do {
+	GSList *file_formats_list = gdk_pixbuf_get_formats();
+	for(GSList *file_formats_iterator = file_formats_list; file_formats_iterator; file_formats_iterator = g_slist_next(file_formats_iterator)) {
 			gchar **file_format_extensions_iterator = gdk_pixbuf_format_get_extensions(file_formats_iterator->data);
 			while(*file_format_extensions_iterator != NULL) {
 					gchar *extn = g_strdup_printf("*.%s", *file_format_extensions_iterator);
@@ -223,8 +223,8 @@ void file_type_gdkpixbuf_initializer(file_type_handler_t *info) {/*{{{*/
 					g_free(extn);
 					++file_format_extensions_iterator;
 			}
-	} while((file_formats_iterator = g_slist_next(file_formats_iterator)) != NULL);
-	g_slist_free(file_formats_iterator);
+	};
+	g_slist_free(file_formats_list);
 
 	// Assign the handlers
 	info->alloc_fn                 =  file_type_gdkpixbuf_alloc;

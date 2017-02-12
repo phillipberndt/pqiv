@@ -867,6 +867,10 @@ void parse_configuration_file_callback(char *section, char *key, config_parser_v
 		return;
 		// }}}
 	}
+	else if(!section) {
+		// Key/value entries in a non-section.
+		g_printerr("Failed to handle non-section entry `%s' in configuration file.\n", key);
+	}
 	else if(strcmp(section, "options") == 0 && key) {
 		// pqiv 2.x configuration setting {{{
 		GError *error_pointer = NULL;
@@ -2821,7 +2825,10 @@ void hardlink_current_image() {/*{{{*/
 		return;
 	}
 
+	// Intentionally ignoring mkdir return value -- the error case is handled below, and this
+	// saves one extra access(2) call.
 	g_mkdir("./.pqiv-select", 0755);
+
 	if(
 		#ifdef _WIN32
 			CreateHardLink(link_target, FILE(the_file)->file_name, NULL) == 0
@@ -3526,7 +3533,7 @@ gboolean window_draw_callback(GtkWidget *widget, cairo_t *cr_arg, gpointer user_
 	// Draw info box (directly to the screen)
 #ifndef CONFIGURED_WITHOUT_INFO_TEXT
 	if(current_info_text != NULL) {
-		double x1, x2, y1, y2;
+		double x1 = 0., x2 = 0., y1 = 0., y2 = 0.;
 		cairo_save(cr_arg);
 		// Attempt this multiple times: If it does not fit the window,
 		// retry with a smaller font size
@@ -4164,6 +4171,7 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 
 			invalidate_current_scaled_image_surface();
 			gtk_widget_queue_draw(GTK_WIDGET(main_window));
+			break;
 
 		case ACTION_ANIMATION_STEP:
 			if(!(CURRENT_FILE->file_flags & FILE_FLAGS_ANIMATION)) {
@@ -4969,6 +4977,7 @@ void parse_key_bindings(const gchar *bindings) {/*{{{*/
 		switch(state) {
 			case 0: // Expecting key description
 				current_command_start = scan;
+				// Missing break is intentional, fall through to case 1.
 
 			case 1: // Expecting continuation of key description or start of command
 				switch(*scan) {
@@ -5226,7 +5235,7 @@ gboolean perform_string_action(const gchar *string_action) {/*{{{*/
 	scan++;
 	while(*scan == '\t' || *scan == '\n' || *scan == ' ') scan++;
 	parameter_start = scan;
-	if(!scan) {
+	if(!*scan) {
 		g_printerr("Invalid command: Missing parameter list.\n");
 		return FALSE;
 	}
@@ -5316,7 +5325,7 @@ gboolean perform_string_action(const gchar *string_action) {/*{{{*/
 		return FALSE;
 	}
 
-	if(scan) {
+	if(*scan) {
 		return perform_string_action(scan);
 	}
 
