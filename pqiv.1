@@ -135,6 +135,12 @@ Like \fB\-\-action\fR, but read actions from the standard input. See the
 conflicts with \fB\-\-additional\-from\-stdin\fR.
 .\"
 .TP
+.BR \-\-allow\-empty\-window
+\fBpqiv\fR normally does not display the main window until one image has been
+found, and quits when it cannot load any of the images anymore. With this
+option, both situations result in an empty \fBpqiv\fR window being shown.
+.\"
+.TP
 .BR \-\-bind\-key=\fIKEY BINDING\fR
 Rebind a key to an action. The syntax is
 .RS

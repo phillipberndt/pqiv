@@ -132,6 +132,9 @@ Known bugs
 Changelog
 ---------
 
+pqiv 2.8 (WIP)
+ * Added option --allow-empty-window: Show pqiv even if no images can be loaded
+
 pqiv 2.7.4
  * Fix GTK 2 compilation
  * Fix backends list in configure script
