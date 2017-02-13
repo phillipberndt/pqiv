@@ -54,7 +54,7 @@ You'll need
 
  * gtk+ 3.0 *or* gtk+ 2.6
  * gdk-pixbuf 2.2 (included in gtk+)
- * glib 2.6
+ * glib 2.8
  * cairo 1.6
  * gio 2.0
  * gdk 2.8

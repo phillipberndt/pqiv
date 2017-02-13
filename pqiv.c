@@ -604,6 +604,7 @@ const struct pqiv_action_descriptor {
 
 typedef struct {
 	gint depth;
+	GTree *outstanding_files;
 } directory_watch_options_t;
 
 void set_scale_level_to_fit();
@@ -979,13 +980,31 @@ void load_images_directory_watch_callback(GFileMonitor *monitor, GFile *file, GF
 			// In theory, handling regular files here should suffice. But files in subdirectories
 			// seem not always to be recognized correctly by file monitors, so we have to install
 			// one for each directory.
-			if(g_file_test(name, G_FILE_TEST_IS_REGULAR | G_FILE_TEST_IS_SYMLINK | G_FILE_TEST_IS_DIR)) {
+			//
+			// One catch is that we should not handle files right away, because they might not
+			// be completely written to disk at this point.
+			//
+			if(g_file_test(name, G_FILE_TEST_IS_DIR)) {
 				// Use the standard loading mechanism. If directory watches are enabled,
 				// the temporary variables used therein are not freed.
 				load_images_handle_parameter(name, INOTIFY, options->depth);
+				g_free(name);
 			}
-			g_free(name);
+			else if(g_file_test(name, G_FILE_TEST_IS_REGULAR | G_FILE_TEST_IS_SYMLINK)) {
+				// Defer call to load_images_handle_parameter.
+				// name now belongs to the hash table, do not free it here.
+				// TODO Option for later: Insert time as value and regularly cleanup the hash.
+				g_tree_replace(options->outstanding_files, name, NULL);
+			}
 		}
+	}
+	else if(event_type == G_FILE_MONITOR_EVENT_CHANGES_DONE_HINT) {
+		gchar *name = g_file_get_path(file);
+		if(g_tree_remove(options->outstanding_files, name)) {
+			// The file was in the "new files" hash. Add it now.
+			load_images_handle_parameter(name, INOTIFY, options->depth);
+		}
+		g_free(name);
 	}
 	// We cannot reliably react on G_FILE_MONITOR_EVENT_DELETED here, because either the tree
 	// is unsorted, in which case it is indexed by numbers, or it is sorted by the display
@@ -1119,6 +1138,9 @@ gpointer load_images_handle_parameter_thread(char *param) {/*{{{*/
 	g_free(param);
 	gtk_widget_queue_draw(GTK_WIDGET(main_window));
 	return NULL;
+}/*}}}*/
+int pqiv_utility_strcmp0_data(const void *data1, const void *data2, void *user_data) {/*{{{*/
+	return g_strcmp0(data1, data2);
 }/*}}}*/
 void load_images_handle_parameter(char *param, load_images_state_t state, gint depth) {/*{{{*/
 	file_t *file;
@@ -1276,6 +1298,7 @@ void load_images_handle_parameter(char *param, load_images_state_t state, gint d
 				GFileMonitor *directory_monitor = g_file_monitor_directory(file_ptr, G_FILE_MONITOR_NONE, NULL, NULL);
 				if(directory_monitor != NULL) {
 					directory_watch_options_t *options = g_new0(directory_watch_options_t, 1);
+					options->outstanding_files = g_tree_new_full(pqiv_utility_strcmp0_data, NULL, g_free, NULL);
 					options->depth = depth;
 					g_signal_connect(directory_monitor, "changed", G_CALLBACK(load_images_directory_watch_callback), options);
 					// We do not store the directory_monitor anywhere, because it is not used explicitly
