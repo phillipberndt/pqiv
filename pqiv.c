@@ -1605,9 +1605,12 @@ void image_file_updated_callback(GFileMonitor *monitor, GFile *file, GFile *othe
 		//
 		// There's another race if a user deletes all files at once. --watch-files=ignore
 		// has been added for such situations, to disable this functionality
+		//
+		// Single exception: With the --allow-empty-window option, it does make
+		// sense to unload even the last image.
 		if(option_watch_files == ON) {
 			FILE(node)->force_reload = TRUE;
-			if(bostree_node_count(file_tree) > 1) {
+			if(bostree_node_count(file_tree) > 1 || option_allow_empty_window) {
 				queue_image_load(node);
 			}
 		}
