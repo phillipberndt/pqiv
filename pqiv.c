@@ -184,7 +184,6 @@ void initialize_file_type_handlers();
 //  * The option parser thread, if --lazy-load is used
 //  * The image loader thread
 // Our thread safety strategy is as follows:
-//  * Access directory_tree only from the option parser
 //  * Wrap all file_tree operations with mutexes
 //  * Use weak references for any operation during which the image might
 //    invalidate.
@@ -203,7 +202,6 @@ G_LOCK_DEFINE_STATIC(file_tree);
 	#define D_UNLOCK(x) G_UNLOCK(x)
 #endif
 BOSTree *file_tree;
-BOSTree *directory_tree;
 BOSNode *current_file_node = NULL;
 BOSNode *earlier_file_node = NULL;
 BOSNode *image_loader_thread_currently_loading = NULL;
@@ -379,7 +377,7 @@ gboolean option_end_of_files_action_callback(const gchar *option_name, const gch
 gboolean option_watch_files_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error);
 gboolean option_sort_key_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error);
 gboolean option_action_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error);
-void load_images_handle_parameter(char *param, load_images_state_t state, gint depth);
+void load_images_handle_parameter(char *param, load_images_state_t state, gint depth, GSList *recursion_folder_stack);
 
 struct {
 	gint x;
@@ -611,6 +609,7 @@ const struct pqiv_action_descriptor {
 typedef struct {
 	gint depth;
 	GTree *outstanding_files;
+	GSList *recursion_folder_stack;
 } directory_watch_options_t;
 
 void set_scale_level_to_fit();
@@ -994,7 +993,7 @@ void load_images_directory_watch_callback(GFileMonitor *monitor, GFile *file, GF
 			if(g_file_test(name, G_FILE_TEST_IS_DIR)) {
 				// Use the standard loading mechanism. If directory watches are enabled,
 				// the temporary variables used therein are not freed.
-				load_images_handle_parameter(name, INOTIFY, options->depth);
+				load_images_handle_parameter(name, INOTIFY, options->depth, options->recursion_folder_stack);
 				g_free(name);
 			}
 			else if(g_file_test(name, G_FILE_TEST_IS_REGULAR | G_FILE_TEST_IS_SYMLINK)) {
@@ -1009,7 +1008,7 @@ void load_images_directory_watch_callback(GFileMonitor *monitor, GFile *file, GF
 		gchar *name = g_file_get_path(file);
 		if(g_tree_remove(options->outstanding_files, name)) {
 			// The file was in the "new files" hash. Add it now.
-			load_images_handle_parameter(name, INOTIFY, options->depth);
+			load_images_handle_parameter(name, INOTIFY, options->depth, options->recursion_folder_stack);
 		}
 		g_free(name);
 	}
@@ -1141,7 +1140,7 @@ BOSNode *load_images_handle_parameter_find_handler(const char *param, load_image
 gpointer load_images_handle_parameter_thread(char *param) {/*{{{*/
 	// Thread version of load_images_handle_parameter
 	// Free()s param after run
-	load_images_handle_parameter(param, PARAMETER, 0);
+	load_images_handle_parameter(param, PARAMETER, 0, NULL);
 	g_free(param);
 	if(main_window) {
 		gtk_widget_queue_draw(GTK_WIDGET(main_window));
@@ -1151,16 +1150,11 @@ gpointer load_images_handle_parameter_thread(char *param) {/*{{{*/
 int pqiv_utility_strcmp0_data(const void *data1, const void *data2, void *user_data) {/*{{{*/
 	return g_strcmp0(data1, data2);
 }/*}}}*/
-void load_images_handle_parameter(char *param, load_images_state_t state, gint depth) {/*{{{*/
+void load_images_handle_parameter(char *param, load_images_state_t state, gint depth, GSList *recursion_folder_stack) {/*{{{*/
 	file_t *file;
 
 	// If the file tree has been invalidated, cancel.
 	if(!file_tree_valid) {
-		return;
-	}
-
-	if(!load_images_file_filter_info) {
-		g_printerr("The image loader has been invalidated; your use case isn't covered. Please file a feature request!\n");
 		return;
 	}
 
@@ -1216,7 +1210,7 @@ void load_images_handle_parameter(char *param, load_images_state_t state, gint d
 		if(state == PARAMETER && option_browse && g_file_test(param, G_FILE_TEST_IS_SYMLINK | G_FILE_TEST_IS_REGULAR) == TRUE) {
 			// Handle the actual parameter first, such that it is displayed
 			// first (unless sorting is enabled)
-			load_images_handle_parameter(param, BROWSE_ORIGINAL_PARAMETER, 0);
+			load_images_handle_parameter(param, BROWSE_ORIGINAL_PARAMETER, 0, recursion_folder_stack);
 
 			// Decrease depth such that the following recursive invocations
 			// will again have depth 0 (this is the base directory, after all)
@@ -1243,13 +1237,13 @@ void load_images_handle_parameter(char *param, load_images_state_t state, gint d
 					realpath(param, abs_path) != NULL
 				#endif
 			) {
-				if(bostree_lookup(directory_tree, abs_path) != NULL) {
+				if(g_slist_find_custom(recursion_folder_stack, abs_path, (GCompareFunc)g_strcmp0)) {
 					if(original_parameter != NULL) {
 						g_free(param);
 					}
 					return;
 				}
-				bostree_insert(directory_tree, g_strdup(abs_path), NULL);
+				recursion_folder_stack = g_slist_prepend(recursion_folder_stack, g_strdup(abs_path));
 			}
 			else {
 				// Consider this an error
@@ -1287,11 +1281,12 @@ void load_images_handle_parameter(char *param, load_images_state_t state, gint d
 				gchar *dir_entry_full = g_strdup_printf("%s%s%s", param, g_str_has_suffix(param, G_DIR_SEPARATOR_S) ? "" : G_DIR_SEPARATOR_S, dir_entry);
 				if(!(original_parameter != NULL && g_strcmp0(dir_entry_full, original_parameter) == 0)) {
 					// Skip if we are in --browse mode and this is the file which we have already added above.
-					load_images_handle_parameter(dir_entry_full, RECURSION, depth + 1);
+					load_images_handle_parameter(dir_entry_full, RECURSION, depth + 1, recursion_folder_stack);
 				}
 				g_free(dir_entry_full);
 
 				// If the file tree has been invalidated, cancel.
+				// Do not bother to free stuff, because pqiv will exit anyway.
 				if(!file_tree_valid) {
 					return;
 				}
@@ -1309,11 +1304,18 @@ void load_images_handle_parameter(char *param, load_images_state_t state, gint d
 					directory_watch_options_t *options = g_new0(directory_watch_options_t, 1);
 					options->outstanding_files = g_tree_new_full(pqiv_utility_strcmp0_data, NULL, g_free, NULL);
 					options->depth = depth;
+					options->recursion_folder_stack = recursion_folder_stack;
 					g_signal_connect(directory_monitor, "changed", G_CALLBACK(load_images_directory_watch_callback), options);
 					// We do not store the directory_monitor anywhere, because it is not used explicitly
 					// again. If this should ever be needed, this is the place where this should be done.
 				}
 				g_object_unref(file_ptr);
+			}
+			else {
+				// If we do not use directory watches then there is no use in
+				// maintaining the directory recursion stack. Remove the first
+				// entry (current directory) again.
+				recursion_folder_stack = g_slist_delete_link(recursion_folder_stack, recursion_folder_stack);
 			}
 
 			if(original_parameter != NULL) {
@@ -1465,10 +1467,6 @@ void file_tree_free_helper(BOSNode *node) {
 		g_slice_free(float, node->key);
 	}
 }
-void directory_tree_free_helper(BOSNode *node) {
-	free(node->key);
-	// value is NULL
-}
 void load_images() {/*{{{*/
 	int * const argc = &global_argc;
 	char ** const argv = global_argv;
@@ -1479,9 +1477,6 @@ void load_images() {/*{{{*/
 		file_tree_free_helper
 	);
 	file_tree_valid = TRUE;
-
-	// The directory tree is used to prevent nested-symlink loops
-	directory_tree = bostree_new((BOSTree_cmp_function)g_strcmp0, directory_tree_free_helper);
 
 	// Allocate memory for the timer
 	if(!option_actions_from_stdin) {
@@ -1496,7 +1491,7 @@ void load_images() {/*{{{*/
 	// Load the images from the remaining parameters
 	for(int i=1; i<*argc; i++) {
 		if(argv[i][0]) {
-			load_images_handle_parameter(argv[i], PARAMETER, 0);
+			load_images_handle_parameter(argv[i], PARAMETER, 0, NULL);
 		}
 	}
 
@@ -1521,20 +1516,10 @@ void load_images() {/*{{{*/
 			}
 
 			buffer[line_terminator_pos] = 0;
-			load_images_handle_parameter(buffer, PARAMETER, 0);
+			load_images_handle_parameter(buffer, PARAMETER, 0, NULL);
 			g_free(buffer);
 		}
 		g_io_channel_unref(stdin_reader);
-	}
-
-	// If we can be certain that no further images will be loaded, we can now
-	// drop the variables we used for loading to free some space
-	if(!option_watch_directories && !option_actions_from_stdin) {
-		// TODO
-		// g_object_ref_sink(load_images_file_filter);
-		g_free(load_images_file_filter_info);
-		load_images_file_filter_info = NULL;
-		bostree_destroy(directory_tree);
 	}
 
 	if(load_images_timer) {
