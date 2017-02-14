@@ -2137,6 +2137,9 @@ gboolean initialize_image_loader() {/*{{{*/
 }/*}}}*/
 void abort_pending_image_loads(BOSNode *new_pos) {/*{{{*/
 	BOSNode *ref;
+	if(image_loader_queue == NULL) {
+		return;
+	}
 	while((ref = g_async_queue_try_pop(image_loader_queue)) != NULL) bostree_node_weak_unref(file_tree, ref);
 	if(image_loader_thread_currently_loading != NULL && image_loader_thread_currently_loading != new_pos) {
 		g_cancellable_cancel(image_loader_cancellable);
