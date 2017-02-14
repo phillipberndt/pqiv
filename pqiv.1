@@ -573,6 +573,11 @@ new images as they appear in a directory and is useful e.g. if you output images
 from a script that you later intent to combine into a movie and wish to monitor
 progress.
 .TP
+\fBpqiv \-\-slideshow \-\-allow\-empty\-window \-\-watch\-directories \-\-wait\-for\-images\-to\-appear \-\-lazy\-load test\fR
+Set up a slideshow that displays all images from the \fItest\fR folder such
+that it is possible to remove all images from the directory and place new ones
+into it afterwards without \fBpqiv\fR exiting.
+.TP
 \fBecho "output_file_list(); quit()" | pqiv \-\-actions\-from\-stdin test\fR
 Output a list of all files from the \fItest\fR folder that \fBpqiv\fR can
 handle and quit.
