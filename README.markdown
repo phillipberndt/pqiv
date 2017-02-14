@@ -54,7 +54,7 @@ You'll need
 
  * gtk+ 3.0 *or* gtk+ 2.6
  * gdk-pixbuf 2.2 (included in gtk+)
- * glib 2.6
+ * glib 2.8
  * cairo 1.6
  * gio 2.0
  * gdk 2.8
@@ -132,6 +132,9 @@ Known bugs
 Changelog
 ---------
 
+pqiv 2.8 (WIP)
+ * Added option --allow-empty-window: Show pqiv even if no images can be loaded
+
 pqiv 2.7.4
  * Fix GTK 2 compilation
  * Fix backends list in configure script
@@ -153,6 +156,8 @@ pqiv 2.7
  * Support an `actions` section in the configuration file for default actions
  * Create and install a desktop file for pqiv during install
  * Disable GTK's transparent scaling on HiDpi monitors
+ * New option --wait-for-images-to-appear to wait for images to appear if none
+   are found
 
 pqiv 2.6
  * Added --enforce-window-aspect-ratio

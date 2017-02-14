@@ -135,6 +135,12 @@ Like \fB\-\-action\fR, but read actions from the standard input. See the
 conflicts with \fB\-\-additional\-from\-stdin\fR.
 .\"
 .TP
+.BR \-\-allow\-empty\-window
+\fBpqiv\fR normally does not display the main window until one image has been
+found, and quits when it cannot load any of the images anymore. With this
+option, both situations result in an empty \fBpqiv\fR window being shown.
+.\"
+.TP
 .BR \-\-bind\-key=\fIKEY BINDING\fR
 Rebind a key to an action. The syntax is
 .RS
@@ -246,6 +252,12 @@ but \fIb1\fR after both,
 .IP MTIME
 To sort by file modification date.
 .RE
+.\"
+.TP
+.BR \-\-wait\-for\-images\-to\-appear
+If no images are found in the directories specified on the command line,
+instead of exiting, wait for some to appear. This option only works in
+conjunction with \fB\-\-lazy\-load\fR and \fB\-\-watch\-directories\fR.
 .\"
 .TP
 .BR \-\-watch\-directories
@@ -560,6 +572,11 @@ and in the end wait until new files become available. This effectively displays
 new images as they appear in a directory and is useful e.g. if you output images
 from a script that you later intent to combine into a movie and wish to monitor
 progress.
+.TP
+\fBpqiv \-\-slideshow \-\-allow\-empty\-window \-\-watch\-directories \-\-wait\-for\-images\-to\-appear \-\-lazy\-load test\fR
+Set up a slideshow that displays all images from the \fItest\fR folder such
+that it is possible to remove all images from the directory and place new ones
+into it afterwards without \fBpqiv\fR exiting.
 .TP
 \fBecho "output_file_list(); quit()" | pqiv \-\-actions\-from\-stdin test\fR
 Output a list of all files from the \fItest\fR folder that \fBpqiv\fR can

@@ -195,10 +195,13 @@ void initialize_file_type_handlers();
 //    operation
 G_LOCK_DEFINE_STATIC(file_tree);
 // In case of trouble:
-// #define D_LOCK(x) g_print("Waiting for lock " #x " at line %d\n", __LINE__); G_LOCK(x); g_print("  Locked " #x " at line %d\n", __LINE__)
-// #define D_UNLOCK(x) g_print("Unlocked " #x " at line %d\n", __LINE__); G_UNLOCK(x);
-#define D_LOCK(x) G_LOCK(x)
-#define D_UNLOCK(x) G_UNLOCK(x)
+#if 0
+	#define D_LOCK(x) g_print("Waiting for lock " #x " at line %d\n", __LINE__); G_LOCK(x); g_print("  Locked " #x " at line %d\n", __LINE__)
+	#define D_UNLOCK(x) g_print("Unlocked " #x " at line %d\n", __LINE__); G_UNLOCK(x);
+#else
+	#define D_LOCK(x) G_LOCK(x)
+	#define D_UNLOCK(x) G_UNLOCK(x)
+#endif
 BOSTree *file_tree;
 BOSTree *directory_tree;
 BOSNode *current_file_node = NULL;
@@ -225,6 +228,7 @@ GTimer *load_images_timer;
 #define CURRENT_FILE FILE(current_file_node)
 #define next_file() relative_image_pointer(1)
 #define previous_file() relative_image_pointer(-1)
+#define is_current_file_loaded() (current_file_node && CURRENT_FILE->is_loaded)
 
 // The node to be displayed first, used in conjunction with --browse
 BOSNode *browse_startup_node = NULL;
@@ -334,8 +338,10 @@ enum { NAME, MTIME } option_sort_key = NAME;
 gboolean option_shuffle = FALSE;
 gboolean option_transparent_background = FALSE;
 gboolean option_watch_directories = FALSE;
+gboolean option_wait_for_images_to_appear = FALSE;
 gboolean option_fading = FALSE;
 gboolean option_lazy_load = FALSE;
+gboolean option_allow_empty_window = FALSE;
 gboolean option_lowmem = FALSE;
 gboolean option_addl_from_stdin = FALSE;
 gboolean option_recreate_window = FALSE;
@@ -390,7 +396,7 @@ GOptionEntry options[] = {
 #ifndef CONFIGURED_WITHOUT_INFO_TEXT
 	{ "hide-info-box", 'i', 0, G_OPTION_ARG_NONE, &option_hide_info_box, "Initially hide the info box", NULL },
 #endif
-	{ "lazy-load", 'l', 0, G_OPTION_ARG_NONE, &option_lazy_load, "Display the main window as soon as possible", NULL },
+	{ "lazy-load", 'l', 0, G_OPTION_ARG_NONE, &option_lazy_load, "Display the main window as soon as one image is loaded", NULL },
 	{ "sort", 'n', 0, G_OPTION_ARG_NONE, &option_sort, "Sort files in natural order", NULL },
 	{ "window-position", 'P', 0, G_OPTION_ARG_CALLBACK, (gpointer)&option_window_position_callback, "Set initial window position (`x,y' or `off' to not position the window at all)", "POSITION" },
 	{ "additional-from-stdin", 'r', 0, G_OPTION_ARG_NONE, &option_addl_from_stdin, "Read additional filenames/folders from stdin", NULL },
@@ -414,6 +420,7 @@ GOptionEntry options[] = {
 #ifndef CONFIGURED_WITHOUT_ACTIONS
 	{ "action", 0, 0, G_OPTION_ARG_CALLBACK, &option_action_callback, "Perform a given action", "ACTION" },
 	{ "actions-from-stdin", 0, 0, G_OPTION_ARG_NONE, &option_actions_from_stdin, "Read actions from stdin", NULL },
+	{ "allow-empty-window", 0, 0, G_OPTION_ARG_NONE, &option_allow_empty_window, "Show pqiv/do not quit even though no files are loaded", NULL },
 	{ "bind-key", 0, 0, G_OPTION_ARG_CALLBACK, &options_bind_key_callback, "Rebind a key to another action, see manpage and --show-keybindings output for details.", "KEY BINDING" },
 #endif
 	{ "browse", 0, 0, G_OPTION_ARG_NONE, &option_browse, "For each command line argument, additionally load all images from the image's directory", NULL },
@@ -429,6 +436,7 @@ GOptionEntry options[] = {
 	{ "show-bindings", 0, G_OPTION_FLAG_NO_ARG, G_OPTION_ARG_CALLBACK, &help_show_key_bindings, "Display the keyboard and mouse bindings and exit", NULL },
 #endif
 	{ "sort-key", 0, 0, G_OPTION_ARG_CALLBACK, (gpointer)&option_sort_key_callback, "Key to use for sorting", "PROPERTY" },
+	{ "wait-for-images-to-appear", 0, 0, G_OPTION_ARG_NONE, &option_wait_for_images_to_appear, "If no images are found, wait until at least one appears", NULL },
 	{ "watch-directories", 0, 0, G_OPTION_ARG_NONE, &option_watch_directories, "Watch directories for new files", NULL },
 	{ "watch-files", 0, 0, G_OPTION_ARG_CALLBACK, (gpointer)&option_watch_files_callback, "Watch files for changes on disk (`on`, `off', `changes-only', i.e. do nothing on deletetion)", "VALUE" },
 
@@ -602,6 +610,7 @@ const struct pqiv_action_descriptor {
 
 typedef struct {
 	gint depth;
+	GTree *outstanding_files;
 } directory_watch_options_t;
 
 void set_scale_level_to_fit();
@@ -642,6 +651,7 @@ void file_tree_free_helper(BOSNode *node);
 gint relative_image_pointer_shuffle_list_cmp(shuffled_image_ref_t *ref, BOSNode *node);
 void relative_image_pointer_shuffle_list_unref_fn(shuffled_image_ref_t *ref);
 gboolean slideshow_timeout_callback(gpointer user_data);
+gboolean absolute_image_movement(BOSNode *ref);
 #ifndef CONFIGURED_WITHOUT_ACTIONS
 void parse_key_bindings(const gchar *bindings);
 gboolean read_commands_thread_helper(gpointer command);
@@ -977,13 +987,31 @@ void load_images_directory_watch_callback(GFileMonitor *monitor, GFile *file, GF
 			// In theory, handling regular files here should suffice. But files in subdirectories
 			// seem not always to be recognized correctly by file monitors, so we have to install
 			// one for each directory.
-			if(g_file_test(name, G_FILE_TEST_IS_REGULAR | G_FILE_TEST_IS_SYMLINK | G_FILE_TEST_IS_DIR)) {
+			//
+			// One catch is that we should not handle files right away, because they might not
+			// be completely written to disk at this point.
+			//
+			if(g_file_test(name, G_FILE_TEST_IS_DIR)) {
 				// Use the standard loading mechanism. If directory watches are enabled,
 				// the temporary variables used therein are not freed.
 				load_images_handle_parameter(name, INOTIFY, options->depth);
+				g_free(name);
 			}
-			g_free(name);
+			else if(g_file_test(name, G_FILE_TEST_IS_REGULAR | G_FILE_TEST_IS_SYMLINK)) {
+				// Defer call to load_images_handle_parameter.
+				// name now belongs to the hash table, do not free it here.
+				// TODO Option for later: Insert time as value and regularly cleanup the hash.
+				g_tree_replace(options->outstanding_files, name, NULL);
+			}
 		}
+	}
+	else if(event_type == G_FILE_MONITOR_EVENT_CHANGES_DONE_HINT) {
+		gchar *name = g_file_get_path(file);
+		if(g_tree_remove(options->outstanding_files, name)) {
+			// The file was in the "new files" hash. Add it now.
+			load_images_handle_parameter(name, INOTIFY, options->depth);
+		}
+		g_free(name);
 	}
 	// We cannot reliably react on G_FILE_MONITOR_EVENT_DELETED here, because either the tree
 	// is unsorted, in which case it is indexed by numbers, or it is sorted by the display
@@ -1115,8 +1143,13 @@ gpointer load_images_handle_parameter_thread(char *param) {/*{{{*/
 	// Free()s param after run
 	load_images_handle_parameter(param, PARAMETER, 0);
 	g_free(param);
-	gtk_widget_queue_draw(GTK_WIDGET(main_window));
+	if(main_window) {
+		gtk_widget_queue_draw(GTK_WIDGET(main_window));
+	}
 	return NULL;
+}/*}}}*/
+int pqiv_utility_strcmp0_data(const void *data1, const void *data2, void *user_data) {/*{{{*/
+	return g_strcmp0(data1, data2);
 }/*}}}*/
 void load_images_handle_parameter(char *param, load_images_state_t state, gint depth) {/*{{{*/
 	file_t *file;
@@ -1274,6 +1307,7 @@ void load_images_handle_parameter(char *param, load_images_state_t state, gint d
 				GFileMonitor *directory_monitor = g_file_monitor_directory(file_ptr, G_FILE_MONITOR_NONE, NULL, NULL);
 				if(directory_monitor != NULL) {
 					directory_watch_options_t *options = g_new0(directory_watch_options_t, 1);
+					options->outstanding_files = g_tree_new_full(pqiv_utility_strcmp0_data, NULL, g_free, NULL);
 					options->depth = depth;
 					g_signal_connect(directory_monitor, "changed", G_CALLBACK(load_images_directory_watch_callback), options);
 					// We do not store the directory_monitor anywhere, because it is not used explicitly
@@ -1337,7 +1371,11 @@ void load_images_handle_parameter(char *param, load_images_state_t state, gint d
 		load_images_file_filter_info->filename = load_images_file_filter_info->display_name = param_lowerc;
 
 		// Check if one of the file type handlers can handle this file
-		if(load_images_handle_parameter_find_handler(param, state, file, load_images_file_filter_info)) {
+		BOSNode *new_node = load_images_handle_parameter_find_handler(param, state, file, load_images_file_filter_info);
+		if(new_node) {
+			if(!current_file_node) {
+				g_idle_add((GSourceFunc)absolute_image_movement, bostree_node_weak_ref(new_node));
+			}
 			g_free(param_lowerc);
 			return;
 		}
@@ -1363,7 +1401,11 @@ void load_images_handle_parameter(char *param, load_images_state_t state, gint d
 				mime_guesser.contains = GTK_FILE_FILTER_MIME_TYPE;
 				mime_guesser.mime_type = param_file_mime_type;
 
-				if(load_images_handle_parameter_find_handler(param, state, file, &mime_guesser)) {
+				new_node = load_images_handle_parameter_find_handler(param, state, file, &mime_guesser);
+				if(new_node) {
+					if(!current_file_node) {
+						g_idle_add((GSourceFunc)absolute_image_movement, bostree_node_weak_ref(new_node));
+					}
 					g_free(param_file_mime_type);
 					g_object_unref(param_file);
 					g_object_unref(file_info);
@@ -1382,7 +1424,10 @@ void load_images_handle_parameter(char *param, load_images_state_t state, gint d
 
 		// Prepare file structure
 		file->file_type = &file_type_handlers[0];
-		file_type_handlers[0].alloc_fn(state, file);
+		new_node = file_type_handlers[0].alloc_fn(state, file);
+		if(!current_file_node) {
+			g_idle_add((GSourceFunc)absolute_image_movement, bostree_node_weak_ref(new_node));
+		}
 	}
 }/*}}}*/
 int image_tree_float_compare(const float *a, const float *b) {/*{{{*/
@@ -1560,9 +1605,12 @@ void image_file_updated_callback(GFileMonitor *monitor, GFile *file, GFile *othe
 		//
 		// There's another race if a user deletes all files at once. --watch-files=ignore
 		// has been added for such situations, to disable this functionality
+		//
+		// Single exception: With the --allow-empty-window option, it does make
+		// sense to unload even the last image.
 		if(option_watch_files == ON) {
 			FILE(node)->force_reload = TRUE;
-			if(bostree_node_count(file_tree) > 1) {
+			if(bostree_node_count(file_tree) > 1 || option_allow_empty_window) {
 				queue_image_load(node);
 			}
 		}
@@ -1577,7 +1625,7 @@ gboolean window_move_helper_callback(gpointer user_data) {/*{{{*/
 gboolean main_window_resize_callback(gpointer user_data) {/*{{{*/
 	D_LOCK(file_tree);
 	// If there is no image loaded, abort
-	if(!CURRENT_FILE->is_loaded) {
+	if(!is_current_file_loaded()) {
 		D_UNLOCK(file_tree);
 		return FALSE;
 	}
@@ -1603,6 +1651,10 @@ gboolean main_window_resize_callback(gpointer user_data) {/*{{{*/
 	return FALSE;
 }/*}}}*/
 void main_window_adjust_for_image() {/*{{{*/
+	if(!current_file_node) {
+		return;
+	}
+
 	// We only need to adjust the window if it is not in fullscreen
 	if(main_window_in_fullscreen) {
 		queue_draw();
@@ -1921,11 +1973,27 @@ gboolean image_loader_load_single(BOSNode *node, gboolean called_from_main) {/*{
 			bostree_remove(file_tree, node);
 		}
 		if(!called_from_main && bostree_node_count(file_tree) == 0) {
-			g_printerr("No images left to display.\n");
-			if(gtk_main_level() == 0) {
-				exit(1);
+			if(option_allow_empty_window) {
+				D_UNLOCK(file_tree);
+				current_file_node = NULL;
+				earlier_file_node = NULL;
+				invalidate_current_scaled_image_surface();
+				if(last_visible_image_surface) {
+					cairo_surface_destroy(last_visible_image_surface);
+					last_visible_image_surface = NULL;
+				}
+				current_image_drawn = FALSE;
+				update_info_text(NULL);
+				queue_draw();
+				return FALSE;
 			}
-			gtk_main_quit();
+			else {
+				g_printerr("No images left to display.\n");
+				if(gtk_main_level() == 0) {
+					exit(1);
+				}
+				gtk_main_quit();
+			}
 		}
 		D_UNLOCK(file_tree);
 	}
@@ -2025,6 +2093,10 @@ gboolean initialize_image_loader() {/*{{{*/
 		image_loader_cancellable = g_cancellable_new();
 	}
 	D_LOCK(file_tree);
+	if(current_file_node != NULL) {
+		// If this has previously been ref'ed for any reason, unref here.
+		bostree_node_weak_unref(file_tree, current_file_node);
+	}
 	if(browse_startup_node != NULL) {
 		current_file_node = bostree_node_weak_unref(file_tree, browse_startup_node);
 		browse_startup_node = NULL;
@@ -2065,6 +2137,9 @@ gboolean initialize_image_loader() {/*{{{*/
 }/*}}}*/
 void abort_pending_image_loads(BOSNode *new_pos) {/*{{{*/
 	BOSNode *ref;
+	if(image_loader_queue == NULL) {
+		return;
+	}
 	while((ref = g_async_queue_try_pop(image_loader_queue)) != NULL) bostree_node_weak_unref(file_tree, ref);
 	if(image_loader_thread_currently_loading != NULL && image_loader_thread_currently_loading != new_pos) {
 		g_cancellable_cancel(image_loader_cancellable);
@@ -2441,6 +2516,10 @@ BOSNode *relative_image_pointer(ptrdiff_t movement) {/*{{{*/
 void relative_image_movement(ptrdiff_t movement) {/*{{{*/
 	// Calculate new position
 	D_LOCK(file_tree);
+	if(!file_tree_valid || !bostree_node_count(file_tree)) {
+		D_UNLOCK(file_tree);
+		return;
+	}
 	BOSNode *target = bostree_node_weak_ref(relative_image_pointer(movement));
 	D_UNLOCK(file_tree);
 
@@ -2918,6 +2997,9 @@ void draw_current_image_to_context(cairo_t *cr) {/*{{{*/
 }/*}}}*/
 void setup_checkerboard_pattern() {/*{{{*/
 	// Create pattern
+	if(background_checkerboard_pattern != NULL) {
+		return;
+	}
     cairo_surface_t *surface;
 	surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, 16, 16);
 	cairo_t *ccr = cairo_create(surface);
@@ -3228,7 +3310,7 @@ inline void queue_draw() {/*{{{*/
 }/*}}}*/
 #ifndef CONFIGURED_WITHOUT_INFO_TEXT /* option --without-info-text: Build without support for the info text */
 inline void info_text_queue_redraw() {/*{{{*/
-	if(!option_hide_info_box) {
+	if(!option_hide_info_box && main_window_visible) {
 		gtk_widget_queue_draw_area(GTK_WIDGET(main_window),
 			current_info_text_bounding_box.x,
 			current_info_text_bounding_box.y,
@@ -3239,6 +3321,21 @@ inline void info_text_queue_redraw() {/*{{{*/
 }/*}}}*/
 void update_info_text(const gchar *action) {/*{{{*/
 	D_LOCK(file_tree);
+
+	if(!current_file_node) {
+		if(current_info_text != NULL) {
+			g_free(current_info_text);
+		}
+		const char *none_loaded = "No image loaded";
+		if(action) {
+			current_info_text = g_strdup_printf("%s - %s", action, none_loaded);
+		}
+		else {
+			current_info_text = g_strdup(none_loaded);
+		}
+		D_UNLOCK(file_tree);
+		return;
+	}
 
 	gchar *file_name;
 	if((CURRENT_FILE->file_flags & FILE_FLAGS_MEMORY_IMAGE) != 0) {
@@ -3362,7 +3459,7 @@ gboolean window_draw_callback(GtkWidget *widget, cairo_t *cr_arg, gpointer user_
 	// eventually. Performing the action inline here rather than just adding
 	// it as an idle callback is to prevent the image from flickering in its
 	// initial position.
-	if(CURRENT_FILE->is_loaded) {
+	if(is_current_file_loaded()) {
 		continue_active_input_event_action_chain();
 	}
 
@@ -3377,7 +3474,7 @@ gboolean window_draw_callback(GtkWidget *widget, cairo_t *cr_arg, gpointer user_
 	// coordinate transformations consistent in all places.
 	cairo_scale(cr_arg, 1./screen_scale_factor, 1./screen_scale_factor);
 
-	if(CURRENT_FILE->is_loaded) {
+	if(is_current_file_loaded()) {
 		// Calculate where to draw the image and the transformation matrix to use
 		int image_transform_width, image_transform_height;
 		calculate_base_draw_pos_and_size(&image_transform_width, &image_transform_height, &x, &y);
@@ -3599,6 +3696,9 @@ gboolean window_draw_callback(GtkWidget *widget, cairo_t *cr_arg, gpointer user_
 	}/*}}}*/
 #endif
 void set_scale_level_for_screen() {/*{{{*/
+	if(!current_file_node) {
+		return;
+	}
 	if(!main_window_in_fullscreen) {
 		// Calculate diplay width/heights with rotation, but without scaling, applied
 		int image_width, image_height;
@@ -3643,7 +3743,7 @@ void set_scale_level_to_fit() {/*{{{*/
 	}
 
 	D_LOCK(file_tree);
-	if(CURRENT_FILE->is_loaded) {
+	if(is_current_file_loaded()) {
 		if(!current_image_drawn) {
 			scale_override = FALSE;
 		}
@@ -3700,14 +3800,14 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 			break;
 
 		case ACTION_SHIFT_Y:
-			if(!CURRENT_FILE->is_loaded) return;
+			if(!is_current_file_loaded()) return;
 			current_shift_y += parameter.pint;
 			gtk_widget_queue_draw(GTK_WIDGET(main_window));
 			update_info_text(NULL);
 			break;
 
 		case ACTION_SHIFT_X:
-			if(!CURRENT_FILE->is_loaded) return;
+			if(!is_current_file_loaded()) return;
 			current_shift_x += parameter.pint;
 			gtk_widget_queue_draw(GTK_WIDGET(main_window));
 			update_info_text(NULL);
@@ -3733,7 +3833,7 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 
 		case ACTION_SET_SCALE_LEVEL_RELATIVE:
 		case ACTION_SET_SCALE_LEVEL_ABSOLUTE:
-			if(!CURRENT_FILE->is_loaded) return;
+			if(!is_current_file_loaded()) return;
 			if(action_id == ACTION_SET_SCALE_LEVEL_ABSOLUTE) {
 				current_scale_level = parameter.pdouble;
 			}
@@ -3762,7 +3862,7 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 			break;
 
 		case ACTION_TOGGLE_SCALE_MODE:
-			if(!CURRENT_FILE->is_loaded) return;
+			if(!is_current_file_loaded()) return;
 			if(parameter.pint == 0) {
 				if(++option_scale > AUTO_SCALEUP) {
 					option_scale = NO_SCALING;
@@ -3801,7 +3901,7 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 			break;
 
 		case ACTION_RELOAD:
-			if(!CURRENT_FILE->is_loaded) return;
+			if(!is_current_file_loaded()) return;
 			CURRENT_FILE->force_reload = TRUE;
 			update_info_text("Reloading image..");
 			queue_image_load(relative_image_pointer(0));
@@ -3809,7 +3909,7 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 			break;
 
 		case ACTION_RESET_SCALE_LEVEL:
-			if(!CURRENT_FILE->is_loaded) return;
+			if(!is_current_file_loaded()) return;
 			current_image_drawn = FALSE;
 			scale_override = FALSE;
 			set_scale_level_for_screen();
@@ -3830,7 +3930,7 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 			break;
 
 		case ACTION_FLIP_HORIZONTALLY:
-			if(!CURRENT_FILE->is_loaded) return;
+			if(!is_current_file_loaded()) return;
 			{
 				int image_width, image_height;
 				calculate_current_image_transformed_size(&image_width, &image_height);
@@ -3842,7 +3942,7 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 			break;
 
 		case ACTION_FLIP_VERTICALLY:
-			if(!CURRENT_FILE->is_loaded) return;
+			if(!is_current_file_loaded()) return;
 			{
 				int image_width, image_height;
 				calculate_current_image_transformed_size(&image_width, &image_height);
@@ -3854,7 +3954,7 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 			break;
 
 		case ACTION_ROTATE_LEFT:
-			if(!CURRENT_FILE->is_loaded) return;
+			if(!is_current_file_loaded()) return;
 			{
 				int image_width, image_height;
 				calculate_current_image_transformed_size(&image_width, &image_height);
@@ -3866,7 +3966,7 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 			break;
 
 		case ACTION_ROTATE_RIGHT:
-			if(!CURRENT_FILE->is_loaded) return;
+			if(!is_current_file_loaded()) return;
 			{
 				int image_width, image_height;
 				calculate_current_image_transformed_size(&image_width, &image_height);
@@ -3887,6 +3987,7 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 
 #ifndef CONFIGURED_WITHOUT_JUMP_DIALOG
 		case ACTION_JUMP_DIALOG:
+			if(!is_current_file_loaded()) return;
 			do_jump_dialog();
 			return;
 			break;
@@ -3908,7 +4009,7 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 			break;
 
 		case ACTION_HARDLINK_CURRENT_IMAGE:
-			if(!CURRENT_FILE->is_loaded) return;
+			if(!is_current_file_loaded()) return;
 			hardlink_current_image();
 			gtk_widget_queue_draw(GTK_WIDGET(main_window));
 			break;
@@ -3942,7 +4043,7 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 			break;
 
 		case ACTION_COMMAND:
-			if(!CURRENT_FILE->is_loaded) return;
+			if(!is_current_file_loaded()) return;
 			{
 				char *command = parameter.pcharptr;
 				if(command == NULL) {
@@ -4074,14 +4175,14 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 			break;
 
 		case ACTION_SET_SHIFT_X:
-			if(!CURRENT_FILE->is_loaded) return;
+			if(!is_current_file_loaded()) return;
 			current_shift_x = parameter.pint;
 			gtk_widget_queue_draw(GTK_WIDGET(main_window));
 			update_info_text(NULL);
 			break;
 
 		case ACTION_SET_SHIFT_Y:
-			if(!CURRENT_FILE->is_loaded) return;
+			if(!is_current_file_loaded()) return;
 			current_shift_y = parameter.pint;
 			gtk_widget_queue_draw(GTK_WIDGET(main_window));
 			update_info_text(NULL);
@@ -4747,6 +4848,10 @@ void window_realize_callback(GtkWidget *widget, gpointer user_data) {/*{{{*/
 	#endif
 }/*}}}*/
 void create_window() { /*{{{*/
+	if(main_window != NULL) {
+		return;
+	}
+
 	#if GTK_MAJOR_VERSION >= 3
 		GtkSettings *settings = gtk_settings_get_default();
 		if(settings != NULL) {
@@ -5384,6 +5489,7 @@ void recreate_window() {/*{{{*/
 	}
 	g_signal_handlers_disconnect_by_func(main_window, G_CALLBACK(window_close_callback), NULL);
 	gtk_widget_destroy(GTK_WIDGET(main_window));
+	main_window = NULL;
 	option_start_fullscreen = main_window_in_fullscreen;
 	main_window_visible = FALSE;
 	create_window();
@@ -5422,15 +5528,20 @@ gpointer load_images_thread(gpointer user_data) {/*{{{*/
 
 	load_images();
 
+	gboolean tree_empty = TRUE;
 	if(file_tree_valid) {
-		if(bostree_node_count(file_tree) == 0) {
+		tree_empty = bostree_node_count(file_tree) == 0;
+	}
+
+	if(!option_wait_for_images_to_appear) {
+		if(tree_empty) {
 			g_printerr("No images left to display.\n");
 			exit(1);
 		}
-	}
 
-	if(option_lazy_load) {
-		gdk_threads_add_idle(initialize_gui_or_quit_callback, NULL);
+		if(option_lazy_load) {
+			gdk_threads_add_idle(initialize_gui_or_quit_callback, NULL);
+		}
 	}
 
 #ifndef CONFIGURED_WITHOUT_INFO_TEXT
@@ -5479,6 +5590,17 @@ int main(int argc, char *argv[]) {
 		g_printerr("Warning: Fade durations larger than the slideslow interval won't work as expected.\n");
 	}
 
+	if(option_wait_for_images_to_appear) {
+		if(!option_watch_directories) {
+			g_printerr("Warning: --wait-for-images-to-appear implies --watch-directories.\n");
+			option_watch_directories = TRUE;
+		}
+		if(!option_lazy_load) {
+			g_printerr("Warning: --wait-for-images-to-appear implies --lazy-load.\n");
+			option_lazy_load = TRUE;
+		}
+	}
+
 #ifndef CONFIGURED_WITHOUT_ACTIONS
 	if(option_actions_from_stdin) {
 		if(option_addl_from_stdin) {
@@ -5490,6 +5612,12 @@ int main(int argc, char *argv[]) {
 #endif
 
 	if(option_lazy_load) {
+		if(option_allow_empty_window) {
+			create_window();
+			gtk_widget_show_all(GTK_WIDGET(main_window));
+			main_window_visible = TRUE;
+		}
+
 		g_thread_new("image-loader", load_images_thread, GINT_TO_POINTER(1));
 	}
 	else {
