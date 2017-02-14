@@ -1373,7 +1373,8 @@ void load_images_handle_parameter(char *param, load_images_state_t state, gint d
 		// Check if one of the file type handlers can handle this file
 		BOSNode *new_node = load_images_handle_parameter_find_handler(param, state, file, load_images_file_filter_info);
 		if(new_node) {
-			if(!current_file_node) {
+			if(!current_file_node && main_window_visible) {
+				current_file_node = bostree_node_weak_ref(new_node);
 				g_idle_add((GSourceFunc)absolute_image_movement, bostree_node_weak_ref(new_node));
 			}
 			g_free(param_lowerc);
@@ -1403,7 +1404,8 @@ void load_images_handle_parameter(char *param, load_images_state_t state, gint d
 
 				new_node = load_images_handle_parameter_find_handler(param, state, file, &mime_guesser);
 				if(new_node) {
-					if(!current_file_node) {
+					if(!current_file_node && main_window_visible) {
+						current_file_node = bostree_node_weak_ref(new_node);
 						g_idle_add((GSourceFunc)absolute_image_movement, bostree_node_weak_ref(new_node));
 					}
 					g_free(param_file_mime_type);
@@ -1425,7 +1427,8 @@ void load_images_handle_parameter(char *param, load_images_state_t state, gint d
 		// Prepare file structure
 		file->file_type = &file_type_handlers[0];
 		new_node = file_type_handlers[0].alloc_fn(state, file);
-		if(!current_file_node) {
+		if(!current_file_node && main_window_visible) {
+			current_file_node = bostree_node_weak_ref(new_node);
 			g_idle_add((GSourceFunc)absolute_image_movement, bostree_node_weak_ref(new_node));
 		}
 	}
