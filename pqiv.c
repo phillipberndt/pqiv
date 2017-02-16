@@ -1834,6 +1834,10 @@ GInputStream *image_loader_stream_file(file_t *file, GError **error_pointer) {/*
 		GBytes *bytes_source;
 		if(file->file_data_loader) {
 			bytes_source = file->file_data_loader(file, error_pointer);
+
+			if(!bytes_source) {
+				return NULL;
+			}
 		}
 		else {
 			bytes_source = g_bytes_ref(file->file_data);

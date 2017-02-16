@@ -71,6 +71,10 @@ GBytes *buffered_file_as_bytes(file_t *file, GInputStream *data, GError **error_
 			else {
 				data_bytes = g_bytes_ref(file->file_data);
 			}
+
+			if(!data_bytes) {
+				return NULL;
+			}
 		}
 		else {
 
