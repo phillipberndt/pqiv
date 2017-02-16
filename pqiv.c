@@ -1250,7 +1250,13 @@ void load_images_handle_parameter(char *param, load_images_state_t state, gint d
 			}
 
 			// Check for loops
-			// TODO PATH_MAX might be too small.
+			// Note: PATH_MAX might be too small. However, GIO fails to work
+			// with long file names as well. In fact, it even fails to work
+			// with relative file names in directorys that happen to have a
+			// long absolute name. See
+			// https://bugzilla.gnome.org/show_bug.cgi?id=778798
+			// TODO As soon as this is resolved upstream, it'll make sense to
+			// exchange the realpath() with something else as well.
 			char abs_path[PATH_MAX];
 			if(
 				#ifdef _WIN32
