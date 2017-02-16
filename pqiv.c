@@ -1249,7 +1249,8 @@ void load_images_handle_parameter(char *param, load_images_state_t state, gint d
 				return;
 			}
 
-			// Check for recursion
+			// Check for loops
+			// TODO PATH_MAX might be too small.
 			char abs_path[PATH_MAX];
 			if(
 				#ifdef _WIN32
@@ -1326,6 +1327,13 @@ void load_images_handle_parameter(char *param, load_images_state_t state, gint d
 					options->outstanding_files = g_tree_new_full(pqiv_utility_strcmp0_data, NULL, g_free, NULL);
 					options->depth = depth;
 					options->base_param = g_strdup(param);
+					// Remove trailing '/', just for optics of filenames.
+					for(char *iter = options->base_param; *iter; iter++) {
+						if(!iter[1] && iter[0] == '/') {
+							*iter = 0;
+							break;
+						}
+					}
 					options->recursion_folder_stack = recursion_folder_stack;
 					g_signal_connect_data(directory_monitor, "changed", G_CALLBACK(load_images_directory_watch_callback), options, (GClosureNotify)gfree_with_dummy_arg, 0);
 					g_hash_table_insert(active_directory_watches, g_strdup(abs_path), directory_monitor);
@@ -1347,6 +1355,7 @@ void load_images_handle_parameter(char *param, load_images_state_t state, gint d
 
 		// Prepare file structure
 		file = g_slice_new0(file_t);
+		file->file_name = g_strdup(param);
 		file->display_name = g_filename_display_name(param);
 		if(option_sort) {
 			if(option_sort_key == MTIME) {
@@ -1366,27 +1375,6 @@ void load_images_handle_parameter(char *param, load_images_state_t state, gint d
 			if(file->sort_name == NULL) {
 				file->sort_name = g_strdup(file->display_name);
 			}
-		}
-
-		// In sorting/watch-directories mode, we store the full path to the file in file_name, to be able
-		// to identify the file if it is deleted
-		if(option_watch_directories && option_sort) {
-			char abs_path[PATH_MAX];
-			if(
-				#ifdef _WIN32
-					GetFullPathNameA(param, PATH_MAX, abs_path, NULL) != 0
-				#else
-					realpath(param, abs_path) != NULL
-				#endif
-			) {
-				file->file_name = g_strdup(abs_path);
-			}
-			else {
-				file->file_name = g_strdup(param);
-			}
-		}
-		else {
-			file->file_name = g_strdup(param);
 		}
 
 		// Filter based on formats supported by the different handlers
