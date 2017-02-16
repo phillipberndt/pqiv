@@ -612,6 +612,7 @@ typedef struct {
 	GSList *recursion_folder_stack;
 	gchar *base_param;
 } directory_watch_options_t;
+GHashTable *active_directory_watches;
 
 void set_scale_level_to_fit();
 void set_scale_level_for_screen();
@@ -1154,6 +1155,9 @@ BOSNode *load_images_handle_parameter_find_handler(const char *param, load_image
 
 	return NULL;
 }/*}}}*/
+void gfree_with_dummy_arg(void *pointer, void *dummy) {/*{{{*/
+	g_free(pointer);
+}/*}}}*/
 gpointer load_images_handle_parameter_thread(char *param) {/*{{{*/
 	// Thread version of load_images_handle_parameter
 	// Free()s param after run
@@ -1311,7 +1315,7 @@ void load_images_handle_parameter(char *param, load_images_state_t state, gint d
 			g_dir_close(dir_ptr);
 
 			// Add a watch for new files in this directory
-			if(option_watch_directories) {
+			if(option_watch_directories && !g_hash_table_lookup(active_directory_watches, abs_path)) {
 				// Note: It does not suffice to do this once for each parameter, but this must also be
 				// called for subdirectories. At least if it is not, new files in subdirectories are
 				// not always recognized.
@@ -1323,9 +1327,8 @@ void load_images_handle_parameter(char *param, load_images_state_t state, gint d
 					options->depth = depth;
 					options->base_param = g_strdup(param);
 					options->recursion_folder_stack = recursion_folder_stack;
-					g_signal_connect(directory_monitor, "changed", G_CALLBACK(load_images_directory_watch_callback), options);
-					// We do not store the directory_monitor anywhere, because it is not used explicitly
-					// again. If this should ever be needed, this is the place where this should be done.
+					g_signal_connect_data(directory_monitor, "changed", G_CALLBACK(load_images_directory_watch_callback), options, (GClosureNotify)gfree_with_dummy_arg, 0);
+					g_hash_table_insert(active_directory_watches, g_strdup(abs_path), directory_monitor);
 				}
 				g_object_unref(file_ptr);
 			}
@@ -1505,6 +1508,11 @@ void load_images() {/*{{{*/
 	// Prepare the file filter info structure used for handler detection
 	load_images_file_filter_info = g_new0(GtkFileFilterInfo, 1);
 	load_images_file_filter_info->contains = GTK_FILE_FILTER_FILENAME | GTK_FILE_FILTER_DISPLAY_NAME;
+
+	// Initialize structure to hold directory watches
+	if(option_watch_directories && active_directory_watches == NULL) {
+		active_directory_watches = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, g_object_unref);
+	}
 
 	// Load the images from the remaining parameters
 	for(int i=1; i<*argc; i++) {
