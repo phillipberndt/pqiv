@@ -610,6 +610,7 @@ typedef struct {
 	gint depth;
 	GTree *outstanding_files;
 	GSList *recursion_folder_stack;
+	gchar *base_param;
 } directory_watch_options_t;
 
 void set_scale_level_to_fit();
@@ -979,39 +980,51 @@ void parse_command_line() {/*{{{*/
 }/*}}}*/
 void load_images_directory_watch_callback(GFileMonitor *monitor, GFile *file, GFile *other_file, GFileMonitorEvent event_type, directory_watch_options_t *options) {/*{{{*/
 	// The current image holds its own file watch, so we do not have to react
-	// to changes.
-	if(event_type == G_FILE_MONITOR_EVENT_CREATED) {
-		gchar *name = g_file_get_path(file);
-		if(name != NULL) {
-			// In theory, handling regular files here should suffice. But files in subdirectories
-			// seem not always to be recognized correctly by file monitors, so we have to install
-			// one for each directory.
-			//
-			// One catch is that we should not handle files right away, because they might not
-			// be completely written to disk at this point.
-			//
-			if(g_file_test(name, G_FILE_TEST_IS_DIR)) {
-				// Use the standard loading mechanism. If directory watches are enabled,
-				// the temporary variables used therein are not freed.
-				load_images_handle_parameter(name, INOTIFY, options->depth, options->recursion_folder_stack);
+	// to changes. Only handle creation.
+
+	// Canonicalize the name of the object. GFileMonitor reports absolute file names, use relative paths
+	// instead if the user did as well on the command line.
+	gchar *name = NULL;
+	if(event_type == G_FILE_MONITOR_EVENT_CREATED || event_type == G_FILE_MONITOR_EVENT_CHANGES_DONE_HINT) {
+		name = g_file_get_path(file);
+		if(options->recursion_folder_stack && options->base_param) {
+			size_t original_path_length = strlen(options->recursion_folder_stack->data);
+			if(original_path_length && original_path_length < strlen(name)) {
+				gchar *new_name = g_strdup_printf("%s%s", options->base_param, name + original_path_length);
 				g_free(name);
-			}
-			else if(g_file_test(name, G_FILE_TEST_IS_REGULAR | G_FILE_TEST_IS_SYMLINK)) {
-				// Defer call to load_images_handle_parameter.
-				// name now belongs to the hash table, do not free it here.
-				// TODO Option for later: Insert time as value and regularly cleanup the hash.
-				g_tree_replace(options->outstanding_files, name, NULL);
+				name = new_name;
 			}
 		}
 	}
+
+	if(event_type == G_FILE_MONITOR_EVENT_CREATED && name != NULL) {
+		// In theory, handling regular files here should suffice. But files in subdirectories
+		// seem not always to be recognized correctly by file monitors, so we have to install
+		// one for each directory.
+		//
+		// One catch is that we should not handle files right away, because they might not
+		// be completely written to disk at this point.
+		//
+		if(g_file_test(name, G_FILE_TEST_IS_DIR)) {
+			// Use the standard loading mechanism. If directory watches are enabled,
+			// the temporary variables used therein are not freed.
+			load_images_handle_parameter(name, INOTIFY, options->depth, options->recursion_folder_stack);
+		}
+		else if(g_file_test(name, G_FILE_TEST_IS_REGULAR | G_FILE_TEST_IS_SYMLINK)) {
+			// Defer call to load_images_handle_parameter.
+			// name now belongs to the hash table, do not free it here.
+			// TODO Option for later: Insert time as value and regularly cleanup the hash.
+			g_tree_replace(options->outstanding_files, name, NULL);
+			name = NULL;
+		}
+	}
 	else if(event_type == G_FILE_MONITOR_EVENT_CHANGES_DONE_HINT) {
-		gchar *name = g_file_get_path(file);
 		if(g_tree_remove(options->outstanding_files, name)) {
 			// The file was in the "new files" hash. Add it now.
 			load_images_handle_parameter(name, INOTIFY, options->depth, options->recursion_folder_stack);
 		}
-		g_free(name);
 	}
+
 	// We cannot reliably react on G_FILE_MONITOR_EVENT_DELETED here, because either the tree
 	// is unsorted, in which case it is indexed by numbers, or it is sorted by the display
 	// name (important for multi-page documents!), which can be a relative name that is not
@@ -1020,6 +1033,10 @@ void load_images_directory_watch_callback(GFileMonitor *monitor, GFile *file, GF
 	// Therefore we do not remove files here, but instead rely on nodes being deleted once the
 	// user tries to access then. For already loaded files (i.e. also the next/previous one),
 	// the file watch is used to remove the files.
+
+	if(name != NULL) {
+		g_free(name);
+	}
 }/*}}}*/
 BOSNode *load_images_handle_parameter_add_file(load_images_state_t state, file_t *file) {/*{{{*/
 	// Add image to images list/tree
@@ -1304,6 +1321,7 @@ void load_images_handle_parameter(char *param, load_images_state_t state, gint d
 					directory_watch_options_t *options = g_new0(directory_watch_options_t, 1);
 					options->outstanding_files = g_tree_new_full(pqiv_utility_strcmp0_data, NULL, g_free, NULL);
 					options->depth = depth;
+					options->base_param = g_strdup(param);
 					options->recursion_folder_stack = recursion_folder_stack;
 					g_signal_connect(directory_monitor, "changed", G_CALLBACK(load_images_directory_watch_callback), options);
 					// We do not store the directory_monitor anywhere, because it is not used explicitly
