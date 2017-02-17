@@ -39,6 +39,11 @@ ifeq ($(wildcard $(CONFIG_MAKE_NAME)),$(CONFIG_MAKE_NAME))
 	HEADERS+=$(CONFIG_MAKE_NAME)
 endif
 
+# First things first: Require at least one backend
+ifeq ($(BACKENDS),)
+$(error Building pqiv without any backends is unsupported.)
+endif
+
 # pkg-config lines for the main program
 LIBS_GENERAL=glib-2.0 >= 2.8 cairo >= 1.6 gio-2.0
 LIBS_GTK3=gtk+-3.0 gdk-3.0
@@ -204,7 +209,7 @@ pqiv.desktop: $(HEADERS)
 		echo "Icon=emblem-photos"; \
 		echo "TryExec=$(PREFIX)/bin/pqiv"; \
 		echo "Exec=$(PREFIX)/bin/pqiv %F"; \
-		echo "MimeType=$(shell cat $(foreach BACKEND, $(sort $(BACKENDS)), $(SOURCEDIR)backends/$(BACKEND).mime) | sort | uniq | awk 'ORS=";"')"; \
+		echo "MimeType=$(shell cat $(foreach BACKEND, $(sort $(BACKENDS)), $(SOURCEDIR)backends/$(BACKEND).mime) /dev/null | sort | uniq | awk 'ORS=";"')"; \
 		echo "Categories=Graphics;"; \
 		echo "Keywords=Viewer;" \
 	) > $@
