@@ -17,6 +17,7 @@ DESTDIR=
 GTK_VERSION=0
 CROSS=
 BINARY_EXTENSION=
+LIBDIR=
 MANDIR=
 BACKENDS=
 ENFORCED_BACKENDS=
@@ -40,11 +41,14 @@ help() {
 pqiv configuration
 
 general options:
-  --prefix=..           Set the prefix for installed files
-  --destdir=..          Set the destdir for installed files (for package
-                        maintainers)
+  --prefix=..           Set the prefix for installed files [/usr]
+  --destdir=..          Set the destination prefix for "make install" [/]
+  --libdir=..           Set the directory for shared libraries [\$PREFIX/lib]
   --gtk-version=2       Use GTK+-2.0 even if GTK+-3.0 is available
   --cross=..            Set a cross-compiler prefix (e.g. \`i686-pc-mingw32-')
+
+  Some of the usual autotools options are supported as well for advanced users.
+  See the source code of the configure script.
 
 options to select pqiv's backends:
   --backends=..         Select which backends to include in pqiv
@@ -87,6 +91,12 @@ while [ $# -gt 0 ]; do
 			;;
 		--destdir)
 			DESTDIR=$VALUE
+			;;
+		--libdir)
+			LIBDIR=${VALUE}
+			LIBDIR="${LIBDIR//\{/(}"
+			LIBDIR="${LIBDIR//\}/)}"
+			LIBDIR="${LIBDIR//prefix/PREFIX}"
 			;;
 		--gtk-version)
 			GTK_VERSION=$VALUE
@@ -135,26 +145,10 @@ while [ $# -gt 0 ]; do
 			MANDIR="${MANDIR//prefix/PREFIX}"
 			echo "Use of autoconf option --mandir is discouraged, because support is incomplete. Rewrote \`$VALUE' to \`$MANDIR' and used that as the MANDIR Make variable." >&2
 			;;
-		--includedir)
-			INCLUDEDIR=${VALUE}
-			INCLUDEDIR="${INCLUDEDIR//\{/(}"
-			INCLUDEDIR="${INCLUDEDIR//\}/)}"
-			INCLUDEDIR="${INCLUDEDIR//prefix/PREFIX}"
-			CFLAGS="${CFLAGS:+$CFLAGS }-I'${INCLUDEDIR}'"
-			echo "Use of autoconf option --includedir is discouraged, because support is incomplete. Rewrote \`$VALUE' to \`$INCLUDEDIR' and placed that into the \$CFLAGS variable." >&2
-			;;
-		--libdir)
-			LIBDIR=${VALUE}
-			LIBDIR="${LIBDIR//\{/(}"
-			LIBDIR="${LIBDIR//\}/)}"
-			LIBDIR="${LIBDIR//prefix/PREFIX}"
-			CFLAGS="${LDFLAGS:+$LDFLAGS }-L'${LIBDIR}'"
-			echo "Use of autoconf option --libdir is discouraged, because support is incomplete. Rewrote \`$VALUE' to \`$LIBDIR' and placed that into the \$LDFLAGS variable." >&2
-			;;
 		--disable-silent-rules)
 			VERBOSE=1
 			;;
-		--infodir | --sysconfdir | --localstatedir | --libexecdir | --disable-maintainer-mode | --disable-dependency-tracking | --build)
+		--infodir | --sysconfdir | --includedir | --localstatedir | --libexecdir | --disable-maintainer-mode | --disable-dependency-tracking | --build)
 			echo "autoconf option ${PARAMETER} ignored" >&2
 			;;
 		--no-sorting | --no-compositing | --no-fading | --no-commands | --no-config-file | --no-inotify | --no-animations | --binary-name)
@@ -349,6 +343,7 @@ ${CFLAGS:+CFLAGS=$CFLAGS}
 ${LDFLAGS:+LDFLAGS=$LDFLAGS}
 ${CPPFLAGS:+CPPFLAGS=$CPPFLAGS}
 ${MANDIR:+MANDIR=$MANDIR}
+${LIBDIR:+LIBDIR=$LIBDIR}
 ${BACKENDS:+BACKENDS=$BACKENDS}
 ${CC:+CC=$CC}
 ${VERBOSE:+VERBOSE=$VERBOSE}

@@ -9,6 +9,8 @@ GTK_VERSION=0
 PQIV_WARNING_FLAGS=-Wall -Wextra -Wfloat-equal -Wpointer-arith -Wcast-align -Wstrict-overflow=1 -Wwrite-strings -Waggregate-return -Wunreachable-code -Wno-unused-parameter
 LDLIBS=-lm
 PREFIX=/usr
+EPREFIX=$(PREFIX)
+LIBDIR=$(PREFIX)/lib
 MANDIR=$(PREFIX)/share/man
 EXECUTABLE_EXTENSION=
 PKG_CONFIG=$(CROSS)pkg-config
@@ -119,7 +121,7 @@ ifeq ($(BACKENDS_BUILD), shared)
 	OBJECTS+=backends/shared-initializer.o
 	BACKENDS_BUILD_CFLAGS_shared-initializer=-DSHARED_BACKENDS='$(filter $(PIXBUF_FILTER), $(SHARED_BACKENDS)) $(filter-out $(PIXBUF_FILTER), $(SHARED_BACKENDS))'
 	LIBS+=gmodule-2.0
-	LDFLAGS_RPATH=-Wl,-rpath,'$$ORIGIN/backends',-rpath,'$$ORIGIN/../lib/pqiv',-rpath,'$(PREFIX)/lib/pqiv'
+	LDFLAGS_RPATH=-Wl,-rpath,'$$ORIGIN/backends',-rpath,'$$ORIGIN/../$(subst $(PREFIX),,$(LIBDIR))/pqiv',-rpath,'$(LIBDIR)/pqiv'
 else
 	OBJECTS+=$(BACKENDS_INITIALIZER).o
 endif
@@ -215,8 +217,8 @@ install: all
 	-mkdir -p $(DESTDIR)$(PREFIX)/share/applications
 	-install --mode=644 pqiv.desktop $(DESTDIR)$(PREFIX)/share/applications/pqiv.desktop
 ifeq ($(BACKENDS_BUILD), shared)
-	mkdir -p $(DESTDIR)$(PREFIX)/lib/pqiv
-	install $(SHARED_OBJECTS) $(DESTDIR)$(PREFIX)/lib/pqiv/
+	mkdir -p $(DESTDIR)$(LIBDIR)/pqiv
+	install $(SHARED_OBJECTS) $(DESTDIR)$(LIBDIR)/pqiv/
 endif
 
 uninstall:
@@ -224,8 +226,8 @@ uninstall:
 	rm -f $(DESTDIR)$(MANDIR)/man1/pqiv.1
 	rm -f $(DESTDIR)$(PREFIX)/share/applications/pqiv.desktop
 ifeq ($(BACKENDS_BUILD), shared)
-	rm -f $(foreach SO_FILE, $(SHARED_OBJECTS), $(DESTDIR)$(PREFIX)/lib/pqiv/$(notdir $(SO_FILE)))
-	rmdir $(DESTDIR)$(PREFIX)/lib/pqiv
+	rm -f $(foreach SO_FILE, $(SHARED_OBJECTS), $(DESTDIR)$(LIBDIR)/pqiv/$(notdir $(SO_FILE)))
+	rmdir $(DESTDIR)$(LIBDIR)/pqiv
 endif
 
 clean:
