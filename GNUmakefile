@@ -2,7 +2,7 @@
 #
 
 # Default flags, overridden by values in config.make
-CFLAGS=-O2 -g
+CFLAGS?=-O2 -g
 CROSS=
 DESTDIR=
 GTK_VERSION=0
