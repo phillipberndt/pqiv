@@ -50,12 +50,14 @@
 	#include <gio/gwin32inputstream.h>
 #else
 	#include <sys/wait.h>
-	#include <gdk/gdkx.h>
 	#include <gio/gunixinputstream.h>
-	#include <X11/Xlib.h>
+	#ifdef GDK_WINDOWING_X11
+		#include <gdk/gdkx.h>
+		#include <X11/Xlib.h>
 
-	#if GTK_MAJOR_VERSION < 3
-		#include <X11/Xatom.h>
+		#if GTK_MAJOR_VERSION < 3
+			#include <X11/Xatom.h>
+		#endif
 	#endif
 #endif
 
@@ -4768,7 +4770,7 @@ void window_screen_activate_rgba() {/*{{{*/
 	return;
 }/*}}}*/
 void window_screen_window_manager_changed_callback(gpointer user_data) {/*{{{*/
-	#ifndef _WIN32
+	#if !defined(_WIN32) && defined(GDK_WINDOWING_X11)
 		GdkScreen *screen = GDK_SCREEN(user_data);
 
 		// TODO Would _NET_WM_ALLOWED_ACTIONS -> _NET_WM_ACTION_RESIZE and _NET_WM_ACTION_FULLSCREEN  be a better choice here?
@@ -4787,7 +4789,7 @@ void window_screen_changed_callback(GtkWidget *widget, GdkScreen *previous_scree
 	GdkScreen *screen = gtk_widget_get_screen(GTK_WIDGET(main_window));
 	GdkWindow *window = gtk_widget_get_window(GTK_WIDGET(main_window));
 
-	#ifndef _WIN32
+	#if !defined(_WIN32) && defined(GDK_WINDOWING_X11)
 		#if GTK_CHECK_VERSION(3, 0, 0)
 			if(GDK_IS_X11_DISPLAY(gdk_screen_get_display(screen))) {
 				g_signal_connect(screen, "window-manager-changed", G_CALLBACK(window_screen_window_manager_changed_callback), screen);
@@ -5573,7 +5575,7 @@ int main(int argc, char *argv[]) {
 		#endif
 	#endif
 
-	#ifndef _WIN32
+	#if !defined(_WIN32) && defined(GDK_WINDOWING_X11)
 		XInitThreads();
 	#endif
 	#if (!GLIB_CHECK_VERSION(2, 32, 0))
