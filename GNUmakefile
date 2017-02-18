@@ -124,9 +124,8 @@ $(foreach BACKEND_C, $(wildcard $(SOURCEDIR)backends/*.c), $(eval $(call handle-
 PIXBUF_FILTER="gdkpixbuf",
 ifeq ($(BACKENDS_BUILD), shared)
 	OBJECTS+=backends/shared-initializer.o
-	BACKENDS_BUILD_CFLAGS_shared-initializer=-DSHARED_BACKENDS='$(filter $(PIXBUF_FILTER), $(SHARED_BACKENDS)) $(filter-out $(PIXBUF_FILTER), $(SHARED_BACKENDS))'
+	BACKENDS_BUILD_CFLAGS_shared-initializer=-DSHARED_BACKENDS='$(filter $(PIXBUF_FILTER), $(SHARED_BACKENDS)) $(filter-out $(PIXBUF_FILTER), $(SHARED_BACKENDS))' -DSEARCH_PATHS='"backends", "../$(subst $(PREFIX),,$(LIBDIR))/pqiv", "$(LIBDIR)/pqiv"'
 	LIBS+=gmodule-2.0
-	LDFLAGS_RPATH=-Wl,-rpath,'$$ORIGIN/backends',-rpath,'$$ORIGIN/../$(subst $(PREFIX),,$(LIBDIR))/pqiv',-rpath,'$(LIBDIR)/pqiv'
 else
 	OBJECTS+=$(BACKENDS_INITIALIZER).o
 endif
@@ -158,7 +157,7 @@ endif
 # Assemble final compiler flags
 CFLAGS_REAL=-std=gnu99 $(PQIV_WARNING_FLAGS) $(PQIV_VERSION_FLAG) $(CFLAGS) $(DEBUG_CFLAGS) $(EXTRA_DEFS) $(shell $(PKG_CONFIG) --cflags "$(LIBS)")
 LDLIBS_REAL=$(shell $(PKG_CONFIG) --libs "$(LIBS)") $(LDLIBS)
-LDFLAGS_REAL=$(LDFLAGS) $(LDFLAGS_RPATH)
+LDFLAGS_REAL=$(LDFLAGS)
 
 all: pqiv$(EXECUTABLE_EXTENSION) pqiv.desktop $(SHARED_OBJECTS)
 .PHONY: get_libs get_available_backends _build_variables clean distclean install uninstall all
