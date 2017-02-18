@@ -4,53 +4,57 @@ PQIV README
 About pqiv
 ----------
 
-Originally, PQIV was written as a drop-in replacement for QIV
-(http://spiegl.de/qiv/), as QIV was unmaintained and used imlib, a deprecated
-library, which was to be removed from Gentoo Linux. The first release was not
-more than a Python script, hence the name. After some month I realized that
-nobody would do a better version, so I did it myself.  Back then, PQIV became a
-(modulo some small extras) full featured clone of QIV written in C using GTK 2
-and GLIB 2.
+pqiv is a powerful GTK 3 based command-line image viewer with a minimal UI. It
+is highly customizable, can be fully controlled from scripts, and has support
+for various file formats including PDF, Postscript, video files and archives.
+It is optimized to be quick and responsive.
 
-When Debian decided to do the same step regarding imlib, a new developer stepped
-in for QIV's klografx.net team and updated QIV to use GDK 2 and imlib 2. As of
-May 2009, both programs are usable again and their features are likely to
-diverge.
+It comes with support for animations, slideshows, transparency, VIM-like key
+bindings, automated loading of new images as they appear, external image
+filters, image preloading, and much more.
 
-In the meantime, I have had some new ideas and learned (from my daily use)
-about which features were really useful and which were merely overhead. In 2013
-I decided to rewrite pqiv from scratch which these in mind, this time using the
-third version of GTK and its backend, cairo. The code was tested on numerous
-platforms, and is also backwards compatible with GTK 2.
-
+pqiv started as a Python rewrite of qiv avoiding imlib, but evolved into a much
+more powerful tool. Today, pqiv stands for powerful quick image viewer.
 
 Features
 --------
 
- * Command line image viewer
- * Directory traversing to view whole directories
- * Watch files and directories for changes
- * Natural order sorting of the images
- * A status bar showing information on the current image
- * Transparency and animation support
- * Moving, zooming, rotation, flipping
- * Slideshows
- * Highly customizable and scriptable (see `--actions-from-stdin` and `--bind-key`)
- * Supports external image filters (e.g. `convert`)
- * Preloads the next image in the background
- * Fade between images
- * Optional PDF/eps/ps support (useful e.g. for scientific plots)
- * Optional video format support (e.g. for webm animations)
-
+ * Recursive loading from directories
+ * Can watch files and directories for changes
+ * Sorts images in natural order
+ * Has a status bar showing information on the current image
+ * Comes with transparency support
+ * Can move/zoom/rotate/flip images
+ * Can pipe images through external filters
+ * Loads the next image in the background for quick response times
+ * Caches zoomed images for smoother movement
+ * Supports fade image transition animations
+ * Supports various image and video formats through a rich set of backends
+ * Customizable key-bindings with support for VIM-like key sequences, action
+   cycling and binding multiple actions to a single key
 
 Installation
 ------------
 
 Usual stuff. `./configure && make && make install`. The configure script is
-optional if you only want gdk-pixbuf support and will autodetermine which
+optional if you only want gdk-pixbuf support and will auto-determine which
 backends to build if invoked without parameters.
 
-You'll need
+You can also use precompiled and packaged versions of pqiv. Note that the
+distribution packages are usually somewhat out of date:
+
+ * Statically linked
+   [nightly builds for Linux and Windows](https://intern.pberndt.com/pqiv_builds/)
+   ![Build status](https://intern.pberndt.com/pqiv_builds/ci.php)
+ * Dynamically linked
+   [nightly builds for Debian, Ubuntu, SUSE and Fedora](https://build.opensuse.org/package/show/home:phillipberndt/pqiv)
+   thanks to the OpenSUSE build service
+ * [Debian package](https://packages.debian.org/en/sid/pqiv)
+ * [Gentoo ebuild](https://packages.gentoo.org/packages/media-gfx/pqiv)
+ * [Arch AUR package](https://aur.archlinux.org/packages/pqiv/)
+   ([Git version](https://aur.archlinux.org/packages/pqiv-git/))
+
+If you'd like to compile pqiv manually, you'll need
 
  * gtk+ 3.0 *or* gtk+ 2.6
  * gdk-pixbuf 2.2 (included in gtk+)
@@ -65,21 +69,13 @@ and optionally also
  * poppler (any version, for pdf support)
  * MagickWand (any version, for additional image formats like psd)
  * libarchive (for images in archives and cbX comic book files)
- * ffmpeg / libav (for video support, only included if explicitly compiled in)
+ * ffmpeg / libav (for video support)
 
 The backends are per default linked statically into the code, so all backend
-related build-time dependencies are also run-time dependencies. If you need
-a shared version of the backends, for example for separate packaging of
-the binaries, use the `--backends-build=shared` option. This is only supported
-on Linux platforms currently.
-
-There are experimental, nightly [static builds available for
-download](https://intern.pberndt.com/pqiv_builds/) for Windows and
-Linux: ![Build status](https://intern.pberndt.com/pqiv_builds/ci.php)
-
-There are experimental, [nightly packages
-available](https://build.opensuse.org/package/show/home:phillipberndt/pqiv)
-for Debian, Ubuntu, SUSE and Fedora thorugh the OpenSUSE build Service.
+related build-time dependencies are also run-time dependencies. If you need a
+shared version of the backends, for example for separate packaging of the
+binaries or to make the run-time dependencies optional, use the
+`--backends-build=shared` configure option.
 
 Thanks
 ------
@@ -137,6 +133,7 @@ pqiv 2.8 (WIP)
  * Explicitly allow to load all files from a directory multiple times
  * Allow to use --libdir option in configure to override .so-files location
  * Fix shared-backend-pqiv in environments that compile with --enable-new-dtags
+ * Enable the libav backend by default
 
 pqiv 2.7.4
  * Fix GTK 2 compilation
