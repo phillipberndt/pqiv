@@ -121,7 +121,7 @@ $(foreach BACKEND_C, $(wildcard $(SOURCEDIR)backends/*.c), $(eval $(call handle-
 PIXBUF_FILTER="gdkpixbuf",
 ifeq ($(BACKENDS_BUILD), shared)
 	OBJECTS+=backends/shared-initializer.o
-	BACKENDS_BUILD_CFLAGS_shared-initializer=-DSHARED_BACKENDS='$(filter $(PIXBUF_FILTER), $(SHARED_BACKENDS)) $(filter-out $(PIXBUF_FILTER), $(SHARED_BACKENDS))' -DSEARCH_PATHS='"backends", "../$(subst $(PREFIX),,$(LIBDIR))/pqiv", "$(LIBDIR)/pqiv"'
+	BACKENDS_BUILD_CFLAGS_shared-initializer=-DSHARED_BACKENDS='$(filter $(PIXBUF_FILTER), $(SHARED_BACKENDS)) $(filter-out $(PIXBUF_FILTER), $(SHARED_BACKENDS))' -DSEARCH_PATHS='"backends", "../$(subst $(PREFIX),,$(LIBDIR))/pqiv", "$(LIBDIR)/pqiv",'
 	LIBS+=gmodule-2.0
 else
 	OBJECTS+=$(BACKENDS_INITIALIZER).o

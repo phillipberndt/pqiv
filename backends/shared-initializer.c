@@ -4,12 +4,21 @@
 #include <string.h>
 #include "../pqiv.h"
 
+#ifndef SHARED_BACKENDS
+	#warning The SHARED_BACKENDS constant is undefined. Defaulting to only gdkpixbuf support.
+	#define SHARED_BACKENDS "gdkpixbuf",
+#endif
+#ifndef SEARCH_PATHS
+	#warning The SEARCH_PATHS constant is undefined. Defaulting to only backends subdirectory.
+	#define SEARCH_PATHS "backends",
+#endif
+
 static const char *available_backends[] = {
 	SHARED_BACKENDS
 	NULL
 };
 static const char *search_paths[] = {
-	SEARCH_PATHS,
+	SEARCH_PATHS
 	NULL
 };
 file_type_handler_t file_type_handlers[sizeof(available_backends) / sizeof(char *)];
