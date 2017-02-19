@@ -134,6 +134,7 @@ pqiv 2.8 (WIP)
  * Allow to use --libdir option in configure to override .so-files location
  * Fix shared-backend-pqiv in environments that compile with --enable-new-dtags
  * Enable the libav backend by default
+ * Add option --disable-backends to disable backends at runtime
 
 pqiv 2.7.4
  * Fix GTK 2 compilation

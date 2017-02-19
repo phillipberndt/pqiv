@@ -170,6 +170,15 @@ directory. \fBpqiv\fR will still start at the image that was given as the first
 parameter.
 .\"
 .TP
+.BR \-\-disable\-backends=\fILIST\ OF\ BACKENDS\fR
+Use this option to selectively disable some of \fBpqiv\fR's backends. You can
+supply a comma separated list of backends here. Non-available backends are
+silently ignored. Disabling backends you don't want will speed up recursive
+loading significantly, especially if you disable the archive backend.
+Available backends are archive, archive_cbx, libav, gdkpixbuf, poppler,
+spectre and wand.
+.\"
+.TP
 .BR \-\-disable\-scaling
 Completely disable scaling. This can be toggled at runtime by
 pressing \fBt\fR by default. See also \fB\-\-scale\-images\-up\fR.

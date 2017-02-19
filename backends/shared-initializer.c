@@ -58,9 +58,13 @@ static gchar *get_backend_path(const gchar *backend_name) {
 	return g_strdup_printf("pqiv-backend-%s.so", backend_name);
 }
 
-void initialize_file_type_handlers() {
+void initialize_file_type_handlers(const gchar * const * disabled_backends) {
 	int i = 0;
 	for(char **backend=(char **)&available_backends[0]; *backend; backend++) {
+		if(g_strv_contains(disabled_backends, *backend)) {
+			continue;
+		}
+
 		gchar *backend_candidate = get_backend_path(*backend);
 
 		GModule *backend_module = g_module_open(backend_candidate, G_MODULE_BIND_LOCAL);

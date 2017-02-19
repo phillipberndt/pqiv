@@ -187,10 +187,10 @@ $(BACKENDS_INITIALIZER).c:
 		echo '#include "../pqiv.h"'; \
 		echo "file_type_handler_t file_type_handlers[$(words $(BACKENDS)) + 1];"; \
 		$(foreach BACKEND, $(sort $(BACKENDS)), echo "void file_type_$(BACKEND)_initializer(file_type_handler_t *info);";) \
-		echo "void initialize_file_type_handlers() {"; \
+		echo "void initialize_file_type_handlers(const gchar * const * disabled_backends) {"; \
 		echo "	int i = 0;"; \
-		$(foreach BACKEND, $(filter gdkpixbuf, $(BACKENDS)), echo "	file_type_$(BACKEND)_initializer(&file_type_handlers[i++]);";) \
-		$(foreach BACKEND, $(sort $(filter-out gdkpixbuf, $(BACKENDS))), echo "	file_type_$(BACKEND)_initializer(&file_type_handlers[i++]);";) \
+		$(foreach BACKEND, $(filter gdkpixbuf, $(BACKENDS)), echo "	if(!g_strv_contains(disabled_backends, \"$(BACKEND)\")) file_type_$(BACKEND)_initializer(&file_type_handlers[i++]);";) \
+		$(foreach BACKEND, $(sort $(filter-out gdkpixbuf, $(BACKENDS))), echo "	if(!g_strv_contains(disabled_backends, \"$(BACKEND)\")) file_type_$(BACKEND)_initializer(&file_type_handlers[i++]);";) \
 		echo "}" \
 	) > $@
 

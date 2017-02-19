@@ -178,7 +178,7 @@
 // Global variables and function signatures {{{
 
 // The list of file type handlers and file type initializer function
-void initialize_file_type_handlers();
+void initialize_file_type_handlers(const gchar * const * disabled_backends);
 
 // Storage of the file list
 // These lists are accessed from multiple threads:
@@ -359,6 +359,7 @@ gint option_max_depth = -1;
 gboolean option_browse = FALSE;
 enum { QUIT, WAIT, WRAP, WRAP_NO_RESHUFFLE } option_end_of_files_action = WRAP;
 enum { ON, OFF, CHANGES_ONLY } option_watch_files = ON;
+gchar *option_disable_backends;
 
 double fading_current_alpha_stage = 0;
 gint64 fading_initial_time;
@@ -424,6 +425,7 @@ GOptionEntry options[] = {
 	{ "bind-key", 0, 0, G_OPTION_ARG_CALLBACK, &options_bind_key_callback, "Rebind a key to another action, see manpage and --show-keybindings output for details.", "KEY BINDING" },
 #endif
 	{ "browse", 0, 0, G_OPTION_ARG_NONE, &option_browse, "For each command line argument, additionally load all images from the image's directory", NULL },
+	{ "disable-backends", 0, 0, G_OPTION_ARG_STRING, &option_disable_backends, "Disable the given backends", "BACKENDS" },
 	{ "disable-scaling", 0, G_OPTION_FLAG_NO_ARG, G_OPTION_ARG_CALLBACK, (gpointer)&option_scale_level_callback, "Disable scaling of images", NULL },
 	{ "end-of-files-action", 0, 0, G_OPTION_ARG_CALLBACK, (gpointer)&option_end_of_files_action_callback, "Action to take after all images have been viewed. (`quit', `wait', `wrap', `wrap-no-reshuffle')", "ACTION" },
 	{ "enforce-window-aspect-ratio", 0, 0, G_OPTION_ARG_NONE, &option_enforce_window_aspect_ratio, "Fix the aspect ratio of the window to match the current image's", NULL },
@@ -5584,7 +5586,6 @@ int main(int argc, char *argv[]) {
 	#endif
 	gtk_init(&argc, &argv); // fyi, this generates a MemorySanitizer warning currently
 
-	initialize_file_type_handlers();
 #ifndef CONFIGURED_WITHOUT_ACTIONS
 	initialize_key_bindings();
 #endif
@@ -5594,6 +5595,17 @@ int main(int argc, char *argv[]) {
 
 	parse_configuration_file();
 	parse_command_line();
+
+	if(option_disable_backends) {
+		gchar **disabled_backends = g_strsplit(option_disable_backends, ",", 0);
+		initialize_file_type_handlers((const gchar * const *)disabled_backends);
+		g_strfreev(disabled_backends);
+	}
+	else {
+		const gchar * disabled_backends[] = { NULL };
+		initialize_file_type_handlers(disabled_backends);
+	}
+
 	if(fabs(option_initial_scale - 1.0) > 2 * FLT_MIN) {
 		option_scale = FIXED_SCALE;
 		current_scale_level = option_initial_scale;
