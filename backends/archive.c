@@ -119,14 +119,14 @@ BOSNode *file_type_archive_alloc(load_images_state_t state, file_t *file) {/*{{{
 		g_printerr("Failed to load archive %s: %s\n", file->display_name, error_pointer ? error_pointer->message : "Unknown error");
 		g_clear_error(&error_pointer);
 		file_free(file);
-		return NULL;
+		return FALSE_POINTER;
 	}
 
 	struct archive *archive = file_type_archive_gen_archive(data);
 	if(!archive) {
 		buffered_file_unref(file);
 		file_free(file);
-		return NULL;
+		return FALSE_POINTER;
 	}
 
 	GtkFileFilterInfo file_filter_info;

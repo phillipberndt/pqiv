@@ -1220,7 +1220,11 @@ void load_images_handle_parameter(char *param, load_images_state_t state, gint d
 		mime_guesser.contains = GTK_FILE_FILTER_MIME_TYPE;
 		mime_guesser.mime_type = file_mime_type;
 
-		if(!load_images_handle_parameter_find_handler(param, state, file, &mime_guesser)) {
+		BOSNode *mime_guess_result = load_images_handle_parameter_find_handler(param, state, file, &mime_guesser);
+		if(mime_guess_result == FALSE_POINTER) {
+			return;
+		}
+		if(!mime_guess_result) {
 			// As a last resort, use the default file type handler
 			g_printerr("Didn't recognize memory file: Its MIME-type `%s' is unknown. Fall-back to default file handler.\n", file_mime_type);
 			file->file_type = &file_type_handlers[0];
@@ -1393,7 +1397,7 @@ void load_images_handle_parameter(char *param, load_images_state_t state, gint d
 
 		// Check if one of the file type handlers can handle this file
 		BOSNode *new_node = load_images_handle_parameter_find_handler(param, state, file, load_images_file_filter_info);
-		if(new_node) {
+		if(new_node && new_node != FALSE_POINTER) {
 			if(!current_file_node && main_window_visible) {
 				current_file_node = bostree_node_weak_ref(new_node);
 				g_idle_add((GSourceFunc)absolute_image_movement, bostree_node_weak_ref(new_node));
@@ -1402,16 +1406,21 @@ void load_images_handle_parameter(char *param, load_images_state_t state, gint d
 			return;
 		}
 		g_free(param_lowerc);
+		if(new_node == FALSE_POINTER) {
+			return;
+		}
 
 		if(state != PARAMETER && state != BROWSE_ORIGINAL_PARAMETER) {
 			// At this point, if the file was not mentioned explicitly by the user,
 			// abort.
+			file_free(file);
 			return;
 		}
 
 		// Make a final attempt to guess the file type by mime type
 		GFile *param_file = gfile_for_commandline_arg(param);
 		if(!param_file) {
+			file_free(file);
 			return;
 		}
 
@@ -1424,7 +1433,7 @@ void load_images_handle_parameter(char *param, load_images_state_t state, gint d
 				mime_guesser.mime_type = param_file_mime_type;
 
 				new_node = load_images_handle_parameter_find_handler(param, state, file, &mime_guesser);
-				if(new_node) {
+				if(new_node && new_node != FALSE_POINTER) {
 					if(!current_file_node && main_window_visible) {
 						current_file_node = bostree_node_weak_ref(new_node);
 						g_idle_add((GSourceFunc)absolute_image_movement, bostree_node_weak_ref(new_node));
@@ -1438,6 +1447,9 @@ void load_images_handle_parameter(char *param, load_images_state_t state, gint d
 					g_printerr("Didn't recognize file `%s': Both its extension and MIME-type `%s' are unknown. Fall-back to default file handler.\n", param, param_file_mime_type);
 					g_free(param_file_mime_type);
 					g_object_unref(param_file);
+					if(new_node == FALSE_POINTER) {
+						return;
+					}
 				}
 			}
 			g_object_unref(file_info);
@@ -1447,6 +1459,11 @@ void load_images_handle_parameter(char *param, load_images_state_t state, gint d
 
 		// Prepare file structure
 		file->file_type = &file_type_handlers[0];
+		if(!file->file_type) {
+			g_printerr("No default file handler available.\n");
+			file_free(file);
+			return;
+		}
 		new_node = file_type_handlers[0].alloc_fn(state, file);
 		if(!current_file_node && main_window_visible) {
 			current_file_node = bostree_node_weak_ref(new_node);
@@ -1458,7 +1475,7 @@ int image_tree_float_compare(const float *a, const float *b) {/*{{{*/
 	return *a > *b;
 }/*}}}*/
 void file_free(file_t *file) {/*{{{*/
-	if(file->file_type->free_fn != NULL && file->private) {
+	if(file->file_type && file->file_type->free_fn != NULL && file->private) {
 		file->file_type->free_fn(file);
 	}
 	g_free(file->display_name);

@@ -102,7 +102,9 @@ BOSNode *file_type_spectre_alloc(load_images_state_t state, file_t *file) {/*{{{
 		}
 	}
 
-	file_free(file);
+	if(first_node) {
+		file_free(file);
+	}
 	return first_node;
 }/*}}}*/
 void file_type_spectre_free(file_t *file) {/*{{{*/

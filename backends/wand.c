@@ -146,7 +146,9 @@ BOSNode *file_type_wand_alloc(load_images_state_t state, file_t *file) {/*{{{*/
 			}
 		}
 
-		file_free(file);
+		if(first_node) {
+			file_free(file);
+		}
 		G_UNLOCK(magick_wand_global_lock);
 		return first_node;
 	}
