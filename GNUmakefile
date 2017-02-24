@@ -85,11 +85,15 @@ LIBS+=$(LIBS_GENERAL)
 
 # Add platform specific libraries
 # GIo for stdin loading,
-# X11 to workaround a bug, see http://stackoverflow.com/questions/18647475
 ifeq ($(EXECUTABLE_EXTENSION), .exe)
 	LIBS+=gio-windows-2.0
 else
-	LIBS+=gio-unix-2.0 x11
+	LIBS+=gio-unix-2.0
+endif
+
+# We need X11 to workaround a bug, see http://stackoverflow.com/questions/18647475
+ifeq ($(filter x11, $(shell pkg-config --print-requires-private gdk-2.0)), x11)
+	LIBS+=x11
 endif
 
 # Add backend-specific libraries and objects
