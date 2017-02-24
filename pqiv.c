@@ -671,6 +671,21 @@ static void UNUSED_FUNCTION unblock_active_input_event_action_chain();
 gboolean window_auto_hide_cursor_callback(gpointer user_data);
 #endif
 // }}}
+/* Helper functions {{{ */
+gboolean strv_contains(const gchar * const *strv, const gchar *str) {
+	#if GLIB_CHECK_VERSION(2, 44, 0)
+		return g_strv_contains(strv, str);
+	#else
+		while(*strv) {
+			if(g_strcmp0(*strv, str) == 0) {
+				return TRUE;
+			}
+			strv++;
+		}
+		return FALSE;
+	#endif
+}
+/* }}} */
 /* Command line handling, creation of the image list {{{ */
 #ifndef CONFIGURED_WITHOUT_ACTIONS /* option --without-actions: Do not include support for configurable key/mouse bindings and actions */
 gboolean options_bind_key_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error) {/*{{{*/

@@ -189,6 +189,9 @@ void file_free(file_t *file);
 // Set the interpolation filter in a cairo context for the current file based on the user settings
 void apply_interpolation_quality(cairo_t *cr);
 
+// Wrapper for string vector contains function
+gboolean strv_contains(const gchar * const *strv, const gchar *str);
+
 // }}}
 
 // File type handlers, used in the initializer and file type guessing

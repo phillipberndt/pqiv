@@ -61,7 +61,7 @@ static gchar *get_backend_path(const gchar *backend_name) {
 void initialize_file_type_handlers(const gchar * const * disabled_backends) {
 	int i = 0;
 	for(char **backend=(char **)&available_backends[0]; *backend; backend++) {
-		if(g_strv_contains(disabled_backends, *backend)) {
+		if(strv_contains(disabled_backends, *backend)) {
 			continue;
 		}
 
