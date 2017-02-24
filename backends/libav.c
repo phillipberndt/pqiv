@@ -159,7 +159,11 @@ void file_type_libav_unload(file_t *file) {/*{{{*/
 
 	if(private->avcontext) {
 		avcodec_close(private->cocontext);
-		avcodec_free_context(&(private->cocontext));
+		#if LIBAVCODEC_VERSION_INT >= AV_VERSION_INT(55,52,0)
+			avcodec_free_context(&(private->cocontext));
+		#else
+			av_freep(&(private->cocontext));
+		#endif
 		avformat_close_input(&(private->avcontext));
 	}
 
