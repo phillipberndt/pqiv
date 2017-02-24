@@ -38,7 +38,6 @@ typedef struct {
 
 static struct archive *file_type_archive_gen_archive(GBytes *data) {/*{{{*/
 	struct archive *archive = archive_read_new();
-	archive_read_support_format_zip_seekable(archive);
 	archive_read_support_format_zip(archive);
 	archive_read_support_format_rar(archive);
 	archive_read_support_format_7zip(archive);
