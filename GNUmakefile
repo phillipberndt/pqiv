@@ -130,7 +130,7 @@ endif
 # MagickWand changed their directory structure with version 7, pass the version
 # to the build
 ifneq ($(findstring wand, $(BACKENDS)),)
-backends/wand.o: CFLAGS_REAL+=-DWAND_VERSION=$(shell $(PKG_CONFIG) --modversion MagickWand | sed -re 's!(\.[0-9]+)+$$!!')
+backends/wand.o: CFLAGS_REAL+=-DWAND_VERSION=$(shell $(PKG_CONFIG) --modversion MagickWand | awk 'BEGIN { FS="." } { print $$1 }')
 endif
 
 # Add version information to builds from git
@@ -238,11 +238,11 @@ distclean: clean
 	rm -f config.make
 
 get_libs:
-	$(info LIBS: $(LIBS))
+	$(info $(LIBS))
 	@true
 
 get_available_backends:
-	@echo -n "BACKENDS: "; $(foreach BACKEND_C, $(wildcard $(SOURCEDIR)backends/*.c), \
+	@$(foreach BACKEND_C, $(wildcard $(SOURCEDIR)backends/*.c), \
 		[ "$(DISABLE_AUTOMATED_BUILD_$(basename $(notdir $(BACKEND_C))))" != "yes" ] && \
 		[ -n "$(LIBS_$(basename $(notdir $(BACKEND_C))))" ] && \
 		$(PKG_CONFIG) --exists "$(LIBS_$(basename $(notdir $(BACKEND_C))))" \
