@@ -361,7 +361,7 @@ EOF
 
 # Check for lcms bug
 #
-if [ "${BACKENDS_BUILD}" = "static" -a "${BACKENDS/poppler//}" != "${BACKENDS}" -a "${BACKENDS/spectre//}" != "${BACKENDS}" ]; then
+if [ "${BACKENDS_BUILD}" = "static" -a "${BACKENDS/poppler//}" != "${BACKENDS}" -a "${BACKENDS/spectre//}" != "${BACKENDS}" -a -n "$(which ldd 2>/dev/null)" ]; then
 	echo -n "Checking if affected by liblcms bug..         "
 	DIR=`tempdir`
 	cd $DIR

@@ -246,9 +246,9 @@ get_libs:
 	@true
 
 get_available_backends:
-	@$(foreach BACKEND_C, $(wildcard $(SOURCEDIR)backends/*.c), \
+	@OUT=; $(foreach BACKEND_C, $(wildcard $(SOURCEDIR)backends/*.c), \
 		[ "$(DISABLE_AUTOMATED_BUILD_$(basename $(notdir $(BACKEND_C))))" != "yes" ] && \
 		[ -n "$(LIBS_$(basename $(notdir $(BACKEND_C))))" ] && \
 		$(PKG_CONFIG) --exists "$(LIBS_$(basename $(notdir $(BACKEND_C))))" \
-		&& echo -n "$(basename $(notdir $(BACKEND_C))) ";) echo
+		&& OUT="$$OUT $(basename $(notdir $(BACKEND_C))) ";) echo $$OUT
 	@true
