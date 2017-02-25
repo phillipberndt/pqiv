@@ -977,7 +977,7 @@ void parse_configuration_file() {/*{{{*/
 }/*}}}*/
 void parse_command_line() {/*{{{*/
 	GOptionContext *parser = g_option_context_new("FILES");
-	g_option_context_set_summary(parser, "A minimalist image viewer\npqiv version " PQIV_VERSION PQIV_VERSION_DEBUG " by Phillip Berndt");
+	g_option_context_set_summary(parser, "Powerful quick image viewer\npqiv version " PQIV_VERSION PQIV_VERSION_DEBUG " by Phillip Berndt");
 	g_option_context_set_help_enabled(parser, TRUE);
 	g_option_context_set_ignore_unknown_options(parser, FALSE);
 	g_option_context_add_main_entries(parser, options, NULL);
@@ -1888,8 +1888,8 @@ GInputStream *image_loader_stream_file(file_t *file, GError **error_pointer) {/*
 			data = g_memory_input_stream_new_from_bytes(bytes_source);
 		#else
 			gsize size = 0;
-			gpointer *data = g_memdup(g_bytes_get_data(bytes_source, &size), size);
-			data = g_memory_input_stream_new_from_data(data, size, g_free);
+			gpointer *mem_data = g_memdup(g_bytes_get_data(bytes_source, &size), size);
+			data = g_memory_input_stream_new_from_data(mem_data, size, g_free);
 		#endif
 
 		g_bytes_unref(bytes_source);

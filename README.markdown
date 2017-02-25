@@ -128,7 +128,7 @@ Known bugs
 Changelog
 ---------
 
-pqiv 2.8 (WIP)
+pqiv 2.8
  * Added option --allow-empty-window: Show pqiv even if no images can be loaded
  * Explicitly allow to load all files from a directory multiple times
  * Allow to use --libdir option in configure to override .so-files location

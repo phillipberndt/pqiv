@@ -71,15 +71,19 @@ endif
 ifeq ($(GTK_VERSION), 0)
 	ifeq ($(shell $(PKG_CONFIG) --errors-to-stdout --print-errors "$(LIBS_GTK3)"), )
 		LIBS=$(LIBS_GTK3)
+		GDK_LIB=gdk-3.0
 	else
 		LIBS=$(LIBS_GTK2)
+		GDK_LIB=gdk-2.0
 	endif
 endif
 ifeq ($(GTK_VERSION), 2)
 	LIBS=$(LIBS_GTK2)
+	GDK_LIB=gdk-2.0
 endif
 ifeq ($(GTK_VERSION), 3)
 	LIBS=$(LIBS_GTK3)
+	GDK_LIB=gdk-3.0
 endif
 LIBS+=$(LIBS_GENERAL)
 
@@ -92,7 +96,7 @@ else
 endif
 
 # We need X11 to workaround a bug, see http://stackoverflow.com/questions/18647475
-ifeq ($(filter x11, $(shell pkg-config --print-requires-private gdk-2.0)), x11)
+ifeq ($(filter x11, $(shell pkg-config --errors-to-stdout --print-requires-private $(GDK_LIB))), x11)
 	LIBS+=x11
 endif
 
@@ -203,7 +207,7 @@ pqiv.desktop: $(HEADERS)
 		echo "[Desktop Entry]"; \
 		echo "Version=1.0"; \
 		echo "Type=Application"; \
-		echo "Comment=Simple image viewer"; \
+		echo "Comment=Powerful quick image viewer"; \
 		echo "Name=pqiv"; \
 		echo "NoDisplay=true"; \
 		echo "Icon=emblem-photos"; \
