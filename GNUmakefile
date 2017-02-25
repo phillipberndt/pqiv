@@ -242,7 +242,7 @@ distclean: clean
 	rm -f config.make
 
 get_libs:
-	$(info $(LIBS))
+	$(info LIBS: $(LIBS))
 	@true
 
 get_available_backends:
@@ -250,5 +250,5 @@ get_available_backends:
 		[ "$(DISABLE_AUTOMATED_BUILD_$(basename $(notdir $(BACKEND_C))))" != "yes" ] && \
 		[ -n "$(LIBS_$(basename $(notdir $(BACKEND_C))))" ] && \
 		$(PKG_CONFIG) --exists "$(LIBS_$(basename $(notdir $(BACKEND_C))))" \
-		&& OUT="$$OUT $(basename $(notdir $(BACKEND_C))) ";) echo $$OUT
+		&& OUT="$$OUT $(basename $(notdir $(BACKEND_C))) ";) echo BACKENDS: $$OUT
 	@true

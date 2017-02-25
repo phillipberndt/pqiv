@@ -266,7 +266,7 @@ fi
 # Auto-determine available backends
 if [ -z "$BACKENDS" ]; then
 	echo -n "Checking for supported backends..             "
-	BACKENDS="$($MAKE get_available_backends ${PKG_CONFIG:+PKG_CONFIG="$PKG_CONFIG"})"
+	BACKENDS="$($MAKE get_available_backends ${PKG_CONFIG:+PKG_CONFIG="$PKG_CONFIG"} | awk '/^BACKENDS:/ {print substr($0, 11);}')"
 	echo "${BACKENDS:-(none)}"
 fi
 
@@ -284,8 +284,8 @@ if [ -z "$BACKENDS" ]; then
 fi
 
 echo -n "Checking if the prerequisites are installed.. "
-LIBS_GTK3="`$MAKE get_libs GTK_VERSION=3 EXECUTABLE_EXTENSION=$EXECUTABLE_EXTENSION ${PKG_CONFIG:+PKG_CONFIG="$PKG_CONFIG"} ${BACKENDS:+BACKENDS="$BACKENDS"}`"
-LIBS_GTK2="`$MAKE get_libs GTK_VERSION=2 EXECUTABLE_EXTENSION=$EXECUTABLE_EXTENSION ${PKG_CONFIG:+PKG_CONFIG="$PKG_CONFIG"} ${BACKENDS:+BACKENDS="$BACKENDS"}`"
+LIBS_GTK3="`$MAKE get_libs GTK_VERSION=3 EXECUTABLE_EXTENSION=$EXECUTABLE_EXTENSION ${PKG_CONFIG:+PKG_CONFIG="$PKG_CONFIG"} ${BACKENDS:+BACKENDS="$BACKENDS"} | awk '/^LIBS:/ {print substr($0, 7);}'`"
+LIBS_GTK2="`$MAKE get_libs GTK_VERSION=2 EXECUTABLE_EXTENSION=$EXECUTABLE_EXTENSION ${PKG_CONFIG:+PKG_CONFIG="$PKG_CONFIG"} ${BACKENDS:+BACKENDS="$BACKENDS"} | awk '/^LIBS:/ {print substr($0, 7);}'`"
 
 if [ $? != 0 ]; then
 	echo "failed."
