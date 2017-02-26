@@ -49,10 +49,11 @@ distribution packages are usually somewhat out of date:
  * Dynamically linked
    [nightly builds for Debian, Ubuntu, SUSE and Fedora](https://build.opensuse.org/package/show/home:phillipberndt/pqiv)
    thanks to the OpenSUSE build service
- * [Debian package](https://packages.debian.org/en/sid/pqiv)
- * [Gentoo ebuild](https://packages.gentoo.org/packages/media-gfx/pqiv)
  * [Arch AUR package](https://aur.archlinux.org/packages/pqiv/)
    ([Git version](https://aur.archlinux.org/packages/pqiv-git/))
+ * [Debian package](https://packages.debian.org/en/sid/pqiv)
+ * [FreeBSD port](https://www.freshports.org/graphics/pqiv/)
+ * [Gentoo ebuild](https://packages.gentoo.org/packages/media-gfx/pqiv)
 
 If you'd like to compile pqiv manually, you'll need
 
