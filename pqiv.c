@@ -5010,7 +5010,7 @@ gboolean initialize_gui_or_quit_callback(gpointer user_data) {/*{{{*/
 
 	if(!file_tree_valid || bostree_node_count(file_tree) == 0) {
 		g_printerr("No images left to display.\n");
-		exit(1);
+		gtk_main_quit();
 	}
 
 	return FALSE;
@@ -5584,7 +5584,8 @@ gpointer load_images_thread(gpointer user_data) {/*{{{*/
 	if(!option_wait_for_images_to_appear) {
 		if(tree_empty) {
 			g_printerr("No images left to display.\n");
-			exit(1);
+			g_idle_add((GSourceFunc)gtk_main_quit, NULL);
+			return NULL;
 		}
 
 		if(option_lazy_load) {
@@ -5599,7 +5600,26 @@ gpointer load_images_thread(gpointer user_data) {/*{{{*/
 #endif
 	return NULL;
 }/*}}}*/
+gboolean inner_main(void *user_data) {/*{{{*/
+	if(option_lazy_load) {
+		if(option_allow_empty_window) {
+			create_window();
+			gtk_widget_show_all(GTK_WIDGET(main_window));
+			main_window_visible = TRUE;
+		}
 
+		g_thread_new("image-loader", load_images_thread, GINT_TO_POINTER(1));
+	}
+	else {
+		load_images_thread(NULL);
+		if(!initialize_gui()) {
+			g_printerr("No images left to display.\n");
+			gtk_main_quit();
+		}
+	}
+
+	return FALSE;
+}/*}}}*/
 int main(int argc, char *argv[]) {
 	#ifdef DEBUG
 		#ifndef _WIN32
@@ -5669,22 +5689,9 @@ int main(int argc, char *argv[]) {
 	}
 #endif
 
-	if(option_lazy_load) {
-		if(option_allow_empty_window) {
-			create_window();
-			gtk_widget_show_all(GTK_WIDGET(main_window));
-			main_window_visible = TRUE;
-		}
-
-		g_thread_new("image-loader", load_images_thread, GINT_TO_POINTER(1));
-	}
-	else {
-		load_images_thread(NULL);
-		if(!initialize_gui()) {
-			g_printerr("No images left to display.\n");
-			exit(1);
-		}
-	}
+	// Start image loader & show window inside main loop, in order to have
+	// gtk_main_quit() available.
+	gdk_threads_add_idle(inner_main, NULL);
 
 	gtk_main();
 

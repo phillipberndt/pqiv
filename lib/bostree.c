@@ -187,7 +187,6 @@ BOSNode *bostree_insert(BOSTree *tree, void *key, void *data) {
 			node = &(*node)->left_child_node;
 		}
 		else {
-			assert(cmp > 0);
 			(*node)->right_child_count++;
 			node = &(*node)->right_child_node;
 		}
