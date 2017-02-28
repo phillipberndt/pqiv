@@ -374,6 +374,7 @@ gboolean options_bind_key_callback(const gchar *option_name, const gchar *value,
 char *key_binding_sequence_to_string(guint key_binding_value, gchar *prefix);
 gboolean help_show_key_bindings(const gchar *option_name, const gchar *value, gpointer data, GError **error);
 #endif
+gboolean help_show_version(const gchar *option_name, const gchar *value, gpointer data, GError **error);
 gboolean option_window_position_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error);
 gboolean option_scale_level_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error);
 gboolean option_end_of_files_action_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error);
@@ -441,6 +442,7 @@ GOptionEntry options[] = {
 	{ "wait-for-images-to-appear", 0, 0, G_OPTION_ARG_NONE, &option_wait_for_images_to_appear, "If no images are found, wait until at least one appears", NULL },
 	{ "watch-directories", 0, 0, G_OPTION_ARG_NONE, &option_watch_directories, "Watch directories for new files", NULL },
 	{ "watch-files", 0, 0, G_OPTION_ARG_CALLBACK, (gpointer)&option_watch_files_callback, "Watch files for changes on disk (`on`, `off', `changes-only', i.e. do nothing on deletetion)", "VALUE" },
+	{ "version", 0, G_OPTION_FLAG_NO_ARG, G_OPTION_ARG_CALLBACK, (gpointer)&help_show_version, "Show version information and quit", NULL },
 
 	{ NULL, 0, 0, 0, NULL, NULL, NULL }
 };
@@ -5079,6 +5081,11 @@ void help_show_key_bindings_helper(gpointer key, gpointer value, gpointer user_d
 
 	g_free(str_key);
 }/*}}}*/
+gboolean help_show_version(const gchar *option_name, const gchar *value, gpointer data, GError **error) {/*{{{*/
+	g_print("pqiv " PQIV_VERSION "\n");
+	exit(0);
+	return FALSE;
+}
 gboolean help_show_key_bindings(const gchar *option_name, const gchar *value, gpointer data, GError **error) {/*{{{*/
 	gchar *old_locale = g_strdup(setlocale(LC_NUMERIC, NULL));
 	setlocale(LC_NUMERIC, "C");
@@ -5636,7 +5643,7 @@ int main(int argc, char *argv[]) {
 		g_thread_init(NULL);
 		gdk_threads_init();
 	#endif
-	gtk_init(&argc, &argv); // fyi, this generates a MemorySanitizer warning currently
+	gboolean windowing_available = gtk_init_check(&argc, &argv); // fyi, this generates a MemorySanitizer warning currently
 
 #ifndef CONFIGURED_WITHOUT_ACTIONS
 	initialize_key_bindings();
@@ -5647,6 +5654,11 @@ int main(int argc, char *argv[]) {
 
 	parse_configuration_file();
 	parse_command_line();
+
+	if(!windowing_available) {
+		g_warn_if_reached(); // this should never be called because parse_command_line() calls gtk_init() again.
+		return 1;
+	}
 
 	if(option_disable_backends) {
 		gchar **disabled_backends = g_strsplit(option_disable_backends, ",", 0);

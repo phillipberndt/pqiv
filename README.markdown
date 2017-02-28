@@ -129,6 +129,10 @@ Known bugs
 Changelog
 ---------
 
+pqiv 2.9 (wip)
+ * Allow to view help even if no display is available
+ * Add --version
+
 pqiv 2.8.1
  * Fix support for duplicate files in sorted mode
  * Fix MagickWand exit handler code
