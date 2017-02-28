@@ -54,6 +54,7 @@ distribution packages are usually somewhat out of date:
  * [Debian package](https://packages.debian.org/en/sid/pqiv)
  * [FreeBSD port](https://www.freshports.org/graphics/pqiv/)
  * [Gentoo ebuild](https://packages.gentoo.org/packages/media-gfx/pqiv)
+ * [macOS brew](http://braumeister.org/formula/pqiv)
 
 If you'd like to compile pqiv manually, you'll need
 
