@@ -5636,7 +5636,7 @@ int main(int argc, char *argv[]) {
 		#endif
 	#endif
 
-	#if defined(GDK_WINDOWING_X11)
+	#if defined(GDK_WINDOWING_X11) && GTK_MAJOR_VERSION >= 3
 		XInitThreads();
 	#endif
 	#if (!GLIB_CHECK_VERSION(2, 32, 0))
