@@ -5017,6 +5017,11 @@ gboolean initialize_gui_or_quit_callback(gpointer user_data) {/*{{{*/
 
 	return FALSE;
 }/*}}}*/
+gboolean help_show_version(const gchar *option_name, const gchar *value, gpointer data, GError **error) {/*{{{*/
+	g_print("pqiv " PQIV_VERSION "\n");
+	exit(0);
+	return FALSE;
+}
 #ifndef CONFIGURED_WITHOUT_ACTIONS
 char *key_binding_sequence_to_string(guint key_binding_value, gchar *prefix) {/*{{{*/
 	gboolean is_mouse = (key_binding_value >> 31) & 1;
@@ -5081,11 +5086,6 @@ void help_show_key_bindings_helper(gpointer key, gpointer value, gpointer user_d
 
 	g_free(str_key);
 }/*}}}*/
-gboolean help_show_version(const gchar *option_name, const gchar *value, gpointer data, GError **error) {/*{{{*/
-	g_print("pqiv " PQIV_VERSION "\n");
-	exit(0);
-	return FALSE;
-}
 gboolean help_show_key_bindings(const gchar *option_name, const gchar *value, gpointer data, GError **error) {/*{{{*/
 	gchar *old_locale = g_strdup(setlocale(LC_NUMERIC, NULL));
 	setlocale(LC_NUMERIC, "C");
