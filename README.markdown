@@ -134,7 +134,9 @@ pqiv 2.9 (wip)
  * Allow to view help even if no display is available
  * Add --version
 
-pqiv 2.8.1
+pqiv 2.8.2
+ * Fix building with old glib versions that do not expose their x11 dependency
+   in pkgconfig
  * Fix support for duplicate files in sorted mode
  * Fix MagickWand exit handler code
 
