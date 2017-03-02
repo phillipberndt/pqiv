@@ -203,6 +203,14 @@ cairo_surface_t *current_scaled_image_surface = NULL;
 
 #ifndef CONFIGURED_WITHOUT_INFO_TEXT
 gint current_info_text_cached_font_size = -1;
+struct {
+	double fg_red;
+	double fg_green;
+	double fg_blue;
+	double bg_red;
+	double bg_green;
+	double bg_blue;
+} option_info_box_colors = { 0., 0., 0., 1., 1., 0. };
 gchar *current_info_text = NULL;
 cairo_rectangle_int_t current_info_text_bounding_box = { 0, 0, 0, 0 };
 #endif
@@ -319,6 +327,9 @@ gboolean option_end_of_files_action_callback(const gchar *option_name, const gch
 gboolean option_watch_files_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error);
 gboolean option_sort_key_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error);
 gboolean option_action_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error);
+#ifndef CONFIGURED_WITHOUT_INFO_TEXT
+gboolean option_info_box_colors_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error);
+#endif
 void load_images_handle_parameter(char *param, load_images_state_t state, gint depth, GSList *recursion_folder_stack);
 
 struct {
@@ -392,6 +403,9 @@ GOptionEntry options[] = {
 	{ "end-of-files-action", 0, 0, G_OPTION_ARG_CALLBACK, &option_end_of_files_action_callback, "Action to take after all images have been viewed. (`quit', `wait', `wrap', `wrap-no-reshuffle')", "ACTION" },
 	{ "enforce-window-aspect-ratio", 0, 0, G_OPTION_ARG_NONE, &option_enforce_window_aspect_ratio, "Fix the aspect ratio of the window to match the current image's", NULL },
 	{ "fade-duration", 0, 0, G_OPTION_ARG_DOUBLE, &option_fading_duration, "Adjust fades' duration", "SECONDS" },
+#ifndef CONFIGURED_WITHOUT_INFO_TEXT
+	{ "info-box-colors", 0, 0, G_OPTION_ARG_CALLBACK, (gpointer)&option_info_box_colors_callback, "Set info box colors", "TEXT:BACKGROUND" },
+#endif
 	{ "low-memory", 0, 0, G_OPTION_ARG_NONE, &option_lowmem, "Try to keep memory usage to a minimum", NULL },
 	{ "max-depth", 0, 0, G_OPTION_ARG_INT, &option_max_depth, "Descend at most LEVELS levels of directories below the command line arguments", "LEVELS" },
 	{ "recreate-window", 0, 0, G_OPTION_ARG_NONE, &option_recreate_window, "Create a new window instead of resizing the old one", NULL },
@@ -871,6 +885,85 @@ gboolean option_end_of_files_action_callback(const gchar *option_name, const gch
 	}
 	return TRUE;
 }/*}}}*/
+#ifndef CONFIGURED_WITHOUT_INFO_TEXT
+gboolean option_info_box_colors_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error) {/*{{{*/
+	// Parse manually rather than with sscanf to have the flexibility to use
+	// hex notation without doing black magic
+	unsigned char pos;
+	for(pos=0; pos < 6 && value && *value; pos++) {
+		while(*value == ' ') {
+			value++;
+		}
+		if(pos % 3 == 0 && *value == '#') {
+			value++;
+			unsigned char ipos = pos + 3;
+			for(; pos<ipos && value; pos++) {
+				unsigned char mchar = 0;
+				for(int i=0; i<2; i++) {
+					mchar = mchar << 4;
+					if(!*value) {
+						break;
+					}
+					if(*value >= 'a' && *value <= 'f') {
+						mchar |= (*value - 'a') + 10;
+					}
+					else if(*value >= 'A' && *value <= 'F') {
+						mchar |= (*value - 'A') + 10;
+					}
+					else if(*value >= '0' && *value <= '9') {
+						mchar |= *value - '0';
+					}
+					else {
+						value = NULL;
+						break;
+					}
+
+					value++;
+				}
+				*((double *)&option_info_box_colors + pos) = mchar / 255.;
+			}
+			pos--;
+		}
+		else {
+			unsigned ivalue = 0;
+			while(*value && *value >= '0' && *value <= '9') {
+				ivalue = ivalue * 10 + (*value - '0');
+				value++;
+			}
+			*((double *)&option_info_box_colors + pos) = ivalue / 255.;
+			if(pos != 2) {
+				while(*value == ' ') {
+					value++;
+				}
+				if(*value == ',') {
+					value++;
+				}
+				else {
+					value = NULL;
+				}
+			}
+		}
+
+		if(pos == 2) {
+			while(*value == ' ') {
+				value++;
+			}
+			if(*value == ':') {
+				value++;
+			}
+			else {
+				value = NULL;
+			}
+		}
+	}
+
+	if(pos != 6) {
+		g_set_error(error, G_OPTION_ERROR, G_OPTION_ERROR_FAILED, "Unexpected argument value for the --info-box-colors option. Syntax is foreground-color:background-color, colors either given as a r,g,b pair or #aabbcc hex code.");
+		return FALSE;
+	}
+	return TRUE;
+}/*}}}*/
+#endif
 gboolean option_sort_key_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error) {/*{{{*/
 	if(strcmp(value, "name") == 0) {
 		option_sort_key = NAME;
@@ -4594,7 +4687,7 @@ gboolean window_draw_callback(GtkWidget *widget, cairo_t *cr_arg, gpointer user_
 				cairo_translate(cr_arg, x < 0 ? 0 : x, y < 0 ? 0 : y);
 			}
 
-			cairo_set_source_rgb(cr_arg, 1., 1., 0.);
+			cairo_set_source_rgb(cr_arg, option_info_box_colors.bg_red, option_info_box_colors.bg_green, option_info_box_colors.bg_blue);
 			cairo_translate(cr_arg, 10 * screen_scale_factor, 20 * screen_scale_factor);
 			cairo_text_path(cr_arg, current_info_text);
 			cairo_path_extents(cr_arg, &x1, &y1, &x2, &y2);
@@ -4612,7 +4705,7 @@ gboolean window_draw_callback(GtkWidget *widget, cairo_t *cr_arg, gpointer user_
 			cairo_rectangle(cr_arg, -5, -(y2 - y1) - 2, x2 - x1 + 10, y2 - y1 + 8);
 			cairo_close_path(cr_arg);
 			cairo_fill(cr_arg);
-			cairo_set_source_rgb(cr_arg, 0., 0., 0.);
+			cairo_set_source_rgb(cr_arg, option_info_box_colors.fg_red, option_info_box_colors.fg_green, option_info_box_colors.fg_blue);
 			cairo_append_path(cr_arg, text_path);
 			cairo_fill(cr_arg);
 			cairo_path_destroy(text_path);

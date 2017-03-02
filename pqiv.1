@@ -227,6 +227,12 @@ With \fB\-\-fade\fR, make each fade this long. Floating point values are
 accepted, e.g. 0.5 makes each fade take half a second.
 .\"
 .TP
+.BR \-\-info\-box\-colors=\fIFOREGROUND\ COLOR:BACKGROUND\ COLOR\fR
+Customize the colors used to draw the info box. Colors can be specified either
+as a comma separated list of RBG-values in the range from 0 to 255 or as a
+hexvalue, e.g., #aabbcc. The default value is \fI#000000:#ffff00\fR.
+.\"
+.TP
 .BR \-\-low\-memory
 Try to keep memory usage to a minimum. \fBpqiv\fR by default e.g. preloads the
 next and previous image to speed up navigation and caches scaled images to

@@ -136,6 +136,7 @@ Changelog
 ---------
 
 pqiv 2.9 (wip)
+ * Add option --info-box-colors to customize the colors used in the info box
  * Allow to view help even if no display is available
  * Add --version
  * Bind Control+t to toggle to "maintain scale mode" by default
