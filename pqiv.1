@@ -108,7 +108,8 @@ window size.
 Bind the external \fICOMMAND\fR to key 1. You can use 2..9 to bind further
 commands. The \fBACTIONS\fR feature (see below) allows one to bind further keys to
 other commands. \fICOMMAND\fR is executed using the default shell processor.
-`$1' is substituted with the current file name.
+`$1' is substituted with the current file name. Unless \fICOMMAND\fR begins with
+`|', if `$1' is not present, the file name is appended to the command line.
 .RS
 .PP
 If \fICOMMAND\fR begins with `>', its standard output is displayed in a popup window.

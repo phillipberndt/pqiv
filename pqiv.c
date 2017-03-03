@@ -923,7 +923,7 @@ void parse_configuration_file_callback(char *section, char *key, config_parser_v
 								((GOptionArgFunc)(iter->arg_data))(long_name, value->chrpval, NULL, &error_pointer);
 							}
 							else {
-								*(gchar **)(iter->arg_data) = value->chrpval;
+								*(gchar **)(iter->arg_data) = g_strdup(value->chrpval);
 							}
 						}
 						break;
