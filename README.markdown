@@ -128,7 +128,8 @@ Known bugs
 Changelog
 ---------
 
-pqiv 2.8.2
+pqiv 2.8.3
+ * Correctly handle string arguments from the configuration file
  * Fix building with old glib versions that do not expose their x11 dependency
    in pkgconfig
  * Fix support for duplicate files in sorted mode
