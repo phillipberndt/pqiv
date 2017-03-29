@@ -494,6 +494,7 @@ static const struct default_key_bindings_struct {
 	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_minus            ), ACTION_SET_SCALE_LEVEL_RELATIVE        , { .pdouble = 0.9 }},
 	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_KP_Subtract      ), ACTION_SET_SCALE_LEVEL_RELATIVE        , { .pdouble = 0.9 }},
 	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_t                ), ACTION_TOGGLE_SCALE_MODE               , { 0   }},
+	{ KEY_BINDING_VALUE(0 , GDK_CONTROL_MASK , GDK_KEY_t                ), ACTION_TOGGLE_SCALE_MODE               , { 4   }},
 	{ KEY_BINDING_VALUE(0 , GDK_CONTROL_MASK , GDK_KEY_r                ), ACTION_TOGGLE_SHUFFLE_MODE             , { 0   }},
 	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_r                ), ACTION_RELOAD                          , { 0   }},
 	{ KEY_BINDING_VALUE(0 , GDK_CONTROL_MASK , GDK_KEY_p                ), ACTION_GOTO_EARLIER_FILE               , { 0   }},

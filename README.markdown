@@ -134,6 +134,7 @@ Changelog
 pqiv 2.9 (wip)
  * Allow to view help even if no display is available
  * Add --version
+ * Bind Control+t to toggle to "maintain scale mode" by default
 
 pqiv 2.8.3
  * Correctly handle string arguments from the configuration file
