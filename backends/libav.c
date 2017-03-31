@@ -40,6 +40,7 @@
 
 #if LIBAVCODEC_VERSION_INT < AV_VERSION_INT(54, 0, 0)
 #define avcodec_free_frame av_free
+#define AV_PIX_FMT_RGB32 PIX_FMT_RGB32
 #endif
 
 #if LIBAVCODEC_VERSION_INT >= AV_VERSION_INT(57, 41, 0)
