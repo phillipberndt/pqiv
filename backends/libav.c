@@ -36,7 +36,10 @@
 
 #if LIBAVCODEC_VERSION_INT < AV_VERSION_INT(57, 0, 0)
 #define av_packet_unref av_free_packet
-#define av_free_frame av_free
+#endif
+
+#if LIBAVCODEC_VERSION_INT < AV_VERSION_INT(54, 0, 0)
+#define avcodec_free_frame av_free
 #endif
 
 #if LIBAVCODEC_VERSION_INT >= AV_VERSION_INT(57, 41, 0)
