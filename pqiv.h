@@ -91,6 +91,9 @@ struct _file {
 	guint width;
 	guint height;
 
+	// Cached thumbnail
+	cairo_surface_t *thumbnail;
+
 	// File-type specific data, allocated and freed by the file type handlers
 	void *private;
 };

@@ -388,6 +388,12 @@ struct {
 	gint y;
 } option_window_position = { -2, -2 };
 
+struct {
+	gboolean enabled;
+	gint width;
+	gint height;
+} option_thumbnails = { 1, 320, 240 };
+
 // Hint: Only types G_OPTION_ARG_NONE, G_OPTION_ARG_STRING, G_OPTION_ARG_DOUBLE/INTEGER and G_OPTION_ARG_CALLBACK are
 // implemented for option parsing.
 GOptionEntry options[] = {
@@ -670,6 +676,7 @@ void handle_input_event(guint key_binding_value);
 static void continue_active_input_event_action_chain();
 static void UNUSED_FUNCTION block_active_input_event_action_chain();
 static void UNUSED_FUNCTION unblock_active_input_event_action_chain();
+void draw_current_image_to_context(cairo_t *cr);
 #ifndef CONFIGURED_WITHOUT_ACTIONS
 gboolean window_auto_hide_cursor_callback(gpointer user_data);
 #endif
@@ -1505,6 +1512,10 @@ void file_free(file_t *file) {/*{{{*/
 		g_bytes_unref(file->file_data);
 		file->file_data = NULL;
 	}
+	if(file->thumbnail) {
+		cairo_surface_destroy(file->thumbnail);
+		file->thumbnail = NULL;
+	}
 	g_slice_free(file_t, file);
 }/*}}}*/
 void file_tree_free_helper(BOSNode *node) {
@@ -1786,6 +1797,11 @@ void main_window_adjust_for_image() {/*{{{*/
 	}
 }/*}}}*/
 gboolean image_loaded_handler(gconstpointer node) {/*{{{*/
+	// Execute logic below only if the loaded image is the current one
+	if(node != NULL && node != current_file_node) {
+		return FALSE;
+	}
+
 	D_LOCK(file_tree);
 
 	// Remove any old timeouts etc.
@@ -2051,6 +2067,50 @@ gboolean image_loader_load_single(BOSNode *node, gboolean called_from_main) {/*{
 
 	return FALSE;
 }/*}}}*/
+void image_loader_create_thumbnail(file_t *file) {/*{{{*/
+	const double scale_level_w = file->width * 1.0 / option_thumbnails.width;
+	const double scale_level_h = file->height * 1.0 / option_thumbnails.height;
+	double scale_level = scale_level_w > scale_level_h ? scale_level_h : scale_level_w;
+	if(scale_level > 1.) {
+		scale_level = 1.;
+	}
+
+	cairo_surface_t *surf = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, scale_level * file->width + .5, scale_level * file->height + .5);
+	if(cairo_surface_status(surf) != CAIRO_STATUS_SUCCESS) {
+		cairo_surface_destroy(surf);
+		return;
+	}
+	file->thumbnail = cairo_surface_reference(surf);
+
+	cairo_t *cr = cairo_create(surf);
+
+	// Draw black background
+	cairo_save(cr);
+	cairo_set_source_rgba(cr, 0., 0., 0., option_transparent_background ? 0. : 1.);
+	cairo_set_operator(cr, CAIRO_OPERATOR_SOURCE);
+	cairo_paint(cr);
+	cairo_restore(cr);
+
+	// From here on, draw centered
+	cairo_translate(cr, (cairo_image_surface_get_width(surf) - scale_level * file->width) / 2, (cairo_image_surface_get_height(surf) - scale_level * file->height) / 2);
+	cairo_scale(cr, scale_level, scale_level);
+
+	// Draw background pattern
+	if(background_checkerboard_pattern != NULL && !option_transparent_background) {
+		cairo_new_path(cr);
+		cairo_rectangle(cr, 0, 0, file->width, file->height);
+		cairo_close_path(cr);
+		cairo_clip(cr);
+		cairo_set_source(cr, background_checkerboard_pattern);
+		cairo_paint(cr);
+	}
+
+	cairo_set_operator(cr, CAIRO_OPERATOR_SOURCE);
+	draw_current_image_to_context(cr);
+
+	cairo_destroy(cr);
+	cairo_surface_destroy(surf);
+}/*}}}*/
 gpointer image_loader_thread(gpointer user_data) {/*{{{*/
 	while(TRUE) {
 		// Handle new queued image load
@@ -2125,8 +2185,17 @@ gpointer image_loader_thread(gpointer user_data) {/*{{{*/
 			image_loader_load_single(node, FALSE);
 			image_loader_thread_currently_loading = NULL;
 		}
-		if(node == current_file_node && FILE(node)->is_loaded) {
-			current_image_drawn = FALSE;
+		if(FILE(node)->is_loaded) {
+			if(FILE(node)->thumbnail && (cairo_image_surface_get_width(FILE(node)->thumbnail) != option_thumbnails.width || cairo_image_surface_get_height(FILE(node)->thumbnail) != option_thumbnails.height)) {
+				cairo_surface_destroy(FILE(node)->thumbnail);
+				FILE(node)->thumbnail = NULL;
+			}
+			if(!FILE(node)->thumbnail && option_thumbnails.enabled) {
+				image_loader_create_thumbnail(FILE(node));
+			}
+			if(node == current_file_node) {
+				current_image_drawn = FALSE;
+			}
 			gdk_threads_add_idle((GSourceFunc)image_loaded_handler, node);
 		}
 
