@@ -3701,6 +3701,7 @@ gboolean window_draw_callback(GtkWidget *widget, cairo_t *cr_arg, gpointer user_
 			cairo_path_extents(cr_arg, &x1, &y1, &x2, &y2);
 
 			if(x2 > main_window_width - 10 * screen_scale_factor && !main_window_in_fullscreen) {
+				cairo_path_destroy(text_path);
 				cairo_new_path(cr_arg);
 				cairo_restore(cr_arg);
 				cairo_save(cr_arg);
