@@ -392,7 +392,13 @@ struct {
 	gboolean enabled;
 	gint width;
 	gint height;
-} option_thumbnails = { 1, 320, 240 };
+} option_thumbnails = { 1, 250, 250 };
+
+struct {
+	unsigned scroll_y;
+	unsigned pos_x;
+	unsigned pos_y;
+} montage_window_control;
 
 // Hint: Only types G_OPTION_ARG_NONE, G_OPTION_ARG_STRING, G_OPTION_ARG_DOUBLE/INTEGER and G_OPTION_ARG_CALLBACK are
 // implemented for option parsing.
@@ -1799,6 +1805,8 @@ void main_window_adjust_for_image() {/*{{{*/
 gboolean image_loaded_handler(gconstpointer node) {/*{{{*/
 	// Execute logic below only if the loaded image is the current one
 	if(node != NULL && node != current_file_node) {
+		// XXX
+		gtk_widget_queue_draw(GTK_WIDGET(main_window));
 		return FALSE;
 	}
 
@@ -2068,8 +2076,8 @@ gboolean image_loader_load_single(BOSNode *node, gboolean called_from_main) {/*{
 	return FALSE;
 }/*}}}*/
 void image_loader_create_thumbnail(file_t *file) {/*{{{*/
-	const double scale_level_w = file->width * 1.0 / option_thumbnails.width;
-	const double scale_level_h = file->height * 1.0 / option_thumbnails.height;
+	const double scale_level_w = option_thumbnails.width * 1.0 / file->width;
+	const double scale_level_h = option_thumbnails.height * 1.0 / file->height;
 	double scale_level = scale_level_w > scale_level_h ? scale_level_h : scale_level_w;
 	if(scale_level > 1.) {
 		scale_level = 1.;
@@ -2080,7 +2088,7 @@ void image_loader_create_thumbnail(file_t *file) {/*{{{*/
 		cairo_surface_destroy(surf);
 		return;
 	}
-	file->thumbnail = cairo_surface_reference(surf);
+	// file->thumbnail = cairo_surface_reference(surf);
 
 	cairo_t *cr = cairo_create(surf);
 
@@ -2106,10 +2114,13 @@ void image_loader_create_thumbnail(file_t *file) {/*{{{*/
 	}
 
 	cairo_set_operator(cr, CAIRO_OPERATOR_SOURCE);
-	draw_current_image_to_context(cr);
+	if(file->file_type->draw_fn != NULL) {
+		file->file_type->draw_fn(file, cr);
+	}
 
 	cairo_destroy(cr);
-	cairo_surface_destroy(surf);
+	// cairo_surface_destroy(surf);
+	file->thumbnail = surf; // XXX
 }/*}}}*/
 gpointer image_loader_thread(gpointer user_data) {/*{{{*/
 	while(TRUE) {
@@ -3567,6 +3578,42 @@ void calculate_base_draw_pos_and_size(int *image_transform_width, int *image_tra
 		*x = *y = 0;
 	}
 }/*}}}*/
+gboolean window_draw_thumbnail_montage(cairo_t *cr_arg) {/*{{{*/
+	D_LOCK(file_tree);
+
+	// Calculate how many thumbnails to draw
+	const unsigned n_thumbs_x = main_window_width / (option_thumbnails.width + 10);
+	const unsigned n_thumbs_y = main_window_height / (option_thumbnails.height + 10);
+
+	size_t top_left_id = montage_window_control.scroll_y * n_thumbs_x; // XXX
+	const size_t number_of_images = bostree_node_count(file_tree);
+
+	for(size_t draw_now = 0; draw_now < n_thumbs_x * n_thumbs_y; draw_now++) {
+		BOSNode *thumb_node = bostree_select(file_tree, top_left_id + draw_now);
+		file_t *thumb_file = FILE(thumb_node);
+
+		if(thumb_file->thumbnail) {
+			cairo_save(cr_arg);
+			cairo_translate(cr_arg,
+				(main_window_width - n_thumbs_x * (option_thumbnails.width + 10)) / 2   + (draw_now % n_thumbs_x) * (option_thumbnails.width + 10)  + (option_thumbnails.width - cairo_image_surface_get_width(thumb_file->thumbnail))/2,
+				(main_window_height - n_thumbs_y * (option_thumbnails.height + 10)) / 2 + (draw_now / n_thumbs_x) * (option_thumbnails.height + 10) + (option_thumbnails.height - cairo_image_surface_get_height(thumb_file->thumbnail))/2
+			);
+			cairo_set_source_surface(cr_arg, thumb_file->thumbnail, 0, 0);
+			cairo_new_path(cr_arg);
+			cairo_rectangle(cr_arg, 0, 0, cairo_image_surface_get_width(thumb_file->thumbnail), cairo_image_surface_get_height(thumb_file->thumbnail));
+			cairo_close_path(cr_arg);
+			cairo_clip(cr_arg);
+			cairo_paint(cr_arg);
+			cairo_restore(cr_arg);
+		}
+		else {
+			queue_image_load(thumb_node);
+		}
+	}
+
+	D_UNLOCK(file_tree);
+	return TRUE;
+}/*}}}*/
 gboolean window_draw_callback(GtkWidget *widget, cairo_t *cr_arg, gpointer user_data) {/*{{{*/
 	// Continue an action chain, if one exists The placement of this is a
 	// compromise: What we really want is to perform actions that follow an
@@ -3581,6 +3628,13 @@ gboolean window_draw_callback(GtkWidget *widget, cairo_t *cr_arg, gpointer user_
 	// initial position.
 	if(is_current_file_loaded()) {
 		continue_active_input_event_action_chain();
+	}
+
+	// We have different drawing modes. The default, below, is to draw a single
+	// image.
+	if(1) {
+		// XXX
+		return window_draw_thumbnail_montage(cr_arg);
 	}
 
 	// Draw image
@@ -4021,6 +4075,7 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 			break;
 
 		case ACTION_RELOAD:
+				montage_window_control.scroll_y ++; // XXX
 			if(!is_current_file_loaded()) return;
 			CURRENT_FILE->force_reload = TRUE;
 			update_info_text("Reloading image..");
