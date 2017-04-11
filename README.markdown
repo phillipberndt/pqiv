@@ -136,7 +136,8 @@ pqiv 2.9 (wip)
  * Add --version
  * Bind Control+t to toggle to "maintain scale mode" by default
 
-pqiv 2.8.3
+pqiv 2.8.4
+ * Fix a memory leak (leaking a few bytes each time an image is drawn)
  * Correctly handle string arguments from the configuration file
  * Fix building with old glib versions that do not expose their x11 dependency
    in pkgconfig
