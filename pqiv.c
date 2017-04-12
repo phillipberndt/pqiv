@@ -3579,8 +3579,12 @@ gboolean window_draw_callback(GtkWidget *widget, cairo_t *cr_arg, gpointer user_
 			// TODO The current workaround is to draw the background pattern 1px into the image
 			//      if in fullscreen mode, because that's where the pattern irretates most –
 			//      but I'd prefer a cleaner solution.
-			if(main_window_in_fullscreen) {
-				cairo_rectangle(cr, 1, 1, CURRENT_FILE->width - 2, CURRENT_FILE->height - 2);
+			unsigned skip_px = (unsigned)(1./current_scale_level);
+			if(skip_px == 0) {
+				skip_px = 1;
+			}
+			if(main_window_in_fullscreen && CURRENT_FILE->width > 2*skip_px && CURRENT_FILE->height > 2*skip_px) {
+				cairo_rectangle(cr, skip_px, skip_px, CURRENT_FILE->width - 2*skip_px, CURRENT_FILE->height - 2*skip_px);
 			}
 			else {
 				cairo_rectangle(cr, 0, 0, CURRENT_FILE->width, CURRENT_FILE->height);

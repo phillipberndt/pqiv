@@ -136,6 +136,10 @@ pqiv 2.9 (wip)
  * Add --version
  * Bind Control+t to toggle to "maintain scale mode" by default
 
+pqiv 2.8.5 (wip / might appear as part of 2.9 instead)
+ * Fixed an issue where the checkerboard pattern sometimes was visible at image
+   borders
+
 pqiv 2.8.4
  * Fix a memory leak (leaking a few bytes each time an image is drawn)
  * Correctly handle string arguments from the configuration file
