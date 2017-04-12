@@ -270,6 +270,7 @@ cairo_surface_t *last_visible_image_surface = NULL;
 cairo_surface_t *current_scaled_image_surface = NULL;
 
 #ifndef CONFIGURED_WITHOUT_INFO_TEXT
+gint current_info_text_cached_font_size = -1;
 gchar *current_info_text = NULL;
 cairo_rectangle_int_t current_info_text_bounding_box = { 0, 0, 0, 0 };
 #endif
@@ -3452,6 +3453,7 @@ inline void info_text_queue_redraw() {/*{{{*/
 }/*}}}*/
 void update_info_text(const gchar *action) {/*{{{*/
 	D_LOCK(file_tree);
+	current_info_text_cached_font_size = -1;
 
 	if(!current_file_node) {
 		if(current_info_text != NULL) {
@@ -3700,8 +3702,12 @@ gboolean window_draw_callback(GtkWidget *widget, cairo_t *cr_arg, gpointer user_
 			// TODO The current workaround is to draw the background pattern 1px into the image
 			//      if in fullscreen mode, because that's where the pattern irretates most –
 			//      but I'd prefer a cleaner solution.
-			if(main_window_in_fullscreen) {
-				cairo_rectangle(cr, 1, 1, CURRENT_FILE->width - 2, CURRENT_FILE->height - 2);
+			unsigned skip_px = (unsigned)(1./current_scale_level);
+			if(skip_px == 0) {
+				skip_px = 1;
+			}
+			if(main_window_in_fullscreen && CURRENT_FILE->width > 2*skip_px && CURRENT_FILE->height > 2*skip_px) {
+				cairo_rectangle(cr, skip_px, skip_px, CURRENT_FILE->width - 2*skip_px, CURRENT_FILE->height - 2*skip_px);
 			}
 			else {
 				cairo_rectangle(cr, 0, 0, CURRENT_FILE->width, CURRENT_FILE->height);
@@ -3721,7 +3727,7 @@ gboolean window_draw_callback(GtkWidget *widget, cairo_t *cr_arg, gpointer user_
 			// image surface will likely also fail.
 			cairo_save(cr);
 			cairo_scale(cr, current_scale_level, current_scale_level);
-			cairo_rectangle(cr, 0, 0, image_transform_width, image_transform_height);
+			cairo_rectangle(cr, 0, 0, CURRENT_FILE->width + 0.5, CURRENT_FILE->height + 0.5);
 			cairo_clip(cr);
 			draw_current_image_to_context(cr);
 			cairo_restore(cr);
@@ -3808,7 +3814,15 @@ gboolean window_draw_callback(GtkWidget *widget, cairo_t *cr_arg, gpointer user_
 		cairo_save(cr_arg);
 		// Attempt this multiple times: If it does not fit the window,
 		// retry with a smaller font size
-		for(int font_size=12*screen_scale_factor; font_size > 6; font_size--) {
+		int font_size;
+		if(current_info_text_cached_font_size < 0) {
+			font_size = 12*screen_scale_factor;
+			current_info_text_cached_font_size = 0;
+		}
+		else {
+			font_size = current_info_text_cached_font_size;
+		}
+		for(; font_size > 6; font_size--) {
 			cairo_set_font_size(cr_arg, font_size);
 
 			if(main_window_in_fullscreen == FALSE) {
@@ -3820,7 +3834,6 @@ gboolean window_draw_callback(GtkWidget *widget, cairo_t *cr_arg, gpointer user_
 			cairo_set_source_rgb(cr_arg, 1., 1., 0.);
 			cairo_translate(cr_arg, 10 * screen_scale_factor, 20 * screen_scale_factor);
 			cairo_text_path(cr_arg, current_info_text);
-			cairo_path_t *text_path = cairo_copy_path(cr_arg);
 			cairo_path_extents(cr_arg, &x1, &y1, &x2, &y2);
 
 			if(x2 > main_window_width - 10 * screen_scale_factor && !main_window_in_fullscreen) {
@@ -3830,6 +3843,8 @@ gboolean window_draw_callback(GtkWidget *widget, cairo_t *cr_arg, gpointer user_
 				continue;
 			}
 
+			current_info_text_cached_font_size = font_size;
+			cairo_path_t *text_path = cairo_copy_path(cr_arg);
 			cairo_new_path(cr_arg);
 			cairo_rectangle(cr_arg, -5, -(y2 - y1) - 2, x2 - x1 + 10, y2 - y1 + 8);
 			cairo_close_path(cr_arg);
@@ -4594,6 +4609,11 @@ gboolean window_configure_callback(GtkWidget *widget, GdkEventConfigure *event, 
 	}
 
 	if(main_window_width != event->width || main_window_height != event->height) {
+		// Reset cached font size for info text
+		#ifndef CONFIGURED_WITHOUT_INFO_TEXT
+			current_info_text_cached_font_size = -1;
+		#endif
+
 		// Update window size
 		if(main_window_in_fullscreen) {
 			main_window_width = screen_geometry.width;
