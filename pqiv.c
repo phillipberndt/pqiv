@@ -3604,7 +3604,7 @@ gboolean window_draw_callback(GtkWidget *widget, cairo_t *cr_arg, gpointer user_
 			// image surface will likely also fail.
 			cairo_save(cr);
 			cairo_scale(cr, current_scale_level, current_scale_level);
-			cairo_rectangle(cr, 0, 0, image_transform_width, image_transform_height);
+			cairo_rectangle(cr, 0, 0, CURRENT_FILE->width + 0.5, CURRENT_FILE->height + 0.5);
 			cairo_clip(cr);
 			draw_current_image_to_context(cr);
 			cairo_restore(cr);
