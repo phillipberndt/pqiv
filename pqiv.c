@@ -2106,15 +2106,22 @@ void image_loader_create_thumbnail(file_t *file) {/*{{{*/
 
 	// Draw background pattern
 	if(background_checkerboard_pattern != NULL && !option_transparent_background) {
+		cairo_save(cr);
 		cairo_new_path(cr);
-		cairo_rectangle(cr, 0, 0, file->width, file->height);
+		unsigned skip_px = (unsigned)(1./scale_level);
+		if(skip_px == 0) {
+			skip_px = 1;
+		}
+		cairo_rectangle(cr, skip_px, skip_px, file->width - 2*skip_px, file->height - 2*skip_px);
 		cairo_close_path(cr);
 		cairo_clip(cr);
 		cairo_set_source(cr, background_checkerboard_pattern);
 		cairo_paint(cr);
+		cairo_restore(cr);
 	}
 
-	cairo_set_operator(cr, CAIRO_OPERATOR_SOURCE);
+	cairo_rectangle(cr, 0, 0, file->width, file->height);
+	cairo_clip(cr);
 	if(file->file_type->draw_fn != NULL) {
 		file->file_type->draw_fn(file, cr);
 	}
@@ -3583,6 +3590,13 @@ void calculate_base_draw_pos_and_size(int *image_transform_width, int *image_tra
 gboolean window_draw_thumbnail_montage(cairo_t *cr_arg) {/*{{{*/
 	D_LOCK(file_tree);
 
+	// Draw black background
+	cairo_save(cr_arg);
+	cairo_set_source_rgba(cr_arg, 0., 0., 0., option_transparent_background ? 0. : 1.);
+	cairo_set_operator(cr_arg, CAIRO_OPERATOR_SOURCE);
+	cairo_paint(cr_arg);
+	cairo_restore(cr_arg);
+
 	// Calculate how many thumbnails to draw
 	const unsigned n_thumbs_x = main_window_width / (option_thumbnails.width + 10);
 	const unsigned n_thumbs_y = main_window_height / (option_thumbnails.height + 10);
@@ -3593,6 +3607,9 @@ gboolean window_draw_thumbnail_montage(cairo_t *cr_arg) {/*{{{*/
 	for(size_t draw_now = 0; draw_now < n_thumbs_x * n_thumbs_y; draw_now++) {
 		BOSNode *thumb_node = bostree_select(file_tree, top_left_id + draw_now);
 		file_t *thumb_file = FILE(thumb_node);
+
+		// XXX
+		// printf("Draw: [%d] %s\n", draw_now + top_left_id, thumb_file->display_name);
 
 		if(thumb_file->thumbnail) {
 			cairo_save(cr_arg);
