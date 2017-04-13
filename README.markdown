@@ -128,12 +128,10 @@ Known bugs
 Changelog
 ---------
 
-pqiv 2.8.5 (wip / might appear as part of 2.9 instead)
+pqiv 2.8.5
  * Fixed an issue where the checkerboard pattern sometimes was visible at image
    borders
  * Fixed image rotation in low-memory mode
-
-pqiv 2.8.4
  * Fix a memory leak (leaking a few bytes each time an image is drawn)
  * Correctly handle string arguments from the configuration file
  * Fix building with old glib versions that do not expose their x11 dependency
