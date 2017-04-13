@@ -396,9 +396,9 @@ struct {
 } option_thumbnails = { 1, 250, 250 };
 
 struct {
-	unsigned scroll_y;
-	unsigned pos_x;
-	unsigned pos_y;
+	int scroll_y;
+	int pos_x;
+	int pos_y;
 } montage_window_control;
 
 // Hint: Only types G_OPTION_ARG_NONE, G_OPTION_ARG_STRING, G_OPTION_ARG_DOUBLE/INTEGER and G_OPTION_ARG_CALLBACK are
@@ -622,6 +622,9 @@ const struct pqiv_action_descriptor {
 	{ "goto_earlier_file", PARAMETER_NONE },
 	{ "set_cursor_auto_hide", PARAMETER_INT },
 	{ "set_fade_duration", PARAMETER_DOUBLE },
+	{ "montage_mode_toggle", PARAMETER_INT },
+	{ "montage_mode_shift_x", PARAMETER_INT },
+	{ "montage_mode_shift_y", PARAMETER_INT },
 	{ NULL, 0 }
 };
 /* }}} */
@@ -2205,7 +2208,7 @@ gpointer image_loader_thread(gpointer user_data) {/*{{{*/
 			image_loader_thread_currently_loading = NULL;
 		}
 		if(FILE(node)->is_loaded) {
-			if(FILE(node)->thumbnail && (cairo_image_surface_get_width(FILE(node)->thumbnail) != option_thumbnails.width || cairo_image_surface_get_height(FILE(node)->thumbnail) != option_thumbnails.height)) {
+			if(FILE(node)->thumbnail && (cairo_image_surface_get_width(FILE(node)->thumbnail) != option_thumbnails.width && cairo_image_surface_get_height(FILE(node)->thumbnail) != option_thumbnails.height)) {
 				cairo_surface_destroy(FILE(node)->thumbnail);
 				FILE(node)->thumbnail = NULL;
 			}
@@ -3626,6 +3629,10 @@ gboolean window_draw_thumbnail_montage(cairo_t *cr_arg) {/*{{{*/
 			cairo_restore(cr_arg);
 		}
 		else {
+			// XXX TODO This might not be the best idea (linear in time, racy :/)
+			if(g_async_queue_remove(image_loader_queue, thumb_node)) {
+				bostree_node_weak_unref(file_tree, thumb_node);
+			}
 			queue_image_load(thumb_node);
 		}
 	}
@@ -4107,7 +4114,6 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 			break;
 
 		case ACTION_RELOAD:
-				montage_window_control.scroll_y ++; // XXX
 			if(!is_current_file_loaded()) return;
 			CURRENT_FILE->force_reload = TRUE;
 			update_info_text("Reloading image..");
@@ -4575,6 +4581,23 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 		case ACTION_SET_FADE_DURATION:
 			option_fading_duration = parameter.pdouble;
 			option_fading = fabs(option_fading_duration) <= 0;
+			break;
+
+		// XXX Rename to TOGGLE_MONTAGE_MODE
+		case ACTION_MONTAGE_MODE_TOGGLE:
+			option_thumbnails.enabled = !option_thumbnails.enabled;
+			// TODO Honor parameter XXX
+			gtk_widget_queue_draw(GTK_WIDGET(main_window));
+			break;
+
+		case ACTION_MONTAGE_MODE_SHIFT_X:
+			montage_window_control.pos_x += parameter.pint;
+			gtk_widget_queue_draw(GTK_WIDGET(main_window));
+			break;
+
+		case ACTION_MONTAGE_MODE_SHIFT_Y:
+			montage_window_control.pos_y += parameter.pint;
+			gtk_widget_queue_draw(GTK_WIDGET(main_window));
 			break;
 
 #endif
