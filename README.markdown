@@ -135,6 +135,7 @@ pqiv 2.9 (wip)
  * Allow to view help even if no display is available
  * Add --version
  * Bind Control+t to toggle to "maintain scale mode" by default
+ * Fixed support for huge images (>32,767px) to the GdkPixbuf backend
 
 pqiv 2.8.5
  * Fixed an issue where the checkerboard pattern sometimes was visible at image
