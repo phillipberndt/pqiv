@@ -1716,6 +1716,13 @@ void main_window_adjust_for_image() {/*{{{*/
 	int new_window_width = current_scale_level * image_width;
 	int new_window_height = current_scale_level * image_height;
 
+	if(new_window_height <= 0) {
+		new_window_height = 1;
+	}
+	if(new_window_width <= 0) {
+		new_window_width = 1;
+	}
+
 	GdkGeometry hints;
 	if(option_enforce_window_aspect_ratio) {
 #if GTK_MAJOR_VERSION >= 3
