@@ -19,6 +19,7 @@
  */
 
 #include "../pqiv.h"
+#include <math.h>
 
 /* Default (GdkPixbuf) file type implementation {{{ */
 typedef struct {
@@ -154,41 +155,88 @@ void file_type_gdkpixbuf_load(file_t *file, GInputStream *data, GError **error_p
 		file->file_flags &= ~FILE_FLAGS_ANIMATION;
 	}
 
-	// We apparently do not own this pixbuf!
-	GdkPixbuf *pixbuf = gdk_pixbuf_animation_get_static_image(pixbuf_animation);
+	GdkPixbuf *pixbuf = g_object_ref(gdk_pixbuf_animation_get_static_image(pixbuf_animation));
+	g_object_unref(pixbuf_animation);
 
 	if(pixbuf != NULL) {
 		GdkPixbuf *new_pixbuf = gdk_pixbuf_apply_embedded_orientation(pixbuf);
+		g_object_unref(pixbuf);
 		pixbuf = new_pixbuf;
 
 		// This should never happen and is only here as a security measure
 		// (glib will abort() if malloc() fails and nothing else can happen here)
 		if(pixbuf == NULL) {
-			g_object_unref(pixbuf_animation);
 			return;
 		}
 
 		file->width = gdk_pixbuf_get_width(pixbuf);
 		file->height = gdk_pixbuf_get_height(pixbuf);
 
-		#if 0 && (GDK_MAJOR_VERSION == 3 && GDK_MINOR_VERSION >= 10) || (GDK_MAJOR_VERSION > 3)
-			// This function has a bug, see
-			// https://bugzilla.gnome.org/show_bug.cgi?id=736624
-			// We therefore have to use the below version even if this function is available.
-			cairo_surface_t *surface = gdk_cairo_surface_create_from_pixbuf(pixbuf, 1., NULL);
-		#else
-			cairo_surface_t *surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, file->width, file->height);
-			if(cairo_surface_status(surface) != CAIRO_STATUS_SUCCESS) {
-				g_object_unref(pixbuf);
-				g_object_unref(pixbuf_animation);
-				*error_pointer = g_error_new(g_quark_from_static_string("pqiv-pixbuf-error"), 1, "Failed to create a cairo image surface for the loaded image (cairo status %d)\n", cairo_surface_status(surface));
-				return;
+		// Cairo cannot handle files larger than 32767x32767
+		// See https://lists.freedesktop.org/archives/cairo/2009-August/017881.html
+		// But actually, we might have to use a lower limit in case we are out of memory.
+		double cairo_image_dimensions_limit = 30000.;
+
+		cairo_surface_t *surface = NULL;
+		do {
+			if(file->width > cairo_image_dimensions_limit || file->height > cairo_image_dimensions_limit) {
+				double loading_scale_factor = 1.;
+				loading_scale_factor = fmin(cairo_image_dimensions_limit / file->width, cairo_image_dimensions_limit / file->height);
+				file->width *= loading_scale_factor;
+				file->height *= loading_scale_factor;
+				g_printerr("Warning: Resizing file %s down to %dx%d due to Cairo's image size limit / insufficient memory.\n",
+						file->display_name, file->width, file->height);
+
+				new_pixbuf = gdk_pixbuf_scale_simple(new_pixbuf, file->width, file->height, GDK_INTERP_BILINEAR);
+				if(!new_pixbuf) {
+					if(cairo_image_dimensions_limit > 10000) {
+						cairo_image_dimensions_limit -= 10000;
+						continue;
+					}
+					g_object_unref(pixbuf);
+					*error_pointer = g_error_new(g_quark_from_static_string("pqiv-pixbuf-error"), 1, "Failed to allocate memory for the resized image.\n");
+					return;
+				}
+				else {
+					g_object_unref(pixbuf);
+					pixbuf = new_pixbuf;
+				}
 			}
-			cairo_t *sf_cr = cairo_create(surface);
-			gdk_cairo_set_source_pixbuf(sf_cr, pixbuf, 0, 0);
-			cairo_paint(sf_cr);
-			cairo_destroy(sf_cr);
-		#endif
+
+			#if 0 && (GDK_MAJOR_VERSION == 3 && GDK_MINOR_VERSION >= 10) || (GDK_MAJOR_VERSION > 3)
+				// This function has a bug, see
+				// https://bugzilla.gnome.org/show_bug.cgi?id=736624
+				// We therefore have to use the below version even if this function is available.
+				surface = gdk_cairo_surface_create_from_pixbuf(pixbuf, 1., NULL);
+				// TODO Once this works, manually check if surface failed with "out of memory".
+			#else
+				surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, file->width, file->height);
+				if(cairo_surface_status(surface) != CAIRO_STATUS_SUCCESS) {
+					g_object_unref(pixbuf);
+					*error_pointer = g_error_new(g_quark_from_static_string("pqiv-pixbuf-error"), 1, "Failed to create a cairo image surface for the loaded image (cairo status %d)\n", cairo_surface_status(surface));
+					return;
+				}
+				cairo_t *sf_cr = cairo_create(surface);
+				gdk_cairo_set_source_pixbuf(sf_cr, pixbuf, 0, 0);
+				cairo_paint(sf_cr);
+				if(cairo_status(sf_cr) == CAIRO_STATUS_NO_MEMORY) {
+					// Failed due to out of memory - retry with smaller copy of the image
+					cairo_destroy(sf_cr);
+					cairo_surface_destroy(surface);
+					if(cairo_image_dimensions_limit > 10000) {
+						cairo_image_dimensions_limit -= 10000;
+						continue;
+					}
+					g_object_unref(pixbuf);
+					*error_pointer = g_error_new(g_quark_from_static_string("pqiv-pixbuf-error"), 1, "Insufficient memory to load image");
+					return;
+				}
+				cairo_destroy(sf_cr);
+			#endif
+
+			break;
+		}
+		while(TRUE); // Do not ever repeat, only on explicit "continue", see break just above.
 
 		cairo_surface_t *old_surface = private->image_surface;
 		private->image_surface = surface;
@@ -199,7 +247,6 @@ void file_type_gdkpixbuf_load(file_t *file, GInputStream *data, GError **error_p
 
 		file->is_loaded = TRUE;
 	}
-	g_object_unref(pixbuf_animation);
 }/*}}}*/
 void file_type_gdkpixbuf_draw(file_t *file, cairo_t *cr) {/*{{{*/
 	file_private_data_gdkpixbuf_t *private = (file_private_data_gdkpixbuf_t *)file->private;

@@ -3552,7 +3552,10 @@ gboolean window_draw_callback(GtkWidget *widget, cairo_t *cr_arg, gpointer user_
 		if(cairo_surface_status(temporary_image_surface) != CAIRO_STATUS_SUCCESS) {
 			// This image is too large to be rendered into a temorary image surface
 			// As a best effort solution, render directly to the window instead
+			cairo_save(cr_arg);
 			cr = cr_arg;
+			cairo_surface_destroy(temporary_image_surface);
+			temporary_image_surface = NULL;
 		}
 		else {
 			cr = cairo_create(temporary_image_surface);
@@ -3660,6 +3663,7 @@ gboolean window_draw_callback(GtkWidget *widget, cairo_t *cr_arg, gpointer user_
 			}
 		}
 		else {
+			cairo_restore(cr_arg);
 			if(last_visible_image_surface) {
 				cairo_surface_destroy(last_visible_image_surface);
 				last_visible_image_surface = NULL;
