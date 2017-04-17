@@ -573,6 +573,15 @@ static const struct default_key_bindings_struct {
 	{ MONTAGE, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_Up               ), ACTION_MONTAGE_MODE_SHIFT_Y            , { -1  }},
 	{ MONTAGE, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_Left             ), ACTION_MONTAGE_MODE_SHIFT_X            , { -1  }},
 	{ MONTAGE, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_Right            ), ACTION_MONTAGE_MODE_SHIFT_X            , { 1   }},
+	{ MONTAGE, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_KP_Down          ), ACTION_MONTAGE_MODE_SHIFT_Y            , { 1   }},
+	{ MONTAGE, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_KP_Up            ), ACTION_MONTAGE_MODE_SHIFT_Y            , { -1  }},
+	{ MONTAGE, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_KP_Left          ), ACTION_MONTAGE_MODE_SHIFT_X            , { -1  }},
+	{ MONTAGE, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_KP_Right         ), ACTION_MONTAGE_MODE_SHIFT_X            , { 1   }},
+	{ MONTAGE, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_Page_Down        ), ACTION_MONTAGE_MODE_SHIFT_Y_PG         , { 1 }},
+	{ MONTAGE, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_Page_Up          ), ACTION_MONTAGE_MODE_SHIFT_Y_PG         , { -1  }},
+	{ MONTAGE, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_KP_Page_Up       ), ACTION_MONTAGE_MODE_SHIFT_Y_PG         , { -1  }},
+	{ MONTAGE, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_KP_Page_Down     ), ACTION_MONTAGE_MODE_SHIFT_Y_PG         , { 1 }},
+
 	{ MONTAGE, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_Return           ), ACTION_MONTAGE_MODE_RETURN_PROCEED     , { 0   }},
 	{ MONTAGE, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_Escape           ), ACTION_MONTAGE_MODE_RETURN_CANCEL      , { 0   }},
 	{ MONTAGE, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_f                ), ACTION_TOGGLE_FULLSCREEN               , { 0   }},
@@ -657,6 +666,7 @@ const struct pqiv_action_descriptor {
 	{ "montage_mode_toggle", PARAMETER_INT },
 	{ "montage_mode_shift_x", PARAMETER_INT },
 	{ "montage_mode_shift_y", PARAMETER_INT },
+	{ "montage_mode_shift_y_pg", PARAMETER_INT },
 	{ "montage_mode_return_proceed", PARAMETER_NONE },
 	{ "montage_mode_return_cancel", PARAMETER_NONE },
 	{ NULL, 0 }
@@ -4710,6 +4720,11 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 
 		case ACTION_MONTAGE_MODE_SHIFT_Y:
 			montage_window_move_cursor(0, parameter.pint);
+			gtk_widget_queue_draw(GTK_WIDGET(main_window));
+			break;
+
+		case ACTION_MONTAGE_MODE_SHIFT_Y_PG:
+			montage_window_move_cursor(0, parameter.pint * main_window_height / (option_thumbnails.height + 10));
 			gtk_widget_queue_draw(GTK_WIDGET(main_window));
 			break;
 
