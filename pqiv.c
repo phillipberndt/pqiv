@@ -393,12 +393,11 @@ struct {
 	gboolean enabled;
 	gint width;
 	gint height;
-} option_thumbnails = { 1, 250, 250 };
+} option_thumbnails = { 1, 200, 200 };
 
 struct {
 	int scroll_y;
-	int pos_x;
-	int pos_y;
+	size_t selected_image;
 } montage_window_control;
 
 // Hint: Only types G_OPTION_ARG_NONE, G_OPTION_ARG_STRING, G_OPTION_ARG_DOUBLE/INTEGER and G_OPTION_ARG_CALLBACK are
@@ -476,10 +475,11 @@ GOptionEntry options[] = {
 
 #define KEY_BINDING_CONTEXTS_COUNT 2
 const char * const key_binding_context_names[] = { "DEFAULT", "MONTAGE "};
-enum key_binding_context_t { DEFAULT, MONTAGE };
+
+enum context_t { DEFAULT, MONTAGE };
 
 static const struct default_key_bindings_struct {
-	enum key_binding_context_t context;
+	enum context_t context;
 	guint key_binding_value;
 	pqiv_action_t action;
 	pqiv_action_parameter_t parameter;
@@ -525,6 +525,7 @@ static const struct default_key_bindings_struct {
 	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_k                ), ACTION_ROTATE_RIGHT                    , { 0   }},
 	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_i                ), ACTION_TOGGLE_INFO_BOX                 , { 0   }},
 	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_j                ), ACTION_JUMP_DIALOG                     , { 0   }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , GDK_CONTROL_MASK , GDK_KEY_j                ), ACTION_MONTAGE_MODE_TOGGLE             , { 0   }},
 	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_s                ), ACTION_TOGGLE_SLIDESHOW                , { 0   }},
 	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_a                ), ACTION_HARDLINK_CURRENT_IMAGE          , { 0   }},
 	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_period           ), ACTION_ANIMATION_STEP                  , { 1   }},
@@ -561,6 +562,8 @@ static const struct default_key_bindings_struct {
 	{ MONTAGE, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_Up               ), ACTION_MONTAGE_MODE_SHIFT_Y            , { -1  }},
 	{ MONTAGE, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_Left             ), ACTION_MONTAGE_MODE_SHIFT_X            , { -1  }},
 	{ MONTAGE, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_Right            ), ACTION_MONTAGE_MODE_SHIFT_X            , { 1   }},
+	{ MONTAGE, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_Return           ), ACTION_MONTAGE_MODE_RETURN_PROCEED     , { 0   }},
+	{ MONTAGE, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_Escape           ), ACTION_MONTAGE_MODE_RETURN_CANCEL      , { 0   }},
 	{ MONTAGE, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_f                ), ACTION_TOGGLE_FULLSCREEN               , { 0   }},
 	{ MONTAGE, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_q                ), ACTION_QUIT                            , { 0   }},
 	{ MONTAGE, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_Escape           ), ACTION_QUIT                            , { 0   }},
@@ -568,7 +571,8 @@ static const struct default_key_bindings_struct {
 	{ DEFAULT, 0, 0, { 0 } }
 };
 
-enum key_binding_context_t active_key_binding_context = MONTAGE; // XXX
+enum context_t active_key_binding_context = DEFAULT;
+enum context_t application_mode = DEFAULT;
 
 #ifndef CONFIGURED_WITHOUT_ACTIONS
 typedef struct key_binding key_binding_t;
@@ -641,6 +645,8 @@ const struct pqiv_action_descriptor {
 	{ "montage_mode_toggle", PARAMETER_INT },
 	{ "montage_mode_shift_x", PARAMETER_INT },
 	{ "montage_mode_shift_y", PARAMETER_INT },
+	{ "montage_mode_return_proceed", PARAMETER_NONE },
+	{ "montage_mode_return_cancel", PARAMETER_NONE },
 	{ NULL, 0 }
 };
 /* }}} */
@@ -3613,6 +3619,29 @@ void calculate_base_draw_pos_and_size(int *image_transform_width, int *image_tra
 		*x = *y = 0;
 	}
 }/*}}}*/
+void montage_window_move_cursor(int move_x, int move_y) {
+	const unsigned n_thumbs_x = main_window_width / (option_thumbnails.width + 10);
+	const unsigned n_thumbs_y = main_window_height / (option_thumbnails.height + 10);
+	const ptrdiff_t number_of_images = (ptrdiff_t)bostree_node_count(file_tree);
+
+	ptrdiff_t new_selection = montage_window_control.selected_image + move_x + move_y * (ptrdiff_t)n_thumbs_x;
+	if(new_selection < 0) {
+		new_selection = 0;
+	}
+	if(new_selection >= number_of_images) {
+		new_selection = number_of_images - 1;
+	}
+	montage_window_control.selected_image = new_selection;
+
+	ptrdiff_t pos_y = new_selection / n_thumbs_x;
+
+	if(montage_window_control.scroll_y + n_thumbs_y <= pos_y) {
+		montage_window_control.scroll_y = pos_y - n_thumbs_y + 1;
+	}
+	else if(montage_window_control.scroll_y > pos_y) {
+		montage_window_control.scroll_y = pos_y;
+	}
+}
 gboolean window_draw_thumbnail_montage(cairo_t *cr_arg) {/*{{{*/
 	D_LOCK(file_tree);
 
@@ -3627,15 +3656,17 @@ gboolean window_draw_thumbnail_montage(cairo_t *cr_arg) {/*{{{*/
 	const unsigned n_thumbs_x = main_window_width / (option_thumbnails.width + 10);
 	const unsigned n_thumbs_y = main_window_height / (option_thumbnails.height + 10);
 
-	size_t top_left_id = montage_window_control.scroll_y * n_thumbs_x; // XXX
-	const size_t number_of_images = bostree_node_count(file_tree);
+	size_t top_left_id = montage_window_control.scroll_y * n_thumbs_x;
+
+	// Do a check if the selected image is out of bounds. Fix if it is.
+	if(top_left_id > montage_window_control.selected_image || top_left_id + n_thumbs_x * n_thumbs_y < montage_window_control.selected_image) {
+		montage_window_move_cursor(0, 0);
+		top_left_id = montage_window_control.scroll_y * n_thumbs_x;
+	}
 
 	for(size_t draw_now = 0; draw_now < n_thumbs_x * n_thumbs_y; draw_now++) {
 		BOSNode *thumb_node = bostree_select(file_tree, top_left_id + draw_now);
 		file_t *thumb_file = FILE(thumb_node);
-
-		// XXX
-		// printf("Draw: [%d] %s\n", draw_now + top_left_id, thumb_file->display_name);
 
 		if(thumb_file->thumbnail) {
 			cairo_save(cr_arg);
@@ -3649,6 +3680,14 @@ gboolean window_draw_thumbnail_montage(cairo_t *cr_arg) {/*{{{*/
 			cairo_close_path(cr_arg);
 			cairo_clip(cr_arg);
 			cairo_paint(cr_arg);
+
+			if(top_left_id + draw_now == montage_window_control.selected_image) {
+				cairo_rectangle(cr_arg, 0, 0, cairo_image_surface_get_width(thumb_file->thumbnail), cairo_image_surface_get_height(thumb_file->thumbnail));
+				cairo_set_source_rgb(cr_arg, 1., 1., 0.);
+				cairo_set_line_width(cr_arg, 8.);
+				cairo_stroke(cr_arg);
+			}
+
 			cairo_restore(cr_arg);
 		}
 		else {
@@ -3681,8 +3720,7 @@ gboolean window_draw_callback(GtkWidget *widget, cairo_t *cr_arg, gpointer user_
 
 	// We have different drawing modes. The default, below, is to draw a single
 	// image.
-	if(1) {
-		// XXX
+	if(application_mode == MONTAGE) {
 		return window_draw_thumbnail_montage(cr_arg);
 	}
 
@@ -4610,21 +4648,35 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 			option_fading = fabs(option_fading_duration) <= 0;
 			break;
 
-		// XXX Rename to TOGGLE_MONTAGE_MODE
 		case ACTION_MONTAGE_MODE_TOGGLE:
-			option_thumbnails.enabled = !option_thumbnails.enabled;
-			// TODO Honor parameter XXX
+			option_thumbnails.enabled = TRUE;
+			application_mode = MONTAGE;
+			active_key_binding_context = MONTAGE;
+			montage_window_control.selected_image = bostree_rank(current_file_node);
+
 			gtk_widget_queue_draw(GTK_WIDGET(main_window));
 			break;
 
 		case ACTION_MONTAGE_MODE_SHIFT_X:
-			montage_window_control.pos_x += parameter.pint;
+			montage_window_move_cursor(parameter.pint, 0);
 			gtk_widget_queue_draw(GTK_WIDGET(main_window));
 			break;
 
 		case ACTION_MONTAGE_MODE_SHIFT_Y:
-			montage_window_control.pos_y += parameter.pint;
+			montage_window_move_cursor(0, parameter.pint);
 			gtk_widget_queue_draw(GTK_WIDGET(main_window));
+			break;
+
+		case ACTION_MONTAGE_MODE_RETURN_PROCEED:
+		case ACTION_MONTAGE_MODE_RETURN_CANCEL:
+			option_thumbnails.enabled = FALSE;
+			application_mode = DEFAULT;
+			active_key_binding_context = DEFAULT;
+			gtk_widget_queue_draw(GTK_WIDGET(main_window));
+
+			if(action_id == ACTION_MONTAGE_MODE_RETURN_PROCEED) {
+				absolute_image_movement(bostree_node_weak_ref(bostree_select(file_tree, montage_window_control.selected_image)));
+			}
 			break;
 
 #endif
@@ -5331,7 +5383,7 @@ void parse_key_bindings(const gchar *bindings) {/*{{{*/
 	 *  6 context switch initialized, expecting identifier & open parenthesis
 	 */
 	GHashTable **active_key_bindings_table = &key_bindings[DEFAULT];
-	enum key_binding_context_t current_context = DEFAULT;
+	enum context_t current_context = DEFAULT;
 
 	int state = 0;
 	const gchar *token_start = NULL;
