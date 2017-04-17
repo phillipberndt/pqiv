@@ -91,8 +91,10 @@ struct _file {
 	guint width;
 	guint height;
 
+#ifndef CONFIGURED_WITHOUT_MONTAGE_MODE
 	// Cached thumbnail
 	cairo_surface_t *thumbnail;
+#endif
 
 	// File-type specific data, allocated and freed by the file type handlers
 	void *private;
