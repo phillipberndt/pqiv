@@ -469,90 +469,106 @@ GOptionEntry options[] = {
 #define  KEY_BINDINGS_COMMAND_SEPARATOR_SYMBOL         ';'
 #define  KEY_BINDINGS_COMMAND_PARAMETER_BEGIN_SYMBOL   '('
 #define  KEY_BINDINGS_COMMAND_PARAMETER_END_SYMBOL     ')'
+#define  KEY_BINDINGS_CONTEXT_SWITCH_SYMBOL            '@'
 
 #define KEY_BINDING_STATE_BITS 4
 #define KEY_BINDING_VALUE(is_mouse, state, keycode) ((guint)(((is_mouse & 1) << 31) | (((state & ((1 << KEY_BINDING_STATE_BITS) - 1)) << (31 - KEY_BINDING_STATE_BITS)) | (keycode & ((1 << (31 - KEY_BINDING_STATE_BITS)) - 1)))))
 
+#define KEY_BINDING_CONTEXTS_COUNT 2
+const char * const key_binding_context_names[] = { "DEFAULT", "MONTAGE "};
+enum key_binding_context_t { DEFAULT, MONTAGE };
+
 static const struct default_key_bindings_struct {
+	enum key_binding_context_t context;
 	guint key_binding_value;
 	pqiv_action_t action;
 	pqiv_action_parameter_t parameter;
 } default_key_bindings[] = {
-	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_Up               ), ACTION_SHIFT_Y                         , { 10  }},
-	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_KP_Up            ), ACTION_SHIFT_Y                         , { 10  }},
-	{ KEY_BINDING_VALUE(0 , GDK_CONTROL_MASK , GDK_KEY_Up               ), ACTION_SHIFT_Y                         , { 50  }},
-	{ KEY_BINDING_VALUE(0 , GDK_CONTROL_MASK , GDK_KEY_KP_Up            ), ACTION_SHIFT_Y                         , { 50  }},
-	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_Down             ), ACTION_SHIFT_Y                         , { -10 }},
-	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_KP_Down          ), ACTION_SHIFT_Y                         , { -10 }},
-	{ KEY_BINDING_VALUE(0 , GDK_CONTROL_MASK , GDK_KEY_Down             ), ACTION_SHIFT_Y                         , { -50 }},
-	{ KEY_BINDING_VALUE(0 , GDK_CONTROL_MASK , GDK_KEY_KP_Down          ), ACTION_SHIFT_Y                         , { -50 }},
-	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_Left             ), ACTION_SHIFT_X                         , { 10  }},
-	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_KP_Left          ), ACTION_SHIFT_X                         , { 10  }},
-	{ KEY_BINDING_VALUE(0 , GDK_CONTROL_MASK , GDK_KEY_Left             ), ACTION_SHIFT_X                         , { 50  }},
-	{ KEY_BINDING_VALUE(0 , GDK_CONTROL_MASK , GDK_KEY_KP_Left          ), ACTION_SHIFT_X                         , { 50  }},
-	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_Right            ), ACTION_SHIFT_X                         , { -10 }},
-	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_KP_Right         ), ACTION_SHIFT_X                         , { -10 }},
-	{ KEY_BINDING_VALUE(0 , GDK_CONTROL_MASK , GDK_KEY_Right            ), ACTION_SHIFT_X                         , { -50 }},
-	{ KEY_BINDING_VALUE(0 , GDK_CONTROL_MASK , GDK_KEY_KP_Right         ), ACTION_SHIFT_X                         , { -50 }},
-	{ KEY_BINDING_VALUE(0 , GDK_CONTROL_MASK , GDK_KEY_plus             ), ACTION_SET_SLIDESHOW_INTERVAL_RELATIVE , { .pdouble = 1.  }},
-	{ KEY_BINDING_VALUE(0 , GDK_CONTROL_MASK , GDK_KEY_KP_Add           ), ACTION_SET_SLIDESHOW_INTERVAL_RELATIVE , { .pdouble = 1.  }},
-	{ KEY_BINDING_VALUE(0 , GDK_MOD1_MASK    , GDK_KEY_KP_Add           ), ACTION_ANIMATION_SET_SPEED_RELATIVE    , { .pdouble = 1.1  }},
-	{ KEY_BINDING_VALUE(0 , GDK_MOD1_MASK    , GDK_KEY_plus             ), ACTION_ANIMATION_SET_SPEED_RELATIVE    , { .pdouble = 1.1  }},
-	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_plus             ), ACTION_SET_SCALE_LEVEL_RELATIVE        , { .pdouble = 1.1 }},
-	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_KP_Add           ), ACTION_SET_SCALE_LEVEL_RELATIVE        , { .pdouble = 1.1 }},
-	{ KEY_BINDING_VALUE(0 , GDK_CONTROL_MASK , GDK_KEY_minus            ), ACTION_SET_SLIDESHOW_INTERVAL_RELATIVE , { .pdouble = -1. }},
-	{ KEY_BINDING_VALUE(0 , GDK_CONTROL_MASK , GDK_KEY_KP_Subtract      ), ACTION_SET_SLIDESHOW_INTERVAL_RELATIVE , { .pdouble = -1. }},
-	{ KEY_BINDING_VALUE(0 , GDK_MOD1_MASK    , GDK_KEY_minus            ), ACTION_ANIMATION_SET_SPEED_RELATIVE    , { .pdouble = 0.9  }},
-	{ KEY_BINDING_VALUE(0 , GDK_MOD1_MASK    , GDK_KEY_KP_Subtract      ), ACTION_ANIMATION_SET_SPEED_RELATIVE    , { .pdouble = 0.9  }},
-	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_minus            ), ACTION_SET_SCALE_LEVEL_RELATIVE        , { .pdouble = 0.9 }},
-	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_KP_Subtract      ), ACTION_SET_SCALE_LEVEL_RELATIVE        , { .pdouble = 0.9 }},
-	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_t                ), ACTION_TOGGLE_SCALE_MODE               , { 0   }},
-	{ KEY_BINDING_VALUE(0 , GDK_CONTROL_MASK , GDK_KEY_t                ), ACTION_TOGGLE_SCALE_MODE               , { 4   }},
-	{ KEY_BINDING_VALUE(0 , GDK_CONTROL_MASK , GDK_KEY_r                ), ACTION_TOGGLE_SHUFFLE_MODE             , { 0   }},
-	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_r                ), ACTION_RELOAD                          , { 0   }},
-	{ KEY_BINDING_VALUE(0 , GDK_CONTROL_MASK , GDK_KEY_p                ), ACTION_GOTO_EARLIER_FILE               , { 0   }},
-	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_0                ), ACTION_RESET_SCALE_LEVEL               , { 0   }},
-	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_f                ), ACTION_TOGGLE_FULLSCREEN               , { 0   }},
-	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_h                ), ACTION_FLIP_HORIZONTALLY               , { 0   }},
-	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_v                ), ACTION_FLIP_VERTICALLY                 , { 0   }},
-	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_l                ), ACTION_ROTATE_LEFT                     , { 0   }},
-	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_k                ), ACTION_ROTATE_RIGHT                    , { 0   }},
-	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_i                ), ACTION_TOGGLE_INFO_BOX                 , { 0   }},
-	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_j                ), ACTION_JUMP_DIALOG                     , { 0   }},
-	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_s                ), ACTION_TOGGLE_SLIDESHOW                , { 0   }},
-	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_a                ), ACTION_HARDLINK_CURRENT_IMAGE          , { 0   }},
-	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_period           ), ACTION_ANIMATION_STEP                  , { 1   }},
-	{ KEY_BINDING_VALUE(0 , GDK_CONTROL_MASK , GDK_KEY_period           ), ACTION_ANIMATION_CONTINUE              , { 0   }},
-	{ KEY_BINDING_VALUE(0 , GDK_CONTROL_MASK , GDK_KEY_BackSpace        ), ACTION_GOTO_DIRECTORY_RELATIVE         , { -1  }},
-	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_BackSpace        ), ACTION_GOTO_FILE_RELATIVE              , { -1  }},
-	{ KEY_BINDING_VALUE(0 , GDK_CONTROL_MASK , GDK_KEY_space            ), ACTION_GOTO_DIRECTORY_RELATIVE         , { 1   }},
-	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_space            ), ACTION_GOTO_FILE_RELATIVE              , { 1   }},
-	{ KEY_BINDING_VALUE(0 , GDK_CONTROL_MASK , GDK_KEY_Page_Up          ), ACTION_GOTO_FILE_RELATIVE              , { 10  }},
-	{ KEY_BINDING_VALUE(0 , GDK_CONTROL_MASK , GDK_KEY_KP_Page_Up       ), ACTION_GOTO_FILE_RELATIVE              , { 10  }},
-	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_Page_Down        ), ACTION_GOTO_FILE_RELATIVE              , { -10 }},
-	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_Page_Up          ), ACTION_GOTO_FILE_RELATIVE              , { 10  }},
-	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_KP_Page_Up       ), ACTION_GOTO_FILE_RELATIVE              , { 10  }},
-	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_KP_Page_Down     ), ACTION_GOTO_FILE_RELATIVE              , { -10 }},
-	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_q                ), ACTION_QUIT                            , { 0   }},
-	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_Escape           ), ACTION_QUIT                            , { 0   }},
-	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_1                ), ACTION_NUMERIC_COMMAND                 , { 1   }},
-	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_2                ), ACTION_NUMERIC_COMMAND                 , { 2   }},
-	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_3                ), ACTION_NUMERIC_COMMAND                 , { 3   }},
-	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_4                ), ACTION_NUMERIC_COMMAND                 , { 4   }},
-	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_5                ), ACTION_NUMERIC_COMMAND                 , { 5   }},
-	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_6                ), ACTION_NUMERIC_COMMAND                 , { 6   }},
-	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_7                ), ACTION_NUMERIC_COMMAND                 , { 7   }},
-	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_8                ), ACTION_NUMERIC_COMMAND                 , { 8   }},
-	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_9                ), ACTION_NUMERIC_COMMAND                 , { 9   }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_Up               ), ACTION_SHIFT_Y                         , { 10  }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_KP_Up            ), ACTION_SHIFT_Y                         , { 10  }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , GDK_CONTROL_MASK , GDK_KEY_Up               ), ACTION_SHIFT_Y                         , { 50  }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , GDK_CONTROL_MASK , GDK_KEY_KP_Up            ), ACTION_SHIFT_Y                         , { 50  }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_Down             ), ACTION_SHIFT_Y                         , { -10 }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_KP_Down          ), ACTION_SHIFT_Y                         , { -10 }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , GDK_CONTROL_MASK , GDK_KEY_Down             ), ACTION_SHIFT_Y                         , { -50 }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , GDK_CONTROL_MASK , GDK_KEY_KP_Down          ), ACTION_SHIFT_Y                         , { -50 }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_Left             ), ACTION_SHIFT_X                         , { 10  }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_KP_Left          ), ACTION_SHIFT_X                         , { 10  }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , GDK_CONTROL_MASK , GDK_KEY_Left             ), ACTION_SHIFT_X                         , { 50  }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , GDK_CONTROL_MASK , GDK_KEY_KP_Left          ), ACTION_SHIFT_X                         , { 50  }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_Right            ), ACTION_SHIFT_X                         , { -10 }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_KP_Right         ), ACTION_SHIFT_X                         , { -10 }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , GDK_CONTROL_MASK , GDK_KEY_Right            ), ACTION_SHIFT_X                         , { -50 }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , GDK_CONTROL_MASK , GDK_KEY_KP_Right         ), ACTION_SHIFT_X                         , { -50 }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , GDK_CONTROL_MASK , GDK_KEY_plus             ), ACTION_SET_SLIDESHOW_INTERVAL_RELATIVE , { .pdouble = 1.  }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , GDK_CONTROL_MASK , GDK_KEY_KP_Add           ), ACTION_SET_SLIDESHOW_INTERVAL_RELATIVE , { .pdouble = 1.  }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , GDK_MOD1_MASK    , GDK_KEY_KP_Add           ), ACTION_ANIMATION_SET_SPEED_RELATIVE    , { .pdouble = 1.1  }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , GDK_MOD1_MASK    , GDK_KEY_plus             ), ACTION_ANIMATION_SET_SPEED_RELATIVE    , { .pdouble = 1.1  }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_plus             ), ACTION_SET_SCALE_LEVEL_RELATIVE        , { .pdouble = 1.1 }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_KP_Add           ), ACTION_SET_SCALE_LEVEL_RELATIVE        , { .pdouble = 1.1 }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , GDK_CONTROL_MASK , GDK_KEY_minus            ), ACTION_SET_SLIDESHOW_INTERVAL_RELATIVE , { .pdouble = -1. }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , GDK_CONTROL_MASK , GDK_KEY_KP_Subtract      ), ACTION_SET_SLIDESHOW_INTERVAL_RELATIVE , { .pdouble = -1. }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , GDK_MOD1_MASK    , GDK_KEY_minus            ), ACTION_ANIMATION_SET_SPEED_RELATIVE    , { .pdouble = 0.9  }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , GDK_MOD1_MASK    , GDK_KEY_KP_Subtract      ), ACTION_ANIMATION_SET_SPEED_RELATIVE    , { .pdouble = 0.9  }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_minus            ), ACTION_SET_SCALE_LEVEL_RELATIVE        , { .pdouble = 0.9 }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_KP_Subtract      ), ACTION_SET_SCALE_LEVEL_RELATIVE        , { .pdouble = 0.9 }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_t                ), ACTION_TOGGLE_SCALE_MODE               , { 0   }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , GDK_CONTROL_MASK , GDK_KEY_t                ), ACTION_TOGGLE_SCALE_MODE               , { 4   }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , GDK_CONTROL_MASK , GDK_KEY_r                ), ACTION_TOGGLE_SHUFFLE_MODE             , { 0   }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_r                ), ACTION_RELOAD                          , { 0   }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , GDK_CONTROL_MASK , GDK_KEY_p                ), ACTION_GOTO_EARLIER_FILE               , { 0   }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_0                ), ACTION_RESET_SCALE_LEVEL               , { 0   }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_f                ), ACTION_TOGGLE_FULLSCREEN               , { 0   }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_h                ), ACTION_FLIP_HORIZONTALLY               , { 0   }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_v                ), ACTION_FLIP_VERTICALLY                 , { 0   }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_l                ), ACTION_ROTATE_LEFT                     , { 0   }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_k                ), ACTION_ROTATE_RIGHT                    , { 0   }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_i                ), ACTION_TOGGLE_INFO_BOX                 , { 0   }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_j                ), ACTION_JUMP_DIALOG                     , { 0   }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_s                ), ACTION_TOGGLE_SLIDESHOW                , { 0   }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_a                ), ACTION_HARDLINK_CURRENT_IMAGE          , { 0   }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_period           ), ACTION_ANIMATION_STEP                  , { 1   }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , GDK_CONTROL_MASK , GDK_KEY_period           ), ACTION_ANIMATION_CONTINUE              , { 0   }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , GDK_CONTROL_MASK , GDK_KEY_BackSpace        ), ACTION_GOTO_DIRECTORY_RELATIVE         , { -1  }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_BackSpace        ), ACTION_GOTO_FILE_RELATIVE              , { -1  }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , GDK_CONTROL_MASK , GDK_KEY_space            ), ACTION_GOTO_DIRECTORY_RELATIVE         , { 1   }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_space            ), ACTION_GOTO_FILE_RELATIVE              , { 1   }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , GDK_CONTROL_MASK , GDK_KEY_Page_Up          ), ACTION_GOTO_FILE_RELATIVE              , { 10  }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , GDK_CONTROL_MASK , GDK_KEY_KP_Page_Up       ), ACTION_GOTO_FILE_RELATIVE              , { 10  }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_Page_Down        ), ACTION_GOTO_FILE_RELATIVE              , { -10 }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_Page_Up          ), ACTION_GOTO_FILE_RELATIVE              , { 10  }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_KP_Page_Up       ), ACTION_GOTO_FILE_RELATIVE              , { 10  }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_KP_Page_Down     ), ACTION_GOTO_FILE_RELATIVE              , { -10 }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_q                ), ACTION_QUIT                            , { 0   }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_Escape           ), ACTION_QUIT                            , { 0   }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_1                ), ACTION_NUMERIC_COMMAND                 , { 1   }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_2                ), ACTION_NUMERIC_COMMAND                 , { 2   }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_3                ), ACTION_NUMERIC_COMMAND                 , { 3   }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_4                ), ACTION_NUMERIC_COMMAND                 , { 4   }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_5                ), ACTION_NUMERIC_COMMAND                 , { 5   }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_6                ), ACTION_NUMERIC_COMMAND                 , { 6   }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_7                ), ACTION_NUMERIC_COMMAND                 , { 7   }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_8                ), ACTION_NUMERIC_COMMAND                 , { 8   }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_9                ), ACTION_NUMERIC_COMMAND                 , { 9   }},
 
-	{ KEY_BINDING_VALUE(1 , 0                , GDK_BUTTON_PRIMARY       ), ACTION_GOTO_FILE_RELATIVE              , { -1  }},
-	{ KEY_BINDING_VALUE(1 , 0                , GDK_BUTTON_MIDDLE        ), ACTION_QUIT                            , { 0   }},
-	{ KEY_BINDING_VALUE(1 , 0                , GDK_BUTTON_SECONDARY     ), ACTION_GOTO_FILE_RELATIVE              , { 1   }},
-	{ KEY_BINDING_VALUE(1 , 0                , (GDK_SCROLL_UP+1) << 2   ), ACTION_GOTO_FILE_RELATIVE              , { 1   }},
-	{ KEY_BINDING_VALUE(1 , 0                , (GDK_SCROLL_DOWN+1) << 2 ), ACTION_GOTO_FILE_RELATIVE              , { -1  }},
+	{ DEFAULT, KEY_BINDING_VALUE(1 , 0                , GDK_BUTTON_PRIMARY       ), ACTION_GOTO_FILE_RELATIVE              , { -1  }},
+	{ DEFAULT, KEY_BINDING_VALUE(1 , 0                , GDK_BUTTON_MIDDLE        ), ACTION_QUIT                            , { 0   }},
+	{ DEFAULT, KEY_BINDING_VALUE(1 , 0                , GDK_BUTTON_SECONDARY     ), ACTION_GOTO_FILE_RELATIVE              , { 1   }},
+	{ DEFAULT, KEY_BINDING_VALUE(1 , 0                , (GDK_SCROLL_UP+1) << 2   ), ACTION_GOTO_FILE_RELATIVE              , { 1   }},
+	{ DEFAULT, KEY_BINDING_VALUE(1 , 0                , (GDK_SCROLL_DOWN+1) << 2 ), ACTION_GOTO_FILE_RELATIVE              , { -1  }},
 
-	{ 0, 0, { 0 } }
+	{ MONTAGE, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_Down             ), ACTION_MONTAGE_MODE_SHIFT_Y            , { 1   }},
+	{ MONTAGE, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_Up               ), ACTION_MONTAGE_MODE_SHIFT_Y            , { -1  }},
+	{ MONTAGE, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_Left             ), ACTION_MONTAGE_MODE_SHIFT_X            , { -1  }},
+	{ MONTAGE, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_Right            ), ACTION_MONTAGE_MODE_SHIFT_X            , { 1   }},
+	{ MONTAGE, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_f                ), ACTION_TOGGLE_FULLSCREEN               , { 0   }},
+	{ MONTAGE, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_q                ), ACTION_QUIT                            , { 0   }},
+	{ MONTAGE, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_Escape           ), ACTION_QUIT                            , { 0   }},
+
+	{ DEFAULT, 0, 0, { 0 } }
 };
+
+enum key_binding_context_t active_key_binding_context = MONTAGE; // XXX
 
 #ifndef CONFIGURED_WITHOUT_ACTIONS
 typedef struct key_binding key_binding_t;
@@ -561,9 +577,9 @@ struct key_binding {
 	pqiv_action_parameter_t parameter;
 
 	struct key_binding *next_action;    // For assinging multiple actions to one key
-	GHashTable *next_key_bindings; // For key sequences
+	GHashTable *next_key_bindings;      // For key sequences
 };
-GHashTable *key_bindings;
+GHashTable *key_bindings[KEY_BINDING_CONTEXTS_COUNT];
 struct {
 	key_binding_t *key_binding;
 	BOSNode *associated_image;
@@ -4763,11 +4779,11 @@ void handle_input_event(guint key_binding_value) {/*{{{*/
 	}
 
 	if(!binding) {
-			binding = g_hash_table_lookup(key_bindings, GUINT_TO_POINTER(key_binding_value));
+			binding = g_hash_table_lookup(key_bindings[active_key_binding_context], GUINT_TO_POINTER(key_binding_value));
 
 			if(!binding && !is_mouse && gdk_keyval_is_upper(keycode) && !gdk_keyval_is_lower(keycode)) {
 				guint alternate_value = KEY_BINDING_VALUE(is_mouse, state & ~GDK_SHIFT_MASK, gdk_keyval_to_lower(keycode));
-				binding = g_hash_table_lookup(key_bindings, GUINT_TO_POINTER(alternate_value));
+				binding = g_hash_table_lookup(key_bindings[active_key_binding_context], GUINT_TO_POINTER(alternate_value));
 			}
 	}
 
@@ -4786,7 +4802,7 @@ void handle_input_event(guint key_binding_value) {/*{{{*/
 
 #else
 	for(const struct default_key_bindings_struct *kb = default_key_bindings; kb->key_binding_value; kb++) {
-		if(kb->key_binding_value == key_binding_value) {
+		if(kb->context == active_key_binding_context && kb->key_binding_value == key_binding_value) {
 			action(kb->action, kb->parameter);
 			break;
 		}
@@ -5286,7 +5302,12 @@ gboolean help_show_key_bindings(const gchar *option_name, const gchar *value, gp
 	gchar *old_locale = g_strdup(setlocale(LC_NUMERIC, NULL));
 	setlocale(LC_NUMERIC, "C");
 
-	g_hash_table_foreach(key_bindings, help_show_key_bindings_helper, (gpointer)"");
+	g_hash_table_foreach(key_bindings[0], help_show_key_bindings_helper, (gpointer)"");
+	for(int i=1; i<KEY_BINDING_CONTEXTS_COUNT; i++) {
+		g_print("%c%s {\n", KEY_BINDINGS_CONTEXT_SWITCH_SYMBOL, key_binding_context_names[i]);
+		g_hash_table_foreach(key_bindings[i], help_show_key_bindings_helper, (gpointer)"");
+		g_print("}\n");
+	}
 
 	setlocale(LC_NUMERIC, old_locale);
 	g_free(old_locale);
@@ -5300,15 +5321,17 @@ void parse_key_bindings(const gchar *bindings) {/*{{{*/
 	 *  shortcut { command(parameter); command(parameter); }
 	 *
 	 * The states are
-	 *  0 initial state, expecting keyboard shortcuts or EOF
+	 *  0 initial state, expecting keyboard shortcuts, context switch or EOF
 	 *  1 keyboard shortcut entering started, expecting more or start of commands
 	 *  2 expecting identifier inside <..>, e.g. <Mouse-1>
 	 *  3 inside command list, e.g. after {. Expecting identifier of command.
 	 *  4 inside command parameters, e.g. after (. Expecting parameter.
 	 *  5 inside command list after state 4, same as 3 except that more commands
 	 *    add to the list instead of overwriting the old binding.
+	 *  6 context switch initialized, expecting identifier & open parenthesis
 	 */
-	GHashTable **active_key_bindings_table = &key_bindings;
+	GHashTable **active_key_bindings_table = &key_bindings[DEFAULT];
+	enum key_binding_context_t current_context = DEFAULT;
 
 	int state = 0;
 	const gchar *token_start = NULL;
@@ -5332,6 +5355,18 @@ void parse_key_bindings(const gchar *bindings) {/*{{{*/
 		}
 		switch(state) {
 			case 0: // Expecting key description
+				if(current_context == DEFAULT && *scan == KEY_BINDINGS_CONTEXT_SWITCH_SYMBOL /* @ */) {
+					// Expect name of a context
+					token_start = scan+1;
+					state = 6;
+					break;
+				}
+				if(current_context != DEFAULT && *scan == KEY_BINDINGS_COMMANDS_END_SYMBOL /* } */) {
+					current_context = DEFAULT;
+					state = 0;
+					break;
+				}
+
 				current_command_start = scan;
 				// Missing break is intentional, fall through to case 1.
 
@@ -5469,7 +5504,7 @@ void parse_key_bindings(const gchar *bindings) {/*{{{*/
 						break;
 
 					case KEY_BINDINGS_COMMANDS_END_SYMBOL: /* } */
-						active_key_bindings_table = &key_bindings;
+						active_key_bindings_table = &key_bindings[DEFAULT];
 						binding = NULL;
 						state = 0;
 						break;
@@ -5539,6 +5574,46 @@ void parse_key_bindings(const gchar *bindings) {/*{{{*/
 					token_start = scan + 1;
 					state = 5;
 				}
+				break;
+
+			case 6: /* Context switch - expect name & opening parenthesis */
+				if(*scan == KEY_BINDINGS_COMMANDS_BEGIN_SYMBOL) {
+					identifier_length = 0;
+					const char *i;
+					for(i=token_start; i<scan; i++) {
+						if(*i == ' ' || *i == '\n' || *i == '\t') {
+							break;
+						}
+						identifier_length++;
+					}
+					for(; i<scan; i++) {
+						if(*i != ' ' && *i != '\n' && *i != '\t') {
+							error_message = g_strdup("Unexpected input after context switch initializer (@..)");
+							state = -1;
+							break;
+						}
+					}
+					if(state == -1) {
+						break;
+					}
+					gboolean context_set = FALSE;
+					for(int j=1; j<KEY_BINDING_CONTEXTS_COUNT; j++) {
+						if(strncasecmp(token_start, key_binding_context_names[j], identifier_length) == 0) {
+							current_context = j;
+							context_set = TRUE;
+							break;
+						}
+					}
+					if(!context_set) {
+						error_message = g_strdup_printf("Invalid context name after context switch initializer: %.*s", (int)identifier_length, token_start);
+						state = -1;
+						break;
+					}
+					token_start = NULL;
+					state = 0;
+					break;
+				}
+				// Do nothing; all the handling is deferred until we find the opening parenthesis
 				break;
 
 			default:
@@ -5722,7 +5797,9 @@ gpointer read_commands_thread(gpointer user_data) {/*{{{*/
 		return NULL;
 }/*}}}*/
 void initialize_key_bindings() {/*{{{*/
-	key_bindings = g_hash_table_new((GHashFunc)g_direct_hash, (GEqualFunc)g_direct_equal);
+	for(int i=0; i<KEY_BINDING_CONTEXTS_COUNT; i++) {
+		key_bindings[i] = g_hash_table_new((GHashFunc)g_direct_hash, (GEqualFunc)g_direct_equal);
+	}
 
 	for(const struct default_key_bindings_struct *kb = default_key_bindings; kb->key_binding_value; kb++) {
 		key_binding_t *nkb = g_slice_new(key_binding_t);
@@ -5730,7 +5807,7 @@ void initialize_key_bindings() {/*{{{*/
 		nkb->parameter = (pqiv_action_parameter_t)(kb->parameter);
 		nkb->next_action = NULL;
 		nkb->next_key_bindings = NULL;
-		g_hash_table_insert(key_bindings, GUINT_TO_POINTER(kb->key_binding_value), nkb);
+		g_hash_table_insert(key_bindings[kb->context], GUINT_TO_POINTER(kb->key_binding_value), nkb);
 	}
 }/*}}}*/
 #endif
