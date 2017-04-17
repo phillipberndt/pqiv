@@ -3691,6 +3691,9 @@ gboolean window_draw_thumbnail_montage(cairo_t *cr_arg) {/*{{{*/
 			break;
 		}
 		BOSNode *thumb_node = bostree_select(file_tree, top_left_id + draw_now);
+		if(!thumb_node) {
+			continue;
+		}
 		file_t *thumb_file = FILE(thumb_node);
 
 		if(thumb_file->thumbnail) {
@@ -3721,6 +3724,19 @@ gboolean window_draw_thumbnail_montage(cairo_t *cr_arg) {/*{{{*/
 				bostree_node_weak_unref(file_tree, thumb_node);
 			}
 			queue_image_load(thumb_node);
+
+			if(top_left_id + draw_now == montage_window_control.selected_image) {
+				cairo_save(cr_arg);
+				cairo_translate(cr_arg,
+					(main_window_width - n_thumbs_x * (option_thumbnails.width + 10)) / 2   + (draw_now % n_thumbs_x) * (option_thumbnails.width + 10) + (option_thumbnails.width - 5)/2,
+					(main_window_height - n_thumbs_y * (option_thumbnails.height + 10)) / 2 + (draw_now / n_thumbs_x) * (option_thumbnails.height + 10) + (option_thumbnails.height - 5)/2
+				);
+				cairo_rectangle(cr_arg, 0, 0, 5, 5);
+				cairo_set_source_rgb(cr_arg, 1., 1., 0.);
+				cairo_set_line_width(cr_arg, 8.);
+				cairo_stroke(cr_arg);
+				cairo_restore(cr_arg);
+			}
 		}
 	}
 
