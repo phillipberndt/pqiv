@@ -5605,15 +5605,16 @@ void parse_key_bindings(const gchar *bindings) {/*{{{*/
 				if(*scan == KEY_BINDINGS_COMMAND_PARAMETER_END_SYMBOL) { /* ) */
 					identifier_length = scan - token_start;
 					identifier = g_malloc(identifier_length + 1);
-					for(int i=0, j=0; j<identifier_length; i++, j++) {
-						if(token_start[j] == '\\') {
-							if(++j > identifier_length) {
+					int identifier_end, identifier_pos;
+					for(identifier_end=0, identifier_pos=0; identifier_pos<identifier_length; identifier_end++, identifier_pos++) {
+						if(token_start[identifier_pos] == '\\') {
+							if(++identifier_pos > identifier_length) {
 								break;
 							}
 						}
-						identifier[i] = token_start[j];
+						identifier[identifier_end] = token_start[identifier_pos];
 					}
-					identifier[identifier_length] = 0;
+					identifier[identifier_end] = 0;
 
 					switch(parameter_type) {
 						case PARAMETER_NONE:
@@ -5630,7 +5631,7 @@ void parse_key_bindings(const gchar *bindings) {/*{{{*/
 							binding->parameter.pdouble = atof(identifier);
 							break;
 						case PARAMETER_CHARPTR:
-							binding->parameter.pcharptr = g_strdup(identifier);
+							binding->parameter.pcharptr = g_strndup(identifier, identifier_pos);
 							break;
 						case PARAMETER_2SHORT:
 							{
