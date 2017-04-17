@@ -2254,10 +2254,12 @@ gpointer image_loader_thread(gpointer user_data) {/*{{{*/
 		}
 		if(FILE(node)->is_loaded) {
 #ifndef CONFIGURED_WITHOUT_MONTAGE_MODE
+			D_LOCK(file_tree);
 			if(FILE(node)->thumbnail && (cairo_image_surface_get_width(FILE(node)->thumbnail) != option_thumbnails.width && cairo_image_surface_get_height(FILE(node)->thumbnail) != option_thumbnails.height)) {
 				cairo_surface_destroy(FILE(node)->thumbnail);
 				FILE(node)->thumbnail = NULL;
 			}
+			D_UNLOCK(file_tree);
 			if(!FILE(node)->thumbnail && option_thumbnails.enabled) {
 				image_loader_create_thumbnail(FILE(node));
 			}
