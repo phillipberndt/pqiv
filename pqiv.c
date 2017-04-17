@@ -3674,6 +3674,7 @@ gboolean window_draw_thumbnail_montage(cairo_t *cr_arg) {/*{{{*/
 	// Calculate how many thumbnails to draw
 	const unsigned n_thumbs_x = main_window_width / (option_thumbnails.width + 10);
 	const unsigned n_thumbs_y = main_window_height / (option_thumbnails.height + 10);
+	const size_t number_of_images = (ptrdiff_t)bostree_node_count(file_tree);
 
 	size_t top_left_id = montage_window_control.scroll_y * n_thumbs_x;
 
@@ -3683,7 +3684,10 @@ gboolean window_draw_thumbnail_montage(cairo_t *cr_arg) {/*{{{*/
 		top_left_id = montage_window_control.scroll_y * n_thumbs_x;
 	}
 
-	for(size_t draw_now = 0; draw_now < n_thumbs_x * n_thumbs_y; draw_now++) {
+	for(size_t draw_now = 0; draw_now < n_thumbs_x * n_thumbs_y && draw_now < number_of_images; draw_now++) {
+		if(!file_tree_valid) {
+			break;
+		}
 		BOSNode *thumb_node = bostree_select(file_tree, top_left_id + draw_now);
 		file_t *thumb_file = FILE(thumb_node);
 
