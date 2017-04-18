@@ -3675,6 +3675,18 @@ void montage_window_move_cursor(int move_x, int move_y) {
 	else if(montage_window_control.scroll_y > pos_y) {
 		montage_window_control.scroll_y = pos_y;
 	}
+
+	// Queue loading of thumbnails
+	BOSNode *selected_node = bostree_select(file_tree, new_selection);
+	size_t top_left_id = montage_window_control.scroll_y * n_thumbs_x;
+	abort_pending_image_loads(selected_node);
+	queue_image_load(selected_node);
+	BOSNode *thumb_node = bostree_select(file_tree, top_left_id);
+	for(size_t draw_now = 0; draw_now < n_thumbs_x * n_thumbs_y && thumb_node; draw_now++, thumb_node = bostree_next_node(thumb_node)) {
+		if(thumb_node != selected_node && !FILE(thumb_node)->thumbnail) {
+			queue_image_load(thumb_node);
+		}
+	}
 }
 gboolean window_draw_thumbnail_montage(cairo_t *cr_arg) {/*{{{*/
 	D_LOCK(file_tree);
@@ -3689,8 +3701,6 @@ gboolean window_draw_thumbnail_montage(cairo_t *cr_arg) {/*{{{*/
 	// Calculate how many thumbnails to draw
 	const unsigned n_thumbs_x = main_window_width / (option_thumbnails.width + 10);
 	const unsigned n_thumbs_y = main_window_height / (option_thumbnails.height + 10);
-	const size_t number_of_images = (ptrdiff_t)bostree_node_count(file_tree);
-
 	size_t top_left_id = montage_window_control.scroll_y * n_thumbs_x;
 
 	// Do a check if the selected image is out of bounds. Fix if it is.
@@ -3699,13 +3709,13 @@ gboolean window_draw_thumbnail_montage(cairo_t *cr_arg) {/*{{{*/
 		top_left_id = montage_window_control.scroll_y * n_thumbs_x;
 	}
 
-	for(size_t draw_now = 0; draw_now < n_thumbs_x * n_thumbs_y && draw_now < number_of_images; draw_now++) {
-		if(!file_tree_valid) {
+	if(!file_tree_valid) {
+		return FALSE;
+	}
+	BOSNode *thumb_node = bostree_select(file_tree, top_left_id);
+	for(size_t draw_now = 0; draw_now < n_thumbs_x * n_thumbs_y && thumb_node; draw_now++, thumb_node = bostree_next_node(thumb_node)) {
+		if(!file_tree_valid || !thumb_node) {
 			break;
-		}
-		BOSNode *thumb_node = bostree_select(file_tree, top_left_id + draw_now);
-		if(!thumb_node) {
-			continue;
 		}
 		file_t *thumb_file = FILE(thumb_node);
 
@@ -3731,25 +3741,17 @@ gboolean window_draw_thumbnail_montage(cairo_t *cr_arg) {/*{{{*/
 
 			cairo_restore(cr_arg);
 		}
-		else {
-			// XXX TODO This might not be the best idea (linear in time, racy :/)
-			if(g_async_queue_remove(image_loader_queue, thumb_node)) {
-				bostree_node_weak_unref(file_tree, thumb_node);
-			}
-			queue_image_load(thumb_node);
-
-			if(top_left_id + draw_now == montage_window_control.selected_image) {
-				cairo_save(cr_arg);
-				cairo_translate(cr_arg,
-					(main_window_width - n_thumbs_x * (option_thumbnails.width + 10)) / 2   + (draw_now % n_thumbs_x) * (option_thumbnails.width + 10) + (option_thumbnails.width - 5)/2,
-					(main_window_height - n_thumbs_y * (option_thumbnails.height + 10)) / 2 + (draw_now / n_thumbs_x) * (option_thumbnails.height + 10) + (option_thumbnails.height - 5)/2
-				);
-				cairo_rectangle(cr_arg, 0, 0, 5, 5);
-				cairo_set_source_rgb(cr_arg, 1., 1., 0.);
-				cairo_set_line_width(cr_arg, 8.);
-				cairo_stroke(cr_arg);
-				cairo_restore(cr_arg);
-			}
+		else if(top_left_id + draw_now == montage_window_control.selected_image) {
+			cairo_save(cr_arg);
+			cairo_translate(cr_arg,
+				(main_window_width - n_thumbs_x * (option_thumbnails.width + 10)) / 2   + (draw_now % n_thumbs_x) * (option_thumbnails.width + 10) + (option_thumbnails.width - 5)/2,
+				(main_window_height - n_thumbs_y * (option_thumbnails.height + 10)) / 2 + (draw_now / n_thumbs_x) * (option_thumbnails.height + 10) + (option_thumbnails.height - 5)/2
+			);
+			cairo_rectangle(cr_arg, 0, 0, 5, 5);
+			cairo_set_source_rgb(cr_arg, 1., 1., 0.);
+			cairo_set_line_width(cr_arg, 8.);
+			cairo_stroke(cr_arg);
+			cairo_restore(cr_arg);
 		}
 	}
 
@@ -4712,6 +4714,7 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 			application_mode = MONTAGE;
 			active_key_binding_context = MONTAGE;
 			montage_window_control.selected_image = bostree_rank(current_file_node);
+			montage_window_move_cursor(0, 0);
 
 			gtk_widget_queue_draw(GTK_WIDGET(main_window));
 			break;
@@ -4816,6 +4819,14 @@ gboolean window_configure_callback(GtkWidget *widget, GdkEventConfigure *event, 
 			gtk_widget_queue_draw(GTK_WIDGET(main_window));
 		#endif
 	}
+
+	#ifndef CONFIGURED_WITHOUT_MONTAGE_MODE
+	if(application_mode == MONTAGE) {
+		// Make sure that the currently selected image stays in view & that all
+		// visible thumbnails are loaded
+		montage_window_move_cursor(0, 0);
+	}
+	#endif
 
 	return FALSE;
 }/*}}}*/
