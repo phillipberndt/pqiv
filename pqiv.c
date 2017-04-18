@@ -3736,7 +3736,7 @@ void montage_window_move_cursor(int move_x, int move_y) {
 		}
 	}
 
-	ptrdiff_t new_selection = bostree_rank(selected_node) + move_x + move_y * (ptrdiff_t)n_thumbs_x;
+	ptrdiff_t new_selection = bostree_rank(selected_node) + (ptrdiff_t)move_x + move_y * (ptrdiff_t)n_thumbs_x;
 	if(new_selection < 0) {
 		new_selection = 0;
 	}
