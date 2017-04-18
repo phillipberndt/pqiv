@@ -4862,6 +4862,21 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 				montage_window_control.selected_node = NULL;
 			}
 
+			if(option_lowmem) {
+				D_LOCK(file_tree);
+				// TODO
+				// This currently is a linear search. Given that most users requiring lowmem mode will
+				// probably not have many images loaded, this might suffice. But an asymptotically better
+				// approach would be neat.
+				for(BOSNode *node = bostree_select(file_tree, 0); node; node = bostree_next_node(node)) {
+					if(FILE(node)->thumbnail) {
+						cairo_surface_destroy(FILE(node)->thumbnail);
+						FILE(node)->thumbnail = NULL;
+					}
+				}
+				D_UNLOCK(file_tree);
+			}
+
 			update_info_text(NULL);
 			break;
 #endif
