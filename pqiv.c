@@ -20,7 +20,7 @@
 
 #include "pqiv.h"
 #include "lib/config_parser.h"
-
+#include "lib/thumbnailcache.h"
 #include "lib/strnatcmp.h"
 #include <cairo/cairo.h>
 #include <gio/gio.h>
@@ -392,9 +392,10 @@ struct {
 #ifndef CONFIGURED_WITHOUT_MONTAGE_MODE /* option --without-montage: Do not include support for a thumbnail overview */
 struct {
 	gboolean enabled;
+	gboolean persist;
 	gint width;
 	gint height;
-} option_thumbnails = { 1, 200, 200 };
+} option_thumbnails = { 1, 1, 128, 128 };
 
 struct {
 	int scroll_y;
@@ -2145,7 +2146,6 @@ void image_loader_create_thumbnail(file_t *file) {/*{{{*/
 		cairo_surface_destroy(surf);
 		return;
 	}
-	// file->thumbnail = cairo_surface_reference(surf);
 
 	cairo_t *cr = cairo_create(surf);
 
@@ -2183,8 +2183,7 @@ void image_loader_create_thumbnail(file_t *file) {/*{{{*/
 	}
 
 	cairo_destroy(cr);
-	// cairo_surface_destroy(surf);
-	file->thumbnail = surf; // XXX
+	file->thumbnail = surf;
 }/*}}}*/
 #endif
 gpointer image_loader_thread(gpointer user_data) {/*{{{*/
@@ -2270,7 +2269,12 @@ gpointer image_loader_thread(gpointer user_data) {/*{{{*/
 			}
 			D_UNLOCK(file_tree);
 			if(!FILE(node)->thumbnail && option_thumbnails.enabled) {
-				image_loader_create_thumbnail(FILE(node));
+				if(!option_thumbnails.persist || load_thumbnail_from_cache(FILE(node), option_thumbnails.width, option_thumbnails.height) == FALSE) {
+					image_loader_create_thumbnail(FILE(node));
+					if(FILE(node)->thumbnail && option_thumbnails.persist) {
+						store_thumbnail_to_cache(FILE(node));
+					}
+				}
 			}
 #endif
 			if(node == current_file_node) {
