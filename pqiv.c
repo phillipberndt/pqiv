@@ -1799,12 +1799,27 @@ void main_window_adjust_for_image() {/*{{{*/
 		return;
 	}
 
-	int image_width, image_height;
-	calculate_current_image_transformed_size(&image_width, &image_height);
+	int new_window_width, new_window_height;
 
-	// Resize the window and update geometry hints (we enforce them below)
-	int new_window_width = current_scale_level * image_width;
-	int new_window_height = current_scale_level * image_height;
+	if(application_mode == DEFAULT) {
+		int image_width, image_height;
+		calculate_current_image_transformed_size(&image_width, &image_height);
+
+		new_window_width = current_scale_level * image_width;
+		new_window_height = current_scale_level * image_height;
+	}
+	#ifndef CONFIGURED_WITHOUT_MONTAGE_MODE
+	else if(application_mode == MONTAGE) {
+		const int screen_width = screen_geometry.width;
+		const int screen_height = screen_geometry.height;
+
+		new_window_width = screen_width * .8;
+		new_window_height = screen_height * .8;
+	}
+	#endif
+	else {
+		new_window_width = new_window_height = 0;
+	}
 
 	if(new_window_height <= 0) {
 		new_window_height = 1;
@@ -4767,6 +4782,7 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 			montage_window_control.selected_image = bostree_rank(current_file_node);
 			montage_window_move_cursor(0, 0);
 			update_info_text(NULL);
+			main_window_adjust_for_image();
 
 			gtk_widget_queue_draw(GTK_WIDGET(main_window));
 			break;
@@ -4791,6 +4807,7 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 			option_thumbnails.enabled = FALSE;
 			application_mode = DEFAULT;
 			active_key_binding_context = DEFAULT;
+			main_window_adjust_for_image();
 			gtk_widget_queue_draw(GTK_WIDGET(main_window));
 
 			if(action_id == ACTION_MONTAGE_MODE_RETURN_PROCEED) {
