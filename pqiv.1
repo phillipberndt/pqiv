@@ -231,6 +231,17 @@ level of 0 disables recursion completely, i.e. if you call pqiv with a
 directory as a parameter, it will not search it at all.
 .\"
 .TP
+.BR \-\-persist\-thumbnails
+Persist thumbnails to disk. Thumbnails are stored according to the Thumbnail
+Managing Standard, in \fI$XDG_CACHE_HOME/thumbnails/*\fR. The standard allows
+storage of thumbnails in size 128x128 and 256x256 exclusively, and does not
+specify how to store thumbnails for files in archives or multi-page documents.
+Hence, only thumbnails for single-page documents are stored, and only if
+the thumbnail sizes match. If this option is not used, then thumbnails will
+not be loaded from the cache either \- any thumbnails will be regenerated
+each time \fImontage\fR mode is used.
+.\"
+.TP
 .BR \-\-recreate\-window
 Workaround for window managers that do not handle resize requests correctly:
 Instead of resizing, recreate the window whenever the image is changed. This
@@ -262,6 +273,10 @@ but \fIb1\fR after both,
 .IP MTIME
 To sort by file modification date.
 .RE
+.\"
+.TP
+.BR \-\-thumbnail\-size=\fIWIDTHxHEIGHT\fR
+Adjust the size of thumbnails in \fImontage\fR mode. The default is 128x128.
 .\"
 .TP
 .BR \-\-wait\-for\-images\-to\-appear
@@ -364,6 +379,27 @@ is not possible.
 .BR jump_dialog()
 Display the jump dialog.
 .TP
+.BR montage_mode_enter()
+Enter montage mode, a view for interactive selection of images.
+.TP
+.BR montage_mode_return_proceed()
+Leave montage mode, and goto the currently selected image.
+.TP
+.BR montage_mode_return_cancel()
+Leave montage mode, and return to the last image viewed before entering montage
+mode.
+.TP
+.BR montage_mode_shift_x(INT)
+Shift the cursor in montage mode in horizontal direction. Shifts wrap around
+edges to the adjacent vertical lines, but not around the end of the list back
+to its beginning.
+.TP
+.BR montage_mode_shift_y(INT)
+Shift the cursor in montage mode in vertical direction.
+.TP
+.BR montage_mode_shift_y_pg(INT)
+Shift the cursor in montage mode in vertical direction by \fIn\fR pages.
+.TP
 .BR nop()
 Do nothing. Can be used to clear an existing binding.
 .TP
@@ -457,6 +493,12 @@ The format is compatible with shell variable definitions. Variables currently
 implemented are \fICURRENT_FILE_NAME\fR and \fICURRENT_FILE_INDEX\fR. An
 output sweep always ends with an empty line.
 .TP
+.BR set_thumbnail_size(INT, INT)
+Change the size of thumbnails. The order of the arguments is width, then
+height. Thumbnails are always scaled such that no side is larger than this
+limit. Note that the persistent thumbnail cache only supports 128x128 and
+256x256 thumbnails.
+.TP
 .BR shift_x(INT)
 Shift the current image in x direction.
 .TP
@@ -498,6 +540,9 @@ Rotate the image right or left.
 Toggle visibility of the info box.
 .IP j
 Show a dialog with a list of all files for quick selection.
+.IP m
+Toggle \fImontage\fR mode, an interactive image selection mode. Use cursor keys
+to select an image and Return to return to single image view.
 .IP q
 Quit \fBpqiv\fR
 .IP r

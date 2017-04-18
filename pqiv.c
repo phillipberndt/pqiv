@@ -377,6 +377,7 @@ gboolean help_show_key_bindings(const gchar *option_name, const gchar *value, gp
 #endif
 gboolean help_show_version(const gchar *option_name, const gchar *value, gpointer data, GError **error);
 gboolean option_window_position_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error);
+gboolean option_thumbnail_size_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error);
 gboolean option_scale_level_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error);
 gboolean option_end_of_files_action_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error);
 gboolean option_watch_files_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error);
@@ -395,7 +396,7 @@ struct {
 	gboolean persist;
 	gint width;
 	gint height;
-} option_thumbnails = { 1, 1, 128, 128 };
+} option_thumbnails = { 0, 0, 128, 128 };
 
 struct {
 	int scroll_y;
@@ -448,12 +449,18 @@ GOptionEntry options[] = {
 	{ "fade-duration", 0, 0, G_OPTION_ARG_DOUBLE, &option_fading_duration, "Adjust fades' duration", "SECONDS" },
 	{ "low-memory", 0, 0, G_OPTION_ARG_NONE, &option_lowmem, "Try to keep memory usage to a minimum", NULL },
 	{ "max-depth", 0, 0, G_OPTION_ARG_INT, &option_max_depth, "Descend at most LEVELS levels of directories below the command line arguments", "LEVELS" },
+#ifndef CONFIGURED_WITHOUT_MONTAGE_MODE
+	{ "persist-thumbnails", 0, 0, G_OPTION_ARG_NONE, &option_thumbnails.persist, "Persist thumbnails to disk", NULL },
+#endif
 	{ "recreate-window", 0, 0, G_OPTION_ARG_NONE, &option_recreate_window, "Create a new window instead of resizing the old one", NULL },
 	{ "shuffle", 0, 0, G_OPTION_ARG_NONE, &option_shuffle, "Shuffle files", NULL },
 #ifndef CONFIGURED_WITHOUT_ACTIONS
 	{ "show-bindings", 0, G_OPTION_FLAG_NO_ARG, G_OPTION_ARG_CALLBACK, &help_show_key_bindings, "Display the keyboard and mouse bindings and exit", NULL },
 #endif
 	{ "sort-key", 0, 0, G_OPTION_ARG_CALLBACK, (gpointer)&option_sort_key_callback, "Key to use for sorting", "PROPERTY" },
+#ifndef CONFIGURED_WITHOUT_MONTAGE_MODE
+	{ "thumbnail-size", 0, 0, G_OPTION_ARG_CALLBACK, (gpointer)&option_thumbnail_size_callback, "Set the dimensions of thumbnails in montage mode", "WIDTHxHEIGHT" },
+#endif
 	{ "wait-for-images-to-appear", 0, 0, G_OPTION_ARG_NONE, &option_wait_for_images_to_appear, "If no images are found, wait until at least one appears", NULL },
 	{ "watch-directories", 0, 0, G_OPTION_ARG_NONE, &option_watch_directories, "Watch directories for new files", NULL },
 	{ "watch-files", 0, 0, G_OPTION_ARG_CALLBACK, (gpointer)&option_watch_files_callback, "Watch files for changes on disk (`on`, `off', `changes-only', i.e. do nothing on deletetion)", "VALUE" },
@@ -536,7 +543,7 @@ static const struct default_key_bindings_struct {
 	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_k                ), ACTION_ROTATE_RIGHT                    , { 0   }},
 	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_i                ), ACTION_TOGGLE_INFO_BOX                 , { 0   }},
 	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_j                ), ACTION_JUMP_DIALOG                     , { 0   }},
-	{ DEFAULT, KEY_BINDING_VALUE(0 , GDK_CONTROL_MASK , GDK_KEY_j                ), ACTION_MONTAGE_MODE_TOGGLE             , { 0   }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_m                ), ACTION_MONTAGE_MODE_ENTER             , { 0   }},
 	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_s                ), ACTION_TOGGLE_SLIDESHOW                , { 0   }},
 	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_a                ), ACTION_HARDLINK_CURRENT_IMAGE          , { 0   }},
 	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_period           ), ACTION_ANIMATION_STEP                  , { 1   }},
@@ -663,7 +670,8 @@ const struct pqiv_action_descriptor {
 	{ "goto_earlier_file", PARAMETER_NONE },
 	{ "set_cursor_auto_hide", PARAMETER_INT },
 	{ "set_fade_duration", PARAMETER_DOUBLE },
-	{ "montage_mode_toggle", PARAMETER_INT },
+	{ "set_thumbnail_size", PARAMETER_2SHORT },
+	{ "montage_mode_enter", PARAMETER_NONE },
 	{ "montage_mode_shift_x", PARAMETER_INT },
 	{ "montage_mode_shift_y", PARAMETER_INT },
 	{ "montage_mode_shift_y_pg", PARAMETER_INT },
@@ -764,6 +772,21 @@ gboolean options_bind_key_callback(const gchar *option_name, const gchar *value,
 	parse_key_bindings(value);
 
 	return TRUE;
+}/*}}}*/
+#endif
+#ifndef CONFIGURED_WITHOUT_MONTAGE_MODE
+gboolean option_thumbnail_size_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error) {/*{{{*/
+	gchar *second;
+	option_thumbnails.width = g_ascii_strtoll(value, &second, 10);
+	if(second != value && (*second == 'x' || *second == ',')) {
+		option_thumbnails.height = g_ascii_strtoll(second + 1, &second, 10);
+		if(*second == 0) {
+			return TRUE;
+		}
+	}
+
+	g_set_error(error, G_OPTION_ERROR, G_OPTION_ERROR_FAILED, "Unexpected argument value for the --thumbnail-size option. Format must be e.g. `320x240'.");
+	return FALSE;
 }/*}}}*/
 #endif
 gboolean option_window_position_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error) {/*{{{*/
@@ -4709,7 +4732,16 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 #endif
 
 #ifndef CONFIGURED_WITHOUT_MONTAGE_MODE
-		case ACTION_MONTAGE_MODE_TOGGLE:
+		case ACTION_SET_THUMBNAIL_SIZE:
+			option_thumbnails.width = parameter.p2short.p1;
+			option_thumbnails.height = parameter.p2short.p2;
+			if(application_mode == MONTAGE) {
+				montage_window_move_cursor(0, 0);
+				gtk_widget_queue_draw(GTK_WIDGET(main_window));
+			}
+			break;
+
+		case ACTION_MONTAGE_MODE_ENTER:
 			option_thumbnails.enabled = TRUE;
 			application_mode = MONTAGE;
 			active_key_binding_context = MONTAGE;
