@@ -162,6 +162,15 @@ preceded by `keysym' and a hexadecimal representation. An alternative is to
 run \fBxmodmap \-pk\fR. The command outputs the symbolic names in parentheses.
 Or use the list at
 \fIhttps://git.gnome.org/browse/gtk+/plain/gdk/gdkkeysyms.h\fR.
+.PP
+\fBpqiv\fR groups key bindings into different contexts. Currently,
+\fImontage\fR mode is the only context other than the default one: In
+\fImontage\fR mode, different key bindings are used. To switch the context
+while binding key sequences, write
+.RS
+@MONTAGE { ... }
+.RE
+and insert the special key bindings within the curly braces.
 .RE
 .\"
 .TP
