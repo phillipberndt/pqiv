@@ -400,7 +400,7 @@ struct {
 
 struct {
 	int scroll_y;
-	size_t selected_image;
+	BOSNode *selected_node;
 } montage_window_control;
 #endif
 
@@ -3721,14 +3721,24 @@ void montage_window_move_cursor(int move_x, int move_y) {
 		return;
 	}
 
-	ptrdiff_t new_selection = montage_window_control.selected_image + move_x + move_y * (ptrdiff_t)n_thumbs_x;
+	BOSNode *selected_node = bostree_node_weak_unref(file_tree, montage_window_control.selected_node);
+	if(!selected_node) {
+		selected_node = bostree_select(file_tree, 0);
+		if(!selected_node) {
+			montage_window_control.selected_node = NULL;
+			return;
+		}
+	}
+
+	ptrdiff_t new_selection = bostree_rank(selected_node) + move_x + move_y * (ptrdiff_t)n_thumbs_x;
 	if(new_selection < 0) {
 		new_selection = 0;
 	}
 	if(new_selection >= number_of_images) {
 		new_selection = number_of_images - 1;
 	}
-	montage_window_control.selected_image = new_selection;
+	selected_node = bostree_select(file_tree, new_selection);
+	montage_window_control.selected_node = bostree_node_weak_ref(selected_node);
 
 	ptrdiff_t pos_y = new_selection / n_thumbs_x;
 
@@ -3740,7 +3750,6 @@ void montage_window_move_cursor(int move_x, int move_y) {
 	}
 
 	// Queue loading of thumbnails
-	BOSNode *selected_node = bostree_select(file_tree, new_selection);
 	size_t top_left_id = montage_window_control.scroll_y * n_thumbs_x;
 	abort_pending_image_loads(selected_node);
 	queue_image_load(selected_node);
@@ -3766,8 +3775,18 @@ gboolean window_draw_thumbnail_montage(cairo_t *cr_arg) {/*{{{*/
 	const unsigned n_thumbs_y = main_window_height / (option_thumbnails.height + 10);
 	size_t top_left_id = montage_window_control.scroll_y * n_thumbs_x;
 
+	BOSNode *selected_node = bostree_node_weak_unref(file_tree, bostree_node_weak_ref(montage_window_control.selected_node));
+	size_t selection_rank;
+	if(!selected_node) {
+		selected_node = NULL;
+		selection_rank = (size_t)-1;
+	}
+	else {
+		selection_rank = bostree_rank(selected_node);
+	}
+
 	// Do a check if the selected image is out of bounds. Fix if it is.
-	if(top_left_id > montage_window_control.selected_image || top_left_id + n_thumbs_x * n_thumbs_y < montage_window_control.selected_image) {
+	if(top_left_id > selection_rank || top_left_id + n_thumbs_x * n_thumbs_y < selection_rank) {
 		montage_window_move_cursor(0, 0);
 		top_left_id = montage_window_control.scroll_y * n_thumbs_x;
 	}
@@ -3795,7 +3814,7 @@ gboolean window_draw_thumbnail_montage(cairo_t *cr_arg) {/*{{{*/
 			cairo_clip(cr_arg);
 			cairo_paint(cr_arg);
 
-			if(top_left_id + draw_now == montage_window_control.selected_image) {
+			if(top_left_id + draw_now == selection_rank) {
 				cairo_rectangle(cr_arg, 0, 0, cairo_image_surface_get_width(thumb_file->thumbnail), cairo_image_surface_get_height(thumb_file->thumbnail));
 				cairo_set_source_rgb(cr_arg, 1., 1., 0.);
 				cairo_set_line_width(cr_arg, 8.);
@@ -3804,7 +3823,7 @@ gboolean window_draw_thumbnail_montage(cairo_t *cr_arg) {/*{{{*/
 
 			cairo_restore(cr_arg);
 		}
-		else if(top_left_id + draw_now == montage_window_control.selected_image) {
+		else if(top_left_id + draw_now == selection_rank) {
 			cairo_save(cr_arg);
 			cairo_translate(cr_arg,
 				(main_window_width - n_thumbs_x * (option_thumbnails.width + 10)) / 2   + (draw_now % n_thumbs_x) * (option_thumbnails.width + 10) + (option_thumbnails.width - 5)/2,
@@ -4785,7 +4804,10 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 			option_thumbnails.enabled = TRUE;
 			application_mode = MONTAGE;
 			active_key_binding_context = MONTAGE;
-			montage_window_control.selected_image = bostree_rank(current_file_node);
+			if(montage_window_control.selected_node) {
+				bostree_node_weak_unref(file_tree, montage_window_control.selected_node);
+			}
+			montage_window_control.selected_node = bostree_node_weak_ref(current_file_node);
 			montage_window_move_cursor(0, 0);
 			update_info_text(NULL);
 			main_window_adjust_for_image();
@@ -4817,7 +4839,12 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 			gtk_widget_queue_draw(GTK_WIDGET(main_window));
 
 			if(action_id == ACTION_MONTAGE_MODE_RETURN_PROCEED) {
-				absolute_image_movement(bostree_node_weak_ref(bostree_select(file_tree, montage_window_control.selected_image)));
+				absolute_image_movement(montage_window_control.selected_node);
+				montage_window_control.selected_node = NULL;
+			}
+			else {
+				bostree_node_weak_unref(file_tree, montage_window_control.selected_node);
+				montage_window_control.selected_node = NULL;
 			}
 
 			update_info_text(NULL);
