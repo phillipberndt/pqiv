@@ -743,6 +743,9 @@ void draw_current_image_to_context(cairo_t *cr);
 #ifndef CONFIGURED_WITHOUT_ACTIONS
 gboolean window_auto_hide_cursor_callback(gpointer user_data);
 #endif
+#ifndef CONFIGURED_WITHOUT_MONTAGE_MODE
+void montage_window_move_cursor(int, int);
+#endif
 // }}}
 /* Helper functions {{{ */
 gboolean strv_contains(const gchar * const *strv, const gchar *str) {
@@ -2308,7 +2311,10 @@ gpointer image_loader_thread(gpointer user_data) {/*{{{*/
 		if(FILE(node)->is_loaded) {
 #ifndef CONFIGURED_WITHOUT_MONTAGE_MODE
 			D_LOCK(file_tree);
-			if(FILE(node)->thumbnail && (cairo_image_surface_get_width(FILE(node)->thumbnail) != option_thumbnails.width && cairo_image_surface_get_height(FILE(node)->thumbnail) != option_thumbnails.height)) {
+			if(FILE(node)->thumbnail &&
+					cairo_image_surface_get_width(FILE(node)->thumbnail) != option_thumbnails.width && cairo_image_surface_get_height(FILE(node)->thumbnail) != option_thumbnails.height &&
+					(FILE(node)->width > (unsigned)option_thumbnails.width || FILE(node)->height > (unsigned)option_thumbnails.height)
+				) {
 				cairo_surface_destroy(FILE(node)->thumbnail);
 				FILE(node)->thumbnail = NULL;
 			}
@@ -3800,6 +3806,15 @@ gboolean window_draw_thumbnail_montage(cairo_t *cr_arg) {/*{{{*/
 			break;
 		}
 		file_t *thumb_file = FILE(thumb_node);
+
+
+		if(thumb_file->thumbnail && cairo_image_surface_get_width(thumb_file->thumbnail) != option_thumbnails.width && cairo_image_surface_get_height(thumb_file->thumbnail) != option_thumbnails.height &&
+					(thumb_file->width > (unsigned)option_thumbnails.width || thumb_file->height > (unsigned)option_thumbnails.height)
+				) {
+			cairo_surface_destroy(thumb_file->thumbnail);
+			thumb_file->thumbnail = NULL;
+			queue_image_load(thumb_node);
+		}
 
 		if(thumb_file->thumbnail) {
 			cairo_save(cr_arg);
@@ -5599,6 +5614,7 @@ void parse_key_bindings(const gchar *bindings) {/*{{{*/
 				}
 				if(current_context != DEFAULT && *scan == KEY_BINDINGS_COMMANDS_END_SYMBOL /* } */) {
 					current_context = DEFAULT;
+					active_key_bindings_table = &key_bindings[current_context];
 					state = 0;
 					break;
 				}
@@ -5740,7 +5756,7 @@ void parse_key_bindings(const gchar *bindings) {/*{{{*/
 						break;
 
 					case KEY_BINDINGS_COMMANDS_END_SYMBOL: /* } */
-						active_key_bindings_table = &key_bindings[DEFAULT];
+						active_key_bindings_table = &key_bindings[current_context];
 						binding = NULL;
 						state = 0;
 						break;
@@ -5837,6 +5853,7 @@ void parse_key_bindings(const gchar *bindings) {/*{{{*/
 					for(int j=1; j<KEY_BINDING_CONTEXTS_COUNT; j++) {
 						if(strncasecmp(token_start, key_binding_context_names[j], identifier_length) == 0) {
 							current_context = j;
+							active_key_bindings_table = &key_bindings[current_context];
 							context_set = TRUE;
 							break;
 						}
