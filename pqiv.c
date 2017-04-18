@@ -1205,6 +1205,12 @@ BOSNode *load_images_handle_parameter_add_file(load_images_state_t state, file_t
 		// development machine.
 		update_info_text(NULL);
 		info_text_queue_redraw();
+		#ifndef CONFIGURED_WITHOUT_MONTAGE_MODE
+		if(application_mode == MONTAGE) {
+			montage_window_move_cursor(0, 0);
+			gtk_widget_queue_draw(GTK_WIDGET(main_window));
+		}
+		#endif
 	}
 	return new_node;
 }/*}}}*/
