@@ -3550,6 +3550,18 @@ void update_info_text(const gchar *action) {/*{{{*/
 	D_LOCK(file_tree);
 	current_info_text_cached_font_size = -1;
 
+	#ifndef CONFIGURED_WITHOUT_MONTAGE_MODE
+	if(application_mode == MONTAGE) {
+		if(current_info_text != NULL) {
+			g_free(current_info_text);
+		}
+		current_info_text = g_strdup("Montage mode");
+		gtk_window_set_title(GTK_WINDOW(main_window), "pqiv: Montage mode");
+		D_UNLOCK(file_tree);
+		return;
+	}
+	#endif
+
 	if(!current_file_node) {
 		if(current_info_text != NULL) {
 			g_free(current_info_text);
@@ -3561,6 +3573,7 @@ void update_info_text(const gchar *action) {/*{{{*/
 		else {
 			current_info_text = g_strdup(none_loaded);
 		}
+		gtk_window_set_title(GTK_WINDOW(main_window), "pqiv: No image loaded");
 		D_UNLOCK(file_tree);
 		return;
 	}
@@ -3583,6 +3596,7 @@ void update_info_text(const gchar *action) {/*{{{*/
 	if(!CURRENT_FILE->is_loaded) {
 		// Image not loaded yet. Use loading information and abort.
 		current_info_text = g_strdup_printf("%s (Image is still loading...)", display_name);
+		gtk_window_set_title(GTK_WINDOW(main_window), "pqiv");
 
 		g_free(file_name);
 		D_UNLOCK(file_tree);
@@ -3680,6 +3694,10 @@ void montage_window_move_cursor(int move_x, int move_y) {
 	const unsigned n_thumbs_x = main_window_width / (option_thumbnails.width + 10);
 	const unsigned n_thumbs_y = main_window_height / (option_thumbnails.height + 10);
 	const ptrdiff_t number_of_images = (ptrdiff_t)bostree_node_count(file_tree);
+
+	if(n_thumbs_x == 0 || n_thumbs_y == 0) {
+		return;
+	}
 
 	ptrdiff_t new_selection = montage_window_control.selected_image + move_x + move_y * (ptrdiff_t)n_thumbs_x;
 	if(new_selection < 0) {
@@ -4747,6 +4765,7 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 			active_key_binding_context = MONTAGE;
 			montage_window_control.selected_image = bostree_rank(current_file_node);
 			montage_window_move_cursor(0, 0);
+			update_info_text(NULL);
 
 			gtk_widget_queue_draw(GTK_WIDGET(main_window));
 			break;
@@ -4776,6 +4795,8 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 			if(action_id == ACTION_MONTAGE_MODE_RETURN_PROCEED) {
 				absolute_image_movement(bostree_node_weak_ref(bostree_select(file_tree, montage_window_control.selected_image)));
 			}
+
+			update_info_text(NULL);
 			break;
 #endif
 
