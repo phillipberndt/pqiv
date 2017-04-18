@@ -427,8 +427,6 @@ gboolean store_thumbnail_to_cache(file_t *file) {
 	}
 	g_close(file_fd, NULL);
 
-	printf("Created %s\n", thumbnail_file);
-
 	g_free(file_uri);
 	g_free(md5_filename);
 	g_free(thumbnail_file);
