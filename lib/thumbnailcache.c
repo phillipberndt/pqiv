@@ -136,29 +136,32 @@ gboolean check_png_attributes(gchar *file_name, gchar *file_uri, time_t file_mti
 		return FALSE;
 	}
 
-	char header_buf[8];
+	union {
+		char buf[8];
+		uint32_t uint32;
+	} header;
 
 	// File header
-	if(read(fd, header_buf, 8) != 8) {
+	if(read(fd, header.buf, 8) != 8) {
 		g_close(fd, NULL);
 		return FALSE;
 	}
 	const char expected_header[] = { 137, 80, 78, 71, 13, 10, 26, 10 };
-	if(memcmp(header_buf, expected_header, sizeof(expected_header)) != 0) {
+	if(memcmp(header.buf, expected_header, sizeof(expected_header)) != 0) {
 		g_close(fd, NULL);
 		return FALSE;
 	}
 
 	// Read all chunks until we have both matches
 	while(1) {
-		if(read(fd, header_buf, 8) != 8) {
+		if(read(fd, header.buf, 8) != 8) {
 			g_close(fd, NULL);
 			return FALSE;
 		}
 
-		unsigned header_length = ntohl(*(int32_t *)header_buf);
+		unsigned header_length = ntohl(header.uint32);
 
-		if(strncmp(&header_buf[4], "tEXt", 4) == 0) {
+		if(strncmp(&header.buf[4], "tEXt", 4) == 0) {
 			// This is interesting. Read the whole contents first.
 			char *data = g_malloc(header_length);
 			if(read(fd, data, header_length) != header_length) {
@@ -167,11 +170,11 @@ gboolean check_png_attributes(gchar *file_name, gchar *file_uri, time_t file_mti
 			}
 
 			// Check against CRC
-			if(read(fd, header_buf, 4) != 4) {
+			if(read(fd, header.buf, 4) != 4) {
 				g_close(fd, NULL);
 				return FALSE;
 			}
-			unsigned file_crc = ntohl(*(uint32_t *)header_buf);
+			unsigned file_crc = ntohl(header.uint32);
 			unsigned actual_crc = crc(crc(0, (unsigned char*)"tEXt", 4), (unsigned char *)data, header_length);
 
 			if(file_crc == actual_crc) {
