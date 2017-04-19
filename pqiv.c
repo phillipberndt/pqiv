@@ -744,7 +744,7 @@ void draw_current_image_to_context(cairo_t *cr);
 gboolean window_auto_hide_cursor_callback(gpointer user_data);
 #endif
 #ifndef CONFIGURED_WITHOUT_MONTAGE_MODE
-void montage_window_move_cursor(int, int);
+void montage_window_move_cursor(int, int, gboolean);
 #endif
 // }}}
 /* Helper functions {{{ */
@@ -1210,7 +1210,7 @@ BOSNode *load_images_handle_parameter_add_file(load_images_state_t state, file_t
 		info_text_queue_redraw();
 		#ifndef CONFIGURED_WITHOUT_MONTAGE_MODE
 		if(application_mode == MONTAGE) {
-			montage_window_move_cursor(0, 0);
+			montage_window_move_cursor(0, 0, FALSE);
 			gtk_widget_queue_draw(GTK_WIDGET(main_window));
 		}
 		#endif
@@ -3718,10 +3718,11 @@ void calculate_base_draw_pos_and_size(int *image_transform_width, int *image_tra
 	}
 }/*}}}*/
 #ifndef CONFIGURED_WITHOUT_MONTAGE_MODE
-void montage_window_move_cursor(int move_x, int move_y) {
+void montage_window_move_cursor(int move_x, int move_y, gboolean maintain_relative_pos) {
 	const unsigned n_thumbs_x = main_window_width / (option_thumbnails.width + 10);
 	const unsigned n_thumbs_y = main_window_height / (option_thumbnails.height + 10);
 	const ptrdiff_t number_of_images = (ptrdiff_t)bostree_node_count(file_tree);
+	const ptrdiff_t n_rows_total = number_of_images / n_thumbs_x;
 
 	if(n_thumbs_x == 0 || n_thumbs_y == 0) {
 		return;
@@ -3736,7 +3737,8 @@ void montage_window_move_cursor(int move_x, int move_y) {
 		}
 	}
 
-	ptrdiff_t new_selection = bostree_rank(selected_node) + (ptrdiff_t)move_x + move_y * (ptrdiff_t)n_thumbs_x;
+	size_t old_selection = bostree_rank(selected_node);
+	ptrdiff_t new_selection = old_selection + (ptrdiff_t)move_x + move_y * (ptrdiff_t)n_thumbs_x;
 	if(new_selection < 0) {
 		new_selection = 0;
 	}
@@ -3748,11 +3750,22 @@ void montage_window_move_cursor(int move_x, int move_y) {
 
 	ptrdiff_t pos_y = new_selection / n_thumbs_x;
 
+	if(maintain_relative_pos) {
+		montage_window_control.scroll_y += (new_selection - old_selection) / n_thumbs_x;
+	}
+
 	if(montage_window_control.scroll_y + n_thumbs_y <= pos_y) {
 		montage_window_control.scroll_y = pos_y - n_thumbs_y + 1;
 	}
 	else if(montage_window_control.scroll_y > pos_y) {
 		montage_window_control.scroll_y = pos_y;
+	}
+
+	if(montage_window_control.scroll_y < 0) {
+		montage_window_control.scroll_y = 0;
+	}
+	else if(montage_window_control.scroll_y > n_rows_total - n_thumbs_y + 1) {
+		montage_window_control.scroll_y = n_rows_total - n_thumbs_y + 1;
 	}
 
 	// Queue loading of thumbnails
@@ -3793,7 +3806,7 @@ gboolean window_draw_thumbnail_montage(cairo_t *cr_arg) {/*{{{*/
 
 	// Do a check if the selected image is out of bounds. Fix if it is.
 	if(top_left_id > selection_rank || top_left_id + n_thumbs_x * n_thumbs_y < selection_rank) {
-		montage_window_move_cursor(0, 0);
+		montage_window_move_cursor(0, 0, FALSE);
 		top_left_id = montage_window_control.scroll_y * n_thumbs_x;
 	}
 
@@ -4810,7 +4823,7 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 			option_thumbnails.width = parameter.p2short.p1;
 			option_thumbnails.height = parameter.p2short.p2;
 			if(application_mode == MONTAGE) {
-				montage_window_move_cursor(0, 0);
+				montage_window_move_cursor(0, 0, FALSE);
 				gtk_widget_queue_draw(GTK_WIDGET(main_window));
 			}
 			break;
@@ -4823,7 +4836,7 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 				bostree_node_weak_unref(file_tree, montage_window_control.selected_node);
 			}
 			montage_window_control.selected_node = bostree_node_weak_ref(current_file_node);
-			montage_window_move_cursor(0, 0);
+			montage_window_move_cursor(0, 0, FALSE);
 			update_info_text(NULL);
 			main_window_adjust_for_image();
 
@@ -4831,17 +4844,17 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 			break;
 
 		case ACTION_MONTAGE_MODE_SHIFT_X:
-			montage_window_move_cursor(parameter.pint, 0);
+			montage_window_move_cursor(parameter.pint, 0, FALSE);
 			gtk_widget_queue_draw(GTK_WIDGET(main_window));
 			break;
 
 		case ACTION_MONTAGE_MODE_SHIFT_Y:
-			montage_window_move_cursor(0, parameter.pint);
+			montage_window_move_cursor(0, parameter.pint, FALSE);
 			gtk_widget_queue_draw(GTK_WIDGET(main_window));
 			break;
 
 		case ACTION_MONTAGE_MODE_SHIFT_Y_PG:
-			montage_window_move_cursor(0, parameter.pint * main_window_height / (option_thumbnails.height + 10));
+			montage_window_move_cursor(0, parameter.pint * main_window_height / (option_thumbnails.height + 10), TRUE);
 			gtk_widget_queue_draw(GTK_WIDGET(main_window));
 			break;
 
@@ -4958,7 +4971,7 @@ gboolean window_configure_callback(GtkWidget *widget, GdkEventConfigure *event, 
 	if(application_mode == MONTAGE) {
 		// Make sure that the currently selected image stays in view & that all
 		// visible thumbnails are loaded
-		montage_window_move_cursor(0, 0);
+		montage_window_move_cursor(0, 0, FALSE);
 	}
 	#endif
 
