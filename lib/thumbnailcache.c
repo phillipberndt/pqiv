@@ -33,7 +33,7 @@
 #include <gio/gio.h>
 #include <cairo.h>
 
-static const char * const thumbnail_levels[] = { "large", "normal" };
+static const char * const thumbnail_levels[] = { "x-pqiv", "large", "normal" };
 
 /* CRC calculation as per PNG TR, Annex D */
 static unsigned long crc_table[256];
@@ -76,9 +76,18 @@ static gchar *get_local_filename(file_t *file) {
 		return NULL;
 	}
 
+	// Retrieve file name
+	GFile *gfile = gfile_for_commandline_arg(file->file_name);
+	gchar *file_path = g_file_get_path(gfile);
+	g_object_unref(gfile);
+	return file_path;
+}
+
+static const gchar *get_multi_page_suffix(file_t *file) {
 	// Multi-page documents do not have an unambigous file name
 	// Since the Thumbnail Managing Standard does not state how to format an
-	// URI into e.g. an archive, do not cache such files.
+	// URI into e.g. an archive, we need to make something up. Do not use
+	// the standard directories in this case.
 	gchar *display_basename = g_strrstr(file->display_name, G_DIR_SEPARATOR_S);
 	if(display_basename) {
 		display_basename++;
@@ -93,15 +102,15 @@ static gchar *get_local_filename(file_t *file) {
 	else {
 		filename_basename = file->file_name;
 	}
-	if(strcmp(filename_basename, display_basename) != 0) {
+
+	int filename_basename_length = strlen(filename_basename);
+	int display_basename_length = strlen(display_basename);
+
+	if(filename_basename_length == display_basename_length) {
 		return NULL;
 	}
 
-	// Retrieve file name
-	GFile *gfile = gfile_for_commandline_arg(file->file_name);
-	gchar *file_path = g_file_get_path(gfile);
-	g_object_unref(gfile);
-	return file_path;
+	return display_basename + filename_basename_length;
 }
 
 static gchar *_local_thumbnail_cache_directory;
@@ -113,9 +122,6 @@ static const gchar *get_thumbnail_cache_directory() {
 		}
 		else {
 			_local_thumbnail_cache_directory = g_build_filename(cache_dir, "thumbnails", NULL);
-		}
-		if(!g_file_test(_local_thumbnail_cache_directory, G_FILE_TEST_IS_DIR)) {
-			g_mkdir_with_parents(_local_thumbnail_cache_directory, 0600);
 		}
 	}
 	return _local_thumbnail_cache_directory;
@@ -222,9 +228,9 @@ static cairo_surface_t *load_thumbnail(gchar *file_name, gchar *file_uri, time_t
 		return thumbnail;
 	}
 
-	double scale_factor = fmin(1., fmin(actual_width * 1. / width, actual_height * 1. / height));
-	unsigned target_width = width * scale_factor;
-	unsigned target_height = height * scale_factor;
+	double scale_factor = fmin(1., fmin(width * 1. / actual_width, height * 1. / actual_height));
+	unsigned target_width = actual_width * scale_factor;
+	unsigned target_height = actual_height * scale_factor;
 
 	#if CAIRO_VERSION >= CAIRO_VERSION_ENCODE(1, 12, 0)
 		cairo_surface_t *target_thumbnail = cairo_surface_create_similar_image(thumbnail, CAIRO_FORMAT_ARGB32, target_width, target_height);
@@ -249,17 +255,13 @@ static cairo_surface_t *load_thumbnail(gchar *file_name, gchar *file_uri, time_t
 }
 
 /* This library's public API */
-gboolean load_thumbnail_from_cache(file_t *file, unsigned width, unsigned height) {
-	// We can only use the cache if the thumbnail is sufficiently small
-	if(width > 256 || height > 256) {
-		return FALSE;
-	}
-
+gboolean load_thumbnail_from_cache(file_t *file, unsigned width, unsigned height, char *special_thumbnail_directory) {
 	// Obtain a local path to the file
 	gchar *local_filename = get_local_filename(file);
 	if(!local_filename) {
 		return FALSE;
 	}
+	const gchar *multi_page_suffix = get_multi_page_suffix(file);
 
 	// Obtain modification timestamp
 	struct stat file_stat;
@@ -267,10 +269,28 @@ gboolean load_thumbnail_from_cache(file_t *file, unsigned width, unsigned height
 	time_t file_mtime = file_stat.st_mtime;
 
 	// Obtain the name of the candidate for the local thumbnail file
-	gchar *file_uri = g_strdup_printf("file://%s", local_filename);
+	gchar *file_uri = multi_page_suffix ? g_strdup_printf("file://%s#%s", local_filename, multi_page_suffix) : g_strdup_printf("file://%s", local_filename);
 	gchar *md5_filename = g_compute_checksum_for_string(G_CHECKSUM_MD5, file_uri, -1);
 
-	for(int j=(width > 128 || height > 128) ? 0 : 1; j<2; j++) {
+	// Check if a special thumbnail directory was given and try that first
+	if(special_thumbnail_directory && special_thumbnail_directory != SPECIAL_THUMBNAIL_DIRECTORY_LOCAL) {
+		gchar *thumbnail_candidate = g_strdup_printf("%s%s%s.png", special_thumbnail_directory, G_DIR_SEPARATOR_S, md5_filename);
+		if(g_file_test(thumbnail_candidate, G_FILE_TEST_EXISTS)) {
+			cairo_surface_t *thumbnail = load_thumbnail(thumbnail_candidate, file_uri, file_mtime, width, height);
+			g_free(thumbnail_candidate);
+			if(thumbnail != NULL) {
+				file->thumbnail = thumbnail;
+				g_free(file_uri);
+				g_free(md5_filename);
+				return TRUE;
+			}
+		}
+		else {
+			g_free(thumbnail_candidate);
+		}
+	}
+
+	for(int j=(!multi_page_suffix && width <= 128 && height <= 128) ? 2 : (!multi_page_suffix && width <= 256 && height <= 256) ? 1 : 0; j>=0; j--) {
 		gchar *thumbnail_candidate = g_strdup_printf("%s%s%s%s%s.png", get_thumbnail_cache_directory(), G_DIR_SEPARATOR_S, thumbnail_levels[j], G_DIR_SEPARATOR_S, md5_filename);
 		if(g_file_test(thumbnail_candidate, G_FILE_TEST_EXISTS)) {
 			cairo_surface_t *thumbnail = load_thumbnail(thumbnail_candidate, file_uri, file_mtime, width, height);
@@ -296,10 +316,15 @@ gboolean load_thumbnail_from_cache(file_t *file, unsigned width, unsigned height
 	g_free(file_dirname);
 	if(g_file_test(shared_thumbnail_directory, G_FILE_TEST_IS_DIR)) {
 		gchar *file_basename = g_path_get_basename(local_filename);
+		if(multi_page_suffix) {
+			gchar *new_basename = g_strdup_printf("%s#%s", file_basename, multi_page_suffix);
+			g_free(file_basename);
+			file_basename = new_basename;
+		}
 		gchar *md5_basename = g_compute_checksum_for_string(G_CHECKSUM_MD5, file_basename, -1);
 		g_free(file_basename);
 
-		for(int j=(width > 128 || height > 128) ? 0 : 1; j<2; j++) {
+		for(int j=(!multi_page_suffix && width <= 128 && height <= 128) ? 2 : (!multi_page_suffix && width <= 256 && height <= 256) ? 1 : 0; j>=0; j--) {
 			gchar *thumbnail_candidate = g_strdup_printf("%s%s%s%s%s.png", shared_thumbnail_directory, G_DIR_SEPARATOR_S, thumbnail_levels[j], G_DIR_SEPARATOR_S, md5_basename);
 			if(g_file_test(thumbnail_candidate, G_FILE_TEST_EXISTS)) {
 				cairo_surface_t *thumbnail = load_thumbnail(thumbnail_candidate, file_basename, file_mtime, width, height);
@@ -383,26 +408,31 @@ static cairo_status_t png_writer(struct png_writer_info *info, const unsigned ch
 	return CAIRO_STATUS_SUCCESS;
 }
 
-gboolean store_thumbnail_to_cache(file_t *file) {
+gboolean store_thumbnail_to_cache(file_t *file, char *special_thumbnail_directory) {
 	// We only store thumbnails if they have the correct size
 	unsigned width  = cairo_image_surface_get_width(file->thumbnail);
 	unsigned height = cairo_image_surface_get_height(file->thumbnail);
 	int thumbnail_level;
 
 	if(width == 256 || height == 256) {
-		thumbnail_level = 0;
-	}
-	else if(width == 128 || height == 128) {
 		thumbnail_level = 1;
 	}
+	else if(width == 128 || height == 128) {
+		thumbnail_level = 2;
+	}
 	else {
-		return FALSE;
+		thumbnail_level = 0;
 	}
 
 	// Obtain absolute path to file
 	gchar *local_filename = get_local_filename(file);
 	if(!local_filename) {
 		return FALSE;
+	}
+	const gchar *multi_page_suffix = get_multi_page_suffix(file);
+	if(multi_page_suffix) {
+		// Unspecified by standard, use x-pqiv cache
+		thumbnail_level = 0;
 	}
 
 	// Obtain modification timestamp
@@ -411,9 +441,39 @@ gboolean store_thumbnail_to_cache(file_t *file) {
 	time_t file_mtime = file_stat.st_mtime;
 
 	// Obtain the name of the thumbnail file
-	gchar *file_uri = g_strdup_printf("file://%s", local_filename);
-	gchar *md5_filename = g_compute_checksum_for_string(G_CHECKSUM_MD5, file_uri, -1);
-	gchar *thumbnail_file = g_strdup_printf("%s%s%s%s%s.png", get_thumbnail_cache_directory(), G_DIR_SEPARATOR_S, thumbnail_levels[thumbnail_level], G_DIR_SEPARATOR_S, md5_filename);
+	gchar *file_uri, *md5_filename, *thumbnail_directory, *thumbnail_file;
+	if(special_thumbnail_directory == SPECIAL_THUMBNAIL_DIRECTORY_LOCAL) {
+		// Create a .sh_thumbnails directory
+		file_uri = g_path_get_basename(local_filename);
+		if(multi_page_suffix) {
+			gchar *new_uri = g_strdup_printf("%s#%s", file_uri, multi_page_suffix);
+			g_free(file_uri);
+			file_uri = new_uri;
+		}
+		md5_filename = g_compute_checksum_for_string(G_CHECKSUM_MD5, file_uri, -1);
+		gchar *file_dirname  = g_path_get_dirname(local_filename);
+		thumbnail_directory = g_strdup_printf("%s%s.sh_thumbnails%s%s", file_dirname, G_DIR_SEPARATOR_S, G_DIR_SEPARATOR_S, thumbnail_levels[thumbnail_level]);
+		g_free(file_dirname);
+		thumbnail_file = g_strdup_printf("%s%s%s.png", thumbnail_directory, G_DIR_SEPARATOR_S, md5_filename);
+	}
+	else {
+		// Use the standardized cache format, possibly with special directory
+		if(multi_page_suffix) {
+			file_uri = g_strdup_printf("file://%s#%s", local_filename, multi_page_suffix);
+		}
+		else {
+			file_uri = g_strdup_printf("file://%s", local_filename);
+		}
+		md5_filename = g_compute_checksum_for_string(G_CHECKSUM_MD5, file_uri, -1);
+		thumbnail_directory = special_thumbnail_directory ? g_strdup(special_thumbnail_directory) : g_strdup_printf("%s%s%s", get_thumbnail_cache_directory(), G_DIR_SEPARATOR_S, thumbnail_levels[thumbnail_level]);
+		thumbnail_file = g_strdup_printf("%s%s%s.png", thumbnail_directory, G_DIR_SEPARATOR_S, md5_filename);
+	}
+
+	// Create the directory if necessary
+	if(!g_file_test(thumbnail_directory, G_FILE_TEST_IS_DIR)) {
+		g_mkdir_with_parents(thumbnail_directory, 0700);
+	}
+	g_free(thumbnail_directory);
 
 	// Write out thumbnail
 	// We use a wrapper to inject the tEXt chunks as required by the thumbnail standard

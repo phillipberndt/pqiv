@@ -20,6 +20,7 @@
 #include "../pqiv.h"
 
 #ifndef CONFIGURED_WITHOUT_MONTAGE_MODE
-gboolean load_thumbnail_from_cache(file_t *file, unsigned width, unsigned height);
-gboolean store_thumbnail_to_cache(file_t *file);
+#define SPECIAL_THUMBNAIL_DIRECTORY_LOCAL (char *)1
+gboolean load_thumbnail_from_cache(file_t *file, unsigned width, unsigned height, char *special_thumbnail_directory);
+gboolean store_thumbnail_to_cache(file_t *file, char *special_thumbnail_directory);
 #endif

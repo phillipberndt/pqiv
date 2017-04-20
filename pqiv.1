@@ -240,15 +240,23 @@ level of 0 disables recursion completely, i.e. if you call pqiv with a
 directory as a parameter, it will not search it at all.
 .\"
 .TP
-.BR \-\-persist\-thumbnails
+.BR \-\-persist\-thumbnails=\fIDIRECTORY\fR
 Persist thumbnails to disk. Thumbnails are stored according to the Thumbnail
 Managing Standard, in \fI$XDG_CACHE_HOME/thumbnails/*\fR. The standard allows
 storage of thumbnails in size 128x128 and 256x256 exclusively, and does not
 specify how to store thumbnails for files in archives or multi-page documents.
-Hence, only thumbnails for single-page documents are stored, and only if
-the thumbnail sizes match. If this option is not used, then thumbnails will
+Thumbnails violating those constraints will be stored in a special \fIx-pqiv\fR
+subfolder. If this option is not used, then thumbnails will
 not be loaded from the cache either \- any thumbnails will be regenerated
 each time \fImontage\fR mode is used.
+.PP
+.RS
+You may supply an argument to this option. Specifying \fIyes\fR or \fIno\fR
+will en- and disable the feature. Specifying \fIlocal\fR will store thumbnails
+in a \fI.sh_thumbnails\fR subfolder relative to the images as specified by the
+Thumbnail Managing Standard. Any other value will be interpreted as a directory
+for storing the thumbnails.
+.RE
 .\"
 .TP
 .BR \-\-recreate\-window

@@ -210,6 +210,10 @@ BOSNode *image_loader_thread_currently_loading = NULL;
 gboolean file_tree_valid = FALSE;
 
 // We asynchroniously load images in a separate thread
+struct image_loader_queue_item {
+	BOSNode *node_ref;
+	int purpose;
+};
 GAsyncQueue *image_loader_queue = NULL;
 GCancellable *image_loader_cancellable = NULL;
 
@@ -379,6 +383,7 @@ gboolean help_show_version(const gchar *option_name, const gchar *value, gpointe
 gboolean option_window_position_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error);
 gboolean option_thumbnail_size_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error);
 gboolean option_scale_level_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error);
+gboolean option_persist_thumbnails_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error);
 gboolean option_end_of_files_action_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error);
 gboolean option_watch_files_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error);
 gboolean option_sort_key_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error);
@@ -394,9 +399,10 @@ struct {
 struct {
 	gboolean enabled;
 	gboolean persist;
+	gchar *special_thumbnail_directory;
 	gint width;
 	gint height;
-} option_thumbnails = { 0, 0, 128, 128 };
+} option_thumbnails = { 0, 0, NULL, 128, 128 };
 
 struct {
 	int scroll_y;
@@ -450,7 +456,7 @@ GOptionEntry options[] = {
 	{ "low-memory", 0, 0, G_OPTION_ARG_NONE, &option_lowmem, "Try to keep memory usage to a minimum", NULL },
 	{ "max-depth", 0, 0, G_OPTION_ARG_INT, &option_max_depth, "Descend at most LEVELS levels of directories below the command line arguments", "LEVELS" },
 #ifndef CONFIGURED_WITHOUT_MONTAGE_MODE
-	{ "persist-thumbnails", 0, 0, G_OPTION_ARG_NONE, &option_thumbnails.persist, "Persist thumbnails to disk", NULL },
+	{ "persist-thumbnails", 0, G_OPTION_FLAG_OPTIONAL_ARG, G_OPTION_ARG_CALLBACK, (gpointer)&option_persist_thumbnails_callback, "Persist thumbnails to disk. You may skip DIRECTORY to use the standard in ~/.cache.", "DIRECTORY" },
 #endif
 	{ "recreate-window", 0, 0, G_OPTION_ARG_NONE, &option_recreate_window, "Create a new window instead of resizing the old one", NULL },
 	{ "shuffle", 0, 0, G_OPTION_ARG_NONE, &option_shuffle, "Shuffle files", NULL },
@@ -708,9 +714,13 @@ void update_info_text(const char *);
 void queue_draw();
 gboolean main_window_center();
 void window_screen_changed_callback(GtkWidget *widget, GdkScreen *previous_screen, gpointer user_data);
+typedef int image_loader_purpose_t;
 gboolean image_loader_load_single(BOSNode *node, gboolean called_from_main);
 gboolean fading_timeout_callback(gpointer user_data);
 void queue_image_load(BOSNode *);
+#ifndef CONFIGURED_WITHOUT_MONTAGE_MODE
+void queue_thumbnail_load(BOSNode *);
+#endif
 void unload_image(BOSNode *);
 void remove_image(BOSNode *);
 gboolean initialize_gui_callback(gpointer);
@@ -791,6 +801,29 @@ gboolean option_thumbnail_size_callback(const gchar *option_name, const gchar *v
 
 	g_set_error(error, G_OPTION_ERROR, G_OPTION_ERROR_FAILED, "Unexpected argument value for the --thumbnail-size option. Format must be e.g. `320x240'.");
 	return FALSE;
+}/*}}}*/
+gboolean option_persist_thumbnails_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error) {/*{{{*/
+	if(value == NULL || !*value || strcasecmp(value, "yes") == 0 || strcasecmp(value, "true") == 0 || strcasecmp(value, "1") == 0) {
+		option_thumbnails.persist = TRUE;
+	}
+	else if(strcasecmp(value, "no") == 0 || strcasecmp(value, "false") == 0 || strcasecmp(value, "1") == 0) {
+		option_thumbnails.persist = FALSE;
+	}
+	else if(strcasecmp(value, "local") == 0) {
+		option_thumbnails.persist = TRUE;
+		if(option_thumbnails.special_thumbnail_directory != NULL && option_thumbnails.special_thumbnail_directory != SPECIAL_THUMBNAIL_DIRECTORY_LOCAL) {
+			g_free(option_thumbnails.special_thumbnail_directory);
+		}
+		option_thumbnails.special_thumbnail_directory = SPECIAL_THUMBNAIL_DIRECTORY_LOCAL;
+	}
+	else {
+		option_thumbnails.persist = TRUE;
+		if(option_thumbnails.special_thumbnail_directory != NULL && option_thumbnails.special_thumbnail_directory != SPECIAL_THUMBNAIL_DIRECTORY_LOCAL) {
+			g_free(option_thumbnails.special_thumbnail_directory);
+		}
+		option_thumbnails.special_thumbnail_directory = g_strdup(value);
+	}
+	return TRUE;
 }/*}}}*/
 #endif
 gboolean option_window_position_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error) {/*{{{*/
@@ -1108,6 +1141,12 @@ void load_images_directory_watch_callback(GFileMonitor *monitor, GFile *file, GF
 		}
 	}
 
+	// Skip .sh_thumbnails directories
+	if(name && strstr(name, G_DIR_SEPARATOR_S ".sh_thumbnails" G_DIR_SEPARATOR_S) != NULL) {
+		g_free(name);
+		return;
+	}
+
 	if(event_type == G_FILE_MONITOR_EVENT_CREATED && name != NULL) {
 		// In theory, handling regular files here should suffice. But files in subdirectories
 		// seem not always to be recognized correctly by file monitors, so we have to install
@@ -1364,8 +1403,19 @@ void load_images_handle_parameter(char *param, load_images_state_t state, gint d
 
 		// Recurse into directories
 		if(g_file_test(param, G_FILE_TEST_IS_DIR) == TRUE) {
+			if(strstr(param, G_DIR_SEPARATOR_S ".sh_thumbnails" G_DIR_SEPARATOR_S) != NULL) {
+				// Do not traverse into local thumbnail directories
+				if(original_parameter != NULL) {
+					g_free(param);
+				}
+				return;
+			}
+
 			if(option_max_depth >= 0 && option_max_depth <= depth) {
 				// Maximum depth exceeded, abort.
+				if(original_parameter != NULL) {
+					g_free(param);
+				}
 				return;
 			}
 
@@ -1910,10 +1960,12 @@ void main_window_adjust_for_image() {/*{{{*/
 gboolean image_loaded_handler(gconstpointer node) {/*{{{*/
 	// Execute logic below only if the loaded image is the current one
 	if(node != NULL && node != current_file_node) {
-		// XXX
 		gtk_widget_queue_draw(GTK_WIDGET(main_window));
 		return FALSE;
 	}
+
+	// Note: This might mean as well that the *thumbnail* has been loaded,
+	// but not the image itself. So check ->is_loaded in any case!
 
 	D_LOCK(file_tree);
 
@@ -2237,7 +2289,10 @@ void image_loader_create_thumbnail(file_t *file) {/*{{{*/
 gpointer image_loader_thread(gpointer user_data) {/*{{{*/
 	while(TRUE) {
 		// Handle new queued image load
-		BOSNode *node = g_async_queue_pop(image_loader_queue);
+		struct image_loader_queue_item *it = g_async_queue_pop(image_loader_queue);
+		BOSNode *node = it->node_ref;
+		image_loader_purpose_t purpose = it->purpose;
+		g_slice_free(struct image_loader_queue_item, it);
 		D_LOCK(file_tree);
 		if(bostree_node_weak_unref(file_tree, bostree_node_weak_ref(node)) == NULL) {
 			bostree_node_weak_unref(file_tree, node);
@@ -2245,6 +2300,35 @@ gpointer image_loader_thread(gpointer user_data) {/*{{{*/
 			continue;
 		}
 		D_UNLOCK(file_tree);
+
+		// Short-circuit: If we want to load this image for its thumbnail, check the cache first.
+		// We might not have to load it at all.
+		#ifndef CONFIGURED_WITHOUT_MONTAGE_MODE
+		if(purpose == MONTAGE) {
+			// Unload an old thumbnail if it does not have the correct size
+			D_LOCK(file_tree);
+			if(FILE(node)->thumbnail &&
+					cairo_image_surface_get_width(FILE(node)->thumbnail) != option_thumbnails.width && cairo_image_surface_get_height(FILE(node)->thumbnail) != option_thumbnails.height &&
+					(FILE(node)->width > (unsigned)option_thumbnails.width || FILE(node)->height > (unsigned)option_thumbnails.height)
+				) {
+				cairo_surface_destroy(FILE(node)->thumbnail);
+				FILE(node)->thumbnail = NULL;
+			}
+			D_UNLOCK(file_tree);
+			if(!FILE(node)->thumbnail && option_thumbnails.enabled && option_thumbnails.persist) {
+				if(load_thumbnail_from_cache(FILE(node), option_thumbnails.width, option_thumbnails.height, option_thumbnails.special_thumbnail_directory) == TRUE) {
+					// Loading the thumbnail succeeded. We may break here.
+					D_LOCK(file_tree);
+					bostree_node_weak_unref(file_tree, node);
+					D_UNLOCK(file_tree);
+
+					// Notify the main thread about this.
+					gdk_threads_add_idle((GSourceFunc)image_loaded_handler, node);
+					continue;
+				}
+			}
+		}
+		#endif
 
 		// It is a hard decision whether to first load the new image or whether
 		// to GC the old ones first: The former minimizes I/O for multi-page
@@ -2320,10 +2404,10 @@ gpointer image_loader_thread(gpointer user_data) {/*{{{*/
 			}
 			D_UNLOCK(file_tree);
 			if(!FILE(node)->thumbnail && option_thumbnails.enabled) {
-				if(!option_thumbnails.persist || load_thumbnail_from_cache(FILE(node), option_thumbnails.width, option_thumbnails.height) == FALSE) {
+				if(!option_thumbnails.persist || load_thumbnail_from_cache(FILE(node), option_thumbnails.width, option_thumbnails.height, option_thumbnails.special_thumbnail_directory) == FALSE) {
 					image_loader_create_thumbnail(FILE(node));
 					if(FILE(node)->thumbnail && option_thumbnails.persist) {
-						store_thumbnail_to_cache(FILE(node));
+						store_thumbnail_to_cache(FILE(node), option_thumbnails.special_thumbnail_directory);
 					}
 				}
 			}
@@ -2339,12 +2423,16 @@ gpointer image_loader_thread(gpointer user_data) {/*{{{*/
 		D_UNLOCK(file_tree);
 	}
 }/*}}}*/
+void image_loader_queue_destroy(gpointer data) {/*{{{*/
+	bostree_node_weak_unref(file_tree, ((struct image_loader_queue_item *)data)->node_ref);
+	g_slice_free(struct image_loader_queue_item, data);
+}/*}}}*/
 gboolean initialize_image_loader() {/*{{{*/
 	if(image_loader_initialization_succeeded) {
 		return TRUE;
 	}
 	if(image_loader_queue == NULL) {
-		image_loader_queue = g_async_queue_new();
+		image_loader_queue = g_async_queue_new_full(image_loader_queue_destroy);
 		image_loader_cancellable = g_cancellable_new();
 	}
 	D_LOCK(file_tree);
@@ -2391,18 +2479,33 @@ gboolean initialize_image_loader() {/*{{{*/
 	return TRUE;
 }/*}}}*/
 void abort_pending_image_loads(BOSNode *new_pos) {/*{{{*/
-	BOSNode *ref;
+	struct image_loader_queue_item *ref;
 	if(image_loader_queue == NULL) {
 		return;
 	}
-	while((ref = g_async_queue_try_pop(image_loader_queue)) != NULL) bostree_node_weak_unref(file_tree, ref);
+
+	while((ref = g_async_queue_try_pop(image_loader_queue)) != NULL) {
+		bostree_node_weak_unref(file_tree, ref->node_ref);
+		g_slice_free(struct image_loader_queue_item, ref);
+	}
 	if(image_loader_thread_currently_loading != NULL && image_loader_thread_currently_loading != new_pos) {
 		g_cancellable_cancel(image_loader_cancellable);
 	}
 }/*}}}*/
 void queue_image_load(BOSNode *node) {/*{{{*/
-	g_async_queue_push(image_loader_queue, bostree_node_weak_ref(node));
+	struct image_loader_queue_item *it = g_slice_new(struct image_loader_queue_item);
+	it->node_ref = bostree_node_weak_ref(node);
+	it->purpose = DEFAULT;
+	g_async_queue_push(image_loader_queue, it);
 }/*}}}*/
+#ifndef CONFIGURED_WITHOUT_MONTAGE_MODE
+void queue_thumbnail_load(BOSNode *node) {/*{{{*/
+	struct image_loader_queue_item *it = g_slice_new(struct image_loader_queue_item);
+	it->node_ref = bostree_node_weak_ref(node);
+	it->purpose = MONTAGE;
+	g_async_queue_push(image_loader_queue, it);
+}/*}}}*/
+#endif
 void unload_image(BOSNode *node) {/*{{{*/
 	if(!node) {
 		return;
@@ -3775,7 +3878,7 @@ void montage_window_move_cursor(int move_x, int move_y, gboolean maintain_relati
 	BOSNode *thumb_node = bostree_select(file_tree, top_left_id);
 	for(size_t draw_now = 0; draw_now < n_thumbs_x * n_thumbs_y && thumb_node; draw_now++, thumb_node = bostree_next_node(thumb_node)) {
 		if(thumb_node != selected_node && !FILE(thumb_node)->thumbnail) {
-			queue_image_load(thumb_node);
+			queue_thumbnail_load(thumb_node);
 		}
 	}
 }
@@ -3826,7 +3929,7 @@ gboolean window_draw_thumbnail_montage(cairo_t *cr_arg) {/*{{{*/
 				) {
 			cairo_surface_destroy(thumb_file->thumbnail);
 			thumb_file->thumbnail = NULL;
-			queue_image_load(thumb_node);
+			queue_thumbnail_load(thumb_node);
 		}
 
 		if(thumb_file->thumbnail) {
