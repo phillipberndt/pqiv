@@ -2897,7 +2897,19 @@ void relative_image_movement(ptrdiff_t movement) {/*{{{*/
 	// Only perform the movement if the file actually changed.
 	// Important for slideshows if only one file was available and said file has been deleted.
 	if(movement == 0 || target != current_file_node) {
-		absolute_image_movement(target);
+		if(application_mode == DEFAULT) {
+			absolute_image_movement(target);
+		}
+		#ifndef CONFIGURED_WITHOUT_MONTAGE_MODE
+		else if(application_mode == MONTAGE) {
+			if(montage_window_control.selected_node != NULL) {
+				bostree_node_weak_unref(file_tree, montage_window_control.selected_node);
+			}
+			montage_window_control.selected_node = target;
+			montage_window_move_cursor(0, 0, FALSE);
+			gtk_widget_queue_draw(GTK_WIDGET(main_window));
+		}
+		#endif
 	}
 	else {
 		bostree_node_weak_unref(file_tree, target);
@@ -3006,7 +3018,19 @@ void directory_image_movement(int direction) {/*{{{*/
 
 	target = bostree_node_weak_ref(target);
 	D_UNLOCK(file_tree);
-	absolute_image_movement(target);
+
+	if(application_mode == DEFAULT) {
+		absolute_image_movement(target);
+	}
+	#ifndef CONFIGURED_WITHOUT_MONTAGE_MODE
+	else if(application_mode == MONTAGE) {
+		if(montage_window_control.selected_node != NULL) {
+			bostree_node_weak_unref(file_tree, montage_window_control.selected_node);
+		}
+		montage_window_control.selected_node = target;
+		montage_window_move_cursor(0, 0, FALSE);
+	}
+	#endif
 }/*}}}*/
 void transform_current_image(cairo_matrix_t *transformation) {/*{{{*/
 	// Apply the transformation to the transformation matrix
@@ -4644,7 +4668,19 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 				}
 				else {
 					if(action_id == ACTION_GOTO_FILE_BYINDEX) {
-						absolute_image_movement(node);
+						if(application_mode == DEFAULT) {
+							absolute_image_movement(node);
+						}
+						#ifndef CONFIGURED_WITHOUT_MONTAGE_MODE
+						else if(application_mode == MONTAGE) {
+							if(montage_window_control.selected_node != NULL) {
+								bostree_node_weak_unref(file_tree, montage_window_control.selected_node);
+							}
+							montage_window_control.selected_node = node;
+							montage_window_move_cursor(0, 0, FALSE);
+							gtk_widget_queue_draw(GTK_WIDGET(main_window));
+						}
+						#endif
 					}
 					else {
 						remove_image(node);
@@ -4671,7 +4707,19 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 				}
 				else {
 					if(action_id == ACTION_GOTO_FILE_BYNAME) {
-						absolute_image_movement(node);
+						if(application_mode == DEFAULT) {
+							absolute_image_movement(node);
+						}
+						#ifndef CONFIGURED_WITHOUT_MONTAGE_MODE
+						else if(application_mode == MONTAGE) {
+							if(montage_window_control.selected_node != NULL) {
+								bostree_node_weak_unref(file_tree, montage_window_control.selected_node);
+							}
+							montage_window_control.selected_node = node;
+							montage_window_move_cursor(0, 0, FALSE);
+							gtk_widget_queue_draw(GTK_WIDGET(main_window));
+						}
+						#endif
 					}
 					else {
 						remove_image(node);
@@ -4932,6 +4980,14 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 			break;
 
 		case ACTION_MONTAGE_MODE_ENTER:
+			if(slideshow_timeout_id > 0) {
+				g_source_remove(slideshow_timeout_id);
+				slideshow_timeout_id = 0;
+			}
+			if(current_image_animation_timeout_id > 0) {
+				g_source_remove(current_image_animation_timeout_id);
+				current_image_animation_timeout_id = 0;
+			}
 			option_thumbnails.enabled = TRUE;
 			application_mode = MONTAGE;
 			active_key_binding_context = MONTAGE;
@@ -4976,6 +5032,7 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 			else {
 				bostree_node_weak_unref(file_tree, montage_window_control.selected_node);
 				montage_window_control.selected_node = NULL;
+				image_loaded_handler(NULL);
 			}
 
 			if(option_lowmem) {
