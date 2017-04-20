@@ -228,6 +228,12 @@ static cairo_surface_t *load_thumbnail(gchar *file_name, gchar *file_uri, time_t
 		return thumbnail;
 	}
 
+	if(actual_width < width && actual_height < height) {
+		// Can't use this. Too small.
+		cairo_surface_destroy(thumbnail);
+		return NULL;
+	}
+
 	double scale_factor = fmin(1., fmin(width * 1. / actual_width, height * 1. / actual_height));
 	unsigned target_width = actual_width * scale_factor;
 	unsigned target_height = actual_height * scale_factor;
@@ -413,6 +419,13 @@ gboolean store_thumbnail_to_cache(file_t *file, char *special_thumbnail_director
 	unsigned width  = cairo_image_surface_get_width(file->thumbnail);
 	unsigned height = cairo_image_surface_get_height(file->thumbnail);
 	int thumbnail_level;
+
+	// If the file didn't need thumbnailing, don't store a thumbnail either.
+	// This is a simple way to make sure that we don't accidentally thumbnail
+	// thumbnails again.
+	if(width == file->width || height == file->height) {
+		return FALSE;
+	}
 
 	if(width == 256 || height == 256) {
 		thumbnail_level = 1;
