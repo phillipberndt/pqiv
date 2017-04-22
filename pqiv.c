@@ -2894,22 +2894,23 @@ void relative_image_movement(ptrdiff_t movement) {/*{{{*/
 		}
 	}
 
+	#ifndef CONFIGURED_WITHOUT_MONTAGE_MODE
+	if(application_mode == MONTAGE) {
+		D_LOCK(file_tree);
+		if(montage_window_control.selected_node != NULL) {
+			bostree_node_weak_unref(file_tree, montage_window_control.selected_node);
+		}
+		montage_window_control.selected_node = target;
+		montage_window_move_cursor(0, 0, FALSE);
+		D_UNLOCK(file_tree);
+		gtk_widget_queue_draw(GTK_WIDGET(main_window));
+	}
+	#endif
+
 	// Only perform the movement if the file actually changed.
 	// Important for slideshows if only one file was available and said file has been deleted.
 	if(movement == 0 || target != current_file_node) {
-		if(application_mode == DEFAULT) {
-			absolute_image_movement(target);
-		}
-		#ifndef CONFIGURED_WITHOUT_MONTAGE_MODE
-		else if(application_mode == MONTAGE) {
-			if(montage_window_control.selected_node != NULL) {
-				bostree_node_weak_unref(file_tree, montage_window_control.selected_node);
-			}
-			montage_window_control.selected_node = target;
-			montage_window_move_cursor(0, 0, FALSE);
-			gtk_widget_queue_draw(GTK_WIDGET(main_window));
-		}
-		#endif
+		absolute_image_movement(target);
 	}
 	else {
 		bostree_node_weak_unref(file_tree, target);
