@@ -2407,7 +2407,7 @@ gpointer image_loader_thread(gpointer user_data) {/*{{{*/
 				if(!option_thumbnails.persist || load_thumbnail_from_cache(FILE(node), option_thumbnails.width, option_thumbnails.height, option_thumbnails.special_thumbnail_directory) == FALSE) {
 					image_loader_create_thumbnail(FILE(node));
 					if(FILE(node)->thumbnail && option_thumbnails.persist) {
-						store_thumbnail_to_cache(FILE(node), option_thumbnails.special_thumbnail_directory);
+						store_thumbnail_to_cache(FILE(node), option_thumbnails.width, option_thumbnails.height, option_thumbnails.special_thumbnail_directory);
 					}
 				}
 			}

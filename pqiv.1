@@ -256,7 +256,9 @@ will en- and disable the feature. Specifying \fIlocal\fR will store thumbnails
 in a \fI.sh_thumbnails\fR subfolder relative to the images as specified by the
 Thumbnail Managing Standard. Any other value will be interpreted as a directory
 for storing the thumbnails. Note that folders not named \fI.sh_thumbnails\fR
-will be considered in \fB\-\-watch\-directories\fR!
+will be considered in \fB\-\-watch\-directories\fR! Also, note that while
+\fBpqiv\fR will store thumbnails to another folder, it will still attempt to
+load them from the standard folders as well.
 .RE
 .\"
 .TP

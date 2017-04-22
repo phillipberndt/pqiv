@@ -33,7 +33,7 @@
 #include <gio/gio.h>
 #include <cairo.h>
 
-static const char * const thumbnail_levels[] = { "x-pqiv", "large", "normal" };
+static const char * thumbnail_levels[] = { "x-pqiv", "large", "normal" };
 
 /* CRC calculation as per PNG TR, Annex D */
 static unsigned long crc_table[256];
@@ -278,38 +278,33 @@ gboolean load_thumbnail_from_cache(file_t *file, unsigned width, unsigned height
 	gchar *file_uri = multi_page_suffix ? g_strdup_printf("file://%s#%s", local_filename, multi_page_suffix) : g_strdup_printf("file://%s", local_filename);
 	gchar *md5_filename = g_compute_checksum_for_string(G_CHECKSUM_MD5, file_uri, -1);
 
-	// Check if a special thumbnail directory was given and try that first
-	if(special_thumbnail_directory && special_thumbnail_directory != SPECIAL_THUMBNAIL_DIRECTORY_LOCAL) {
-		gchar *thumbnail_candidate = g_strdup_printf("%s%s%s.png", special_thumbnail_directory, G_DIR_SEPARATOR_S, md5_filename);
-		if(g_file_test(thumbnail_candidate, G_FILE_TEST_EXISTS)) {
-			cairo_surface_t *thumbnail = load_thumbnail(thumbnail_candidate, file_uri, file_mtime, width, height);
-			g_free(thumbnail_candidate);
-			if(thumbnail != NULL) {
-				file->thumbnail = thumbnail;
-				g_free(file_uri);
-				g_free(md5_filename);
-				return TRUE;
+	// Search two directory structures: special_thumbnail_directory, then get_thumbnail_cache_directory()
+	for(int k=0; k<2; k++) {
+		if(k == 0 && (special_thumbnail_directory == NULL || special_thumbnail_directory == SPECIAL_THUMBNAIL_DIRECTORY_LOCAL)) {
+			continue;
+		}
+		// Search in the directories for the different sizes
+		for(int j=(!multi_page_suffix && width <= 128 && height <= 128) ? 2 : (!multi_page_suffix && width <= 256 && height <= 256) ? 1 : 0; j>=0; j--) {
+			gchar *thumbnail_candidate;
+			if(j == 0) {
+				thumbnail_candidate = g_strdup_printf("%s%s%s%s%dx%d%s%s.png", k == 0 ? special_thumbnail_directory : get_thumbnail_cache_directory(), G_DIR_SEPARATOR_S, thumbnail_levels[j], G_DIR_SEPARATOR_S, width, height, G_DIR_SEPARATOR_S, md5_filename);
 			}
-		}
-		else {
-			g_free(thumbnail_candidate);
-		}
-	}
-
-	for(int j=(!multi_page_suffix && width <= 128 && height <= 128) ? 2 : (!multi_page_suffix && width <= 256 && height <= 256) ? 1 : 0; j>=0; j--) {
-		gchar *thumbnail_candidate = g_strdup_printf("%s%s%s%s%s.png", get_thumbnail_cache_directory(), G_DIR_SEPARATOR_S, thumbnail_levels[j], G_DIR_SEPARATOR_S, md5_filename);
-		if(g_file_test(thumbnail_candidate, G_FILE_TEST_EXISTS)) {
-			cairo_surface_t *thumbnail = load_thumbnail(thumbnail_candidate, file_uri, file_mtime, width, height);
-			g_free(thumbnail_candidate);
-			if(thumbnail != NULL) {
-				file->thumbnail = thumbnail;
-				g_free(file_uri);
-				g_free(md5_filename);
-				return TRUE;
+			else {
+				thumbnail_candidate = g_strdup_printf("%s%s%s%s%s.png", k == 0 ? special_thumbnail_directory : get_thumbnail_cache_directory(), G_DIR_SEPARATOR_S, thumbnail_levels[j], G_DIR_SEPARATOR_S, md5_filename);
 			}
-		}
-		else {
-			g_free(thumbnail_candidate);
+			if(g_file_test(thumbnail_candidate, G_FILE_TEST_EXISTS)) {
+				cairo_surface_t *thumbnail = load_thumbnail(thumbnail_candidate, file_uri, file_mtime, width, height);
+				g_free(thumbnail_candidate);
+				if(thumbnail != NULL) {
+					file->thumbnail = thumbnail;
+					g_free(file_uri);
+					g_free(md5_filename);
+					return TRUE;
+				}
+			}
+			else {
+				g_free(thumbnail_candidate);
+			}
 		}
 	}
 
@@ -331,7 +326,13 @@ gboolean load_thumbnail_from_cache(file_t *file, unsigned width, unsigned height
 		g_free(file_basename);
 
 		for(int j=(!multi_page_suffix && width <= 128 && height <= 128) ? 2 : (!multi_page_suffix && width <= 256 && height <= 256) ? 1 : 0; j>=0; j--) {
-			gchar *thumbnail_candidate = g_strdup_printf("%s%s%s%s%s.png", shared_thumbnail_directory, G_DIR_SEPARATOR_S, thumbnail_levels[j], G_DIR_SEPARATOR_S, md5_basename);
+			gchar *thumbnail_candidate;
+			if(j == 0) {
+				thumbnail_candidate = g_strdup_printf("%s%s%s%s%dx%d%s%s.png", shared_thumbnail_directory, G_DIR_SEPARATOR_S, thumbnail_levels[j], G_DIR_SEPARATOR_S, width, height, G_DIR_SEPARATOR_S, md5_basename);
+			}
+			else {
+				thumbnail_candidate = g_strdup_printf("%s%s%s%s%s.png", shared_thumbnail_directory, G_DIR_SEPARATOR_S, thumbnail_levels[j], G_DIR_SEPARATOR_S, md5_basename);
+			}
 			if(g_file_test(thumbnail_candidate, G_FILE_TEST_EXISTS)) {
 				cairo_surface_t *thumbnail = load_thumbnail(thumbnail_candidate, file_basename, file_mtime, width, height);
 				g_free(thumbnail_candidate);
@@ -414,23 +415,23 @@ static cairo_status_t png_writer(struct png_writer_info *info, const unsigned ch
 	return CAIRO_STATUS_SUCCESS;
 }
 
-gboolean store_thumbnail_to_cache(file_t *file, char *special_thumbnail_directory) {
+gboolean store_thumbnail_to_cache(file_t *file, unsigned width, unsigned height, char *special_thumbnail_directory) {
 	// We only store thumbnails if they have the correct size
-	unsigned width  = cairo_image_surface_get_width(file->thumbnail);
-	unsigned height = cairo_image_surface_get_height(file->thumbnail);
+	unsigned actual_width  = cairo_image_surface_get_width(file->thumbnail);
+	unsigned actual_height = cairo_image_surface_get_height(file->thumbnail);
 	int thumbnail_level;
 
 	// If the file didn't need thumbnailing, don't store a thumbnail either.
 	// This is a simple way to make sure that we don't accidentally thumbnail
 	// thumbnails again.
-	if(width == file->width || height == file->height) {
+	if(actual_width == file->width || actual_height == file->height) {
 		return FALSE;
 	}
 
-	if(width == 256 || height == 256) {
+	if(width == 256 && height == 256) {
 		thumbnail_level = 1;
 	}
-	else if(width == 128 || height == 128) {
+	else if(width == 128 && height == 128) {
 		thumbnail_level = 2;
 	}
 	else {
@@ -465,7 +466,12 @@ gboolean store_thumbnail_to_cache(file_t *file, char *special_thumbnail_director
 		}
 		md5_filename = g_compute_checksum_for_string(G_CHECKSUM_MD5, file_uri, -1);
 		gchar *file_dirname  = g_path_get_dirname(local_filename);
-		thumbnail_directory = g_strdup_printf("%s%s.sh_thumbnails%s%s", file_dirname, G_DIR_SEPARATOR_S, G_DIR_SEPARATOR_S, thumbnail_levels[thumbnail_level]);
+		if(thumbnail_level == 0) {
+			thumbnail_directory = g_strdup_printf("%s%s.sh_thumbnails%s%s%s%dx%d", file_dirname, G_DIR_SEPARATOR_S, G_DIR_SEPARATOR_S, thumbnail_levels[0], G_DIR_SEPARATOR_S, width, height);
+		}
+		else {
+			thumbnail_directory = g_strdup_printf("%s%s.sh_thumbnails%s%s", file_dirname, G_DIR_SEPARATOR_S, G_DIR_SEPARATOR_S, thumbnail_levels[thumbnail_level]);
+		}
 		g_free(file_dirname);
 		thumbnail_file = g_strdup_printf("%s%s%s.png", thumbnail_directory, G_DIR_SEPARATOR_S, md5_filename);
 	}
@@ -478,7 +484,12 @@ gboolean store_thumbnail_to_cache(file_t *file, char *special_thumbnail_director
 			file_uri = g_strdup_printf("file://%s", local_filename);
 		}
 		md5_filename = g_compute_checksum_for_string(G_CHECKSUM_MD5, file_uri, -1);
-		thumbnail_directory = special_thumbnail_directory ? g_strdup(special_thumbnail_directory) : g_strdup_printf("%s%s%s", get_thumbnail_cache_directory(), G_DIR_SEPARATOR_S, thumbnail_levels[thumbnail_level]);
+		if(thumbnail_level == 0) {
+			thumbnail_directory = g_strdup_printf("%s%s%s%s%dx%d", special_thumbnail_directory ? special_thumbnail_directory : get_thumbnail_cache_directory(), G_DIR_SEPARATOR_S, thumbnail_levels[thumbnail_level], G_DIR_SEPARATOR_S, width, height);
+		}
+		else {
+			thumbnail_directory = g_strdup_printf("%s%s%s", special_thumbnail_directory ? special_thumbnail_directory : get_thumbnail_cache_directory(), G_DIR_SEPARATOR_S, thumbnail_levels[thumbnail_level]);
+		}
 		thumbnail_file = g_strdup_printf("%s%s%s.png", thumbnail_directory, G_DIR_SEPARATOR_S, md5_filename);
 	}
 
