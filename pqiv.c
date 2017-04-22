@@ -3946,6 +3946,11 @@ void montage_window_move_cursor(int move_x, int move_y, gboolean maintain_relati
 		if(thumb_node != selected_node && !FILE(thumb_node)->thumbnail) {
 			queue_thumbnail_load(thumb_node);
 		}
+		else if(FILE(thumb_node)->thumbnail && cairo_image_surface_get_width(FILE(thumb_node)->thumbnail) != option_thumbnails.width && cairo_image_surface_get_height(FILE(thumb_node)->thumbnail) != option_thumbnails.height) {
+			cairo_surface_destroy(FILE(thumb_node)->thumbnail);
+			FILE(thumb_node)->thumbnail = NULL;
+			queue_thumbnail_load(thumb_node);
+		}
 	}
 }
 gboolean window_draw_thumbnail_montage(cairo_t *cr_arg) {/*{{{*/
