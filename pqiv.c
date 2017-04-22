@@ -5050,26 +5050,41 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 			break;
 
 		case ACTION_MONTAGE_MODE_SHIFT_X:
+			if(application_mode != MONTAGE) {
+				break;
+			}
 			montage_window_move_cursor(parameter.pint, 0, FALSE);
 			gtk_widget_queue_draw(GTK_WIDGET(main_window));
 			break;
 
 		case ACTION_MONTAGE_MODE_SHIFT_Y:
+			if(application_mode != MONTAGE) {
+				break;
+			}
 			montage_window_move_cursor(0, parameter.pint, FALSE);
 			gtk_widget_queue_draw(GTK_WIDGET(main_window));
 			break;
 
 		case ACTION_MONTAGE_MODE_SET_SHIFT_X:
+			if(application_mode != MONTAGE) {
+				break;
+			}
 			montage_window_set_cursor(parameter.pint, -1);
 			gtk_widget_queue_draw(GTK_WIDGET(main_window));
 			break;
 
 		case ACTION_MONTAGE_MODE_SET_SHIFT_Y:
+			if(application_mode != MONTAGE) {
+				break;
+			}
 			montage_window_set_cursor(-1, parameter.pint);
 			gtk_widget_queue_draw(GTK_WIDGET(main_window));
 			break;
 
 		case ACTION_MONTAGE_MODE_SHIFT_Y_PG:
+			if(application_mode != MONTAGE) {
+				break;
+			}
 			montage_window_move_cursor(0, parameter.pint * main_window_height / (option_thumbnails.height + 10), TRUE);
 			gtk_widget_queue_draw(GTK_WIDGET(main_window));
 			break;
