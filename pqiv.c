@@ -681,6 +681,8 @@ const struct pqiv_action_descriptor {
 	{ "montage_mode_enter", PARAMETER_NONE },
 	{ "montage_mode_shift_x", PARAMETER_INT },
 	{ "montage_mode_shift_y", PARAMETER_INT },
+	{ "montage_mode_set_shift_x", PARAMETER_INT },
+	{ "montage_mode_set_shift_y", PARAMETER_INT },
 	{ "montage_mode_shift_y_pg", PARAMETER_INT },
 	{ "montage_mode_return_proceed", PARAMETER_NONE },
 	{ "montage_mode_return_cancel", PARAMETER_NONE },
@@ -3846,6 +3848,42 @@ void calculate_base_draw_pos_and_size(int *image_transform_width, int *image_tra
 	}
 }/*}}}*/
 #ifndef CONFIGURED_WITHOUT_MONTAGE_MODE
+void montage_window_set_cursor(int pos_x, int pos_y) {
+	const unsigned n_thumbs_x = main_window_width / (option_thumbnails.width + 10);
+	const unsigned n_thumbs_y = main_window_height / (option_thumbnails.height + 10);
+	const size_t number_of_images = (ptrdiff_t)bostree_node_count(file_tree);
+
+	BOSNode *selected_node = bostree_node_weak_unref(file_tree, montage_window_control.selected_node);
+	if(!selected_node) {
+		selected_node = bostree_select(file_tree, montage_window_control.scroll_y * n_thumbs_x);
+		if(!selected_node) {
+			selected_node = bostree_select(file_tree, 0);
+		}
+		if(!selected_node) {
+			montage_window_control.selected_node = NULL;
+			return;
+		}
+	}
+	size_t old_selection = bostree_rank(selected_node);
+
+	if(pos_x < 0) {
+		pos_x = old_selection % n_thumbs_x;
+	}
+	if(pos_y < 0) {
+		pos_y = old_selection / n_thumbs_x;
+	}
+	if((unsigned)pos_y >= n_thumbs_y) {
+		pos_y = n_thumbs_y - 1;
+	}
+
+	size_t new_selection = montage_window_control.scroll_y * n_thumbs_x + pos_x + pos_y * n_thumbs_x;
+
+	if(new_selection > number_of_images) {
+		new_selection = number_of_images - 1;
+	}
+
+	montage_window_control.selected_node = bostree_node_weak_ref(bostree_select(file_tree, new_selection));
+}
 void montage_window_move_cursor(int move_x, int move_y, gboolean maintain_relative_pos) {
 	const unsigned n_thumbs_x = main_window_width / (option_thumbnails.width + 10);
 	const unsigned n_thumbs_y = main_window_height / (option_thumbnails.height + 10);
@@ -3858,7 +3896,10 @@ void montage_window_move_cursor(int move_x, int move_y, gboolean maintain_relati
 
 	BOSNode *selected_node = bostree_node_weak_unref(file_tree, montage_window_control.selected_node);
 	if(!selected_node) {
-		selected_node = bostree_select(file_tree, 0);
+		selected_node = bostree_select(file_tree, montage_window_control.scroll_y * n_thumbs_x);
+		if(!selected_node) {
+			selected_node = bostree_select(file_tree, 0);
+		}
 		if(!selected_node) {
 			montage_window_control.selected_node = NULL;
 			return;
@@ -5010,6 +5051,16 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 
 		case ACTION_MONTAGE_MODE_SHIFT_Y:
 			montage_window_move_cursor(0, parameter.pint, FALSE);
+			gtk_widget_queue_draw(GTK_WIDGET(main_window));
+			break;
+
+		case ACTION_MONTAGE_MODE_SET_SHIFT_X:
+			montage_window_set_cursor(parameter.pint, -1);
+			gtk_widget_queue_draw(GTK_WIDGET(main_window));
+			break;
+
+		case ACTION_MONTAGE_MODE_SET_SHIFT_Y:
+			montage_window_set_cursor(-1, parameter.pint);
 			gtk_widget_queue_draw(GTK_WIDGET(main_window));
 			break;
 
