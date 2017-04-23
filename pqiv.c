@@ -2297,13 +2297,6 @@ gpointer image_loader_thread(gpointer user_data) {/*{{{*/
 		BOSNode *node = it->node_ref;
 		image_loader_purpose_t purpose = it->purpose;
 		g_slice_free(struct image_loader_queue_item, it);
-		D_LOCK(file_tree);
-		if(bostree_node_weak_unref(file_tree, bostree_node_weak_ref(node)) == NULL) {
-			bostree_node_weak_unref(file_tree, node);
-			D_UNLOCK(file_tree);
-			continue;
-		}
-		D_UNLOCK(file_tree);
 
 		// Short-circuit: If we want to load this image for its thumbnail, check the cache first.
 		// We might not have to load it at all.
