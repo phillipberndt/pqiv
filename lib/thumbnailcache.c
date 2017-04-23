@@ -323,7 +323,6 @@ gboolean load_thumbnail_from_cache(file_t *file, unsigned width, unsigned height
 			file_basename = new_basename;
 		}
 		gchar *md5_basename = g_compute_checksum_for_string(G_CHECKSUM_MD5, file_basename, -1);
-		g_free(file_basename);
 
 		for(int j=(!multi_page_suffix && width <= 128 && height <= 128) ? 2 : (!multi_page_suffix && width <= 256 && height <= 256) ? 1 : 0; j>=0; j--) {
 			gchar *thumbnail_candidate;
@@ -349,6 +348,7 @@ gboolean load_thumbnail_from_cache(file_t *file, unsigned width, unsigned height
 		}
 
 		g_free(md5_basename);
+		g_free(file_basename);
 	}
 	g_free(shared_thumbnail_directory);
 
