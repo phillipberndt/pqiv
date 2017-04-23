@@ -1405,14 +1405,6 @@ void load_images_handle_parameter(char *param, load_images_state_t state, gint d
 
 		// Recurse into directories
 		if(g_file_test(param, G_FILE_TEST_IS_DIR) == TRUE) {
-			if(strstr(param, G_DIR_SEPARATOR_S ".sh_thumbnails" G_DIR_SEPARATOR_S) != NULL) {
-				// Do not traverse into local thumbnail directories
-				if(original_parameter != NULL) {
-					g_free(param);
-				}
-				return;
-			}
-
 			if(option_max_depth >= 0 && option_max_depth <= depth) {
 				// Maximum depth exceeded, abort.
 				if(original_parameter != NULL) {
@@ -1478,6 +1470,11 @@ void load_images_handle_parameter(char *param, load_images_state_t state, gint d
 				if(dir_entry == NULL) {
 					break;
 				}
+				if(strcmp(dir_entry, ".sh_thumbnails") == 0) {
+					// Do not traverse into local thumbnail directories
+					continue;;
+				}
+
 				gchar *dir_entry_full = g_strdup_printf("%s%s%s", param, g_str_has_suffix(param, G_DIR_SEPARATOR_S) ? "" : G_DIR_SEPARATOR_S, dir_entry);
 				if(!(original_parameter != NULL && g_strcmp0(dir_entry_full, original_parameter) == 0)) {
 					// Skip if we are in --browse mode and this is the file which we have already added above.
