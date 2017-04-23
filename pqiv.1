@@ -240,34 +240,6 @@ level of 0 disables recursion completely, i.e. if you call pqiv with a
 directory as a parameter, it will not search it at all.
 .\"
 .TP
-.BR \-\-persist\-thumbnails=\fIDIRECTORY\fR
-Persist thumbnails to disk. Thumbnails are stored according to the Thumbnail
-Managing Standard, in \fI$XDG_CACHE_HOME/thumbnails/*\fR. The standard allows
-storage of thumbnails in size 128x128 and 256x256 exclusively, and does not
-specify how to store thumbnails for files in archives or multi-page documents.
-Thumbnails violating those constraints will be stored in a special \fIx-pqiv\fR
-subfolder. If this option is not used, then thumbnails will
-not be loaded from the cache either \- any thumbnails will be regenerated
-each time \fImontage\fR mode is used.
-.PP
-.RS
-You may supply an argument to this option. Specifying \fIyes\fR or \fIno\fR
-will en- and disable the feature. Specifying \fIlocal\fR will store thumbnails
-in a \fI.sh_thumbnails\fR subfolder relative to the images as specified by the
-Thumbnail Managing Standard. Any other value will be interpreted as a directory
-for storing the thumbnails. Note that folders not named \fI.sh_thumbnails\fR
-will be considered in \fB\-\-watch\-directories\fR! Also, note that while
-\fBpqiv\fR will store thumbnails to another folder, it will still attempt to
-load them from the standard folders as well.
-.RE
-.\"
-.TP
-.BR \-\-recreate\-window
-Workaround for window managers that do not handle resize requests correctly:
-Instead of resizing, recreate the window whenever the image is changed. This
-does not redraw images upon changes in zoom alone.
-.\"
-.TP
 .BR \-\-shuffle
 Display files in random order. This option conflicts with \fB\-\-sort\fR. Files
 are reshuffled after all images have been shown, but within one cycle, the
@@ -297,6 +269,35 @@ To sort by file modification date.
 .TP
 .BR \-\-thumbnail\-size=\fIWIDTHxHEIGHT\fR
 Adjust the size of thumbnails in \fImontage\fR mode. The default is 128x128.
+.\"
+.TP
+.BR \-\-thumbnail\-persistence=\fIDIRECTORY/STATUS\fR
+Persist thumbnails to disk. The simplest way to use this option is to supply
+a value of \fIyes\fR. Thumbnails are then stored according to the Thumbnail
+Managing Standard, in \fI$XDG_CACHE_HOME/thumbnails/*\fR. The standard allows
+storage of thumbnails in sizes 128x128 and 256x256 exclusively, and does not
+specify how to store thumbnails for files in archives or multi-page documents.
+Thumbnails violating those constraints will be stored in a special \fIx-pqiv\fR
+subfolder. If this option is not used, then thumbnails will
+not be loaded from the cache either \- any thumbnails will be regenerated
+each time \fImontage\fR mode is used.
+.PP
+.RS
+If you supply \fIlocal\fR as the argument value, \fBpqiv\fR will store thumbnails
+in a subfolder named \fI.sh_thumbnails\fR relative to the images as specified
+by the Thumbnail Managing Standard. Your third option is to provide the name of
+a directory. \fBpqiv\fR will then use that directory to store thumbnails to.
+Note that any folder not named \fI.sh_thumbnails\fR will be considered in
+\fB\-\-watch\-directories\fR. Also, note that while \fBpqiv\fR will store
+thumbnails to another folder, it will still attempt to load them from the
+standard folders as well.
+.RE
+.\"
+.TP
+.BR \-\-recreate\-window
+Workaround for window managers that do not handle resize requests correctly:
+Instead of resizing, recreate the window whenever the image is changed. This
+does not redraw images upon changes in zoom alone.
 .\"
 .TP
 .BR \-\-wait\-for\-images\-to\-appear

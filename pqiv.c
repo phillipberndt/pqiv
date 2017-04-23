@@ -383,7 +383,7 @@ gboolean help_show_version(const gchar *option_name, const gchar *value, gpointe
 gboolean option_window_position_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error);
 gboolean option_thumbnail_size_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error);
 gboolean option_scale_level_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error);
-gboolean option_persist_thumbnails_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error);
+gboolean option_thumbnail_persistence_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error);
 gboolean option_end_of_files_action_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error);
 gboolean option_watch_files_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error);
 gboolean option_sort_key_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error);
@@ -455,9 +455,6 @@ GOptionEntry options[] = {
 	{ "fade-duration", 0, 0, G_OPTION_ARG_DOUBLE, &option_fading_duration, "Adjust fades' duration", "SECONDS" },
 	{ "low-memory", 0, 0, G_OPTION_ARG_NONE, &option_lowmem, "Try to keep memory usage to a minimum", NULL },
 	{ "max-depth", 0, 0, G_OPTION_ARG_INT, &option_max_depth, "Descend at most LEVELS levels of directories below the command line arguments", "LEVELS" },
-#ifndef CONFIGURED_WITHOUT_MONTAGE_MODE
-	{ "persist-thumbnails", 0, G_OPTION_FLAG_OPTIONAL_ARG, G_OPTION_ARG_CALLBACK, (gpointer)&option_persist_thumbnails_callback, "Persist thumbnails to disk. You may skip DIRECTORY to use the standard in ~/.cache.", "DIRECTORY" },
-#endif
 	{ "recreate-window", 0, 0, G_OPTION_ARG_NONE, &option_recreate_window, "Create a new window instead of resizing the old one", NULL },
 	{ "shuffle", 0, 0, G_OPTION_ARG_NONE, &option_shuffle, "Shuffle files", NULL },
 #ifndef CONFIGURED_WITHOUT_ACTIONS
@@ -466,6 +463,7 @@ GOptionEntry options[] = {
 	{ "sort-key", 0, 0, G_OPTION_ARG_CALLBACK, (gpointer)&option_sort_key_callback, "Key to use for sorting", "PROPERTY" },
 #ifndef CONFIGURED_WITHOUT_MONTAGE_MODE
 	{ "thumbnail-size", 0, 0, G_OPTION_ARG_CALLBACK, (gpointer)&option_thumbnail_size_callback, "Set the dimensions of thumbnails in montage mode", "WIDTHxHEIGHT" },
+	{ "thumbnail-persistence", 0, G_OPTION_FLAG_OPTIONAL_ARG, G_OPTION_ARG_CALLBACK, (gpointer)&option_thumbnail_persistence_callback, "Persist thumbnails to disk, to DIRECTORY.", "DIRECTORY" },
 #endif
 	{ "wait-for-images-to-appear", 0, 0, G_OPTION_ARG_NONE, &option_wait_for_images_to_appear, "If no images are found, wait until at least one appears", NULL },
 	{ "watch-directories", 0, 0, G_OPTION_ARG_NONE, &option_watch_directories, "Watch directories for new files", NULL },
@@ -804,11 +802,11 @@ gboolean option_thumbnail_size_callback(const gchar *option_name, const gchar *v
 	g_set_error(error, G_OPTION_ERROR, G_OPTION_ERROR_FAILED, "Unexpected argument value for the --thumbnail-size option. Format must be e.g. `320x240'.");
 	return FALSE;
 }/*}}}*/
-gboolean option_persist_thumbnails_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error) {/*{{{*/
-	if(value == NULL || !*value || strcasecmp(value, "yes") == 0 || strcasecmp(value, "true") == 0 || strcasecmp(value, "1") == 0) {
+gboolean option_thumbnail_persistence_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error) {/*{{{*/
+	if(value == NULL || !*value || strcasecmp(value, "yes") == 0 || strcasecmp(value, "true") == 0 || strcasecmp(value, "1") == 0 || strcasecmp(value, "on") == 0) {
 		option_thumbnails.persist = TRUE;
 	}
-	else if(strcasecmp(value, "no") == 0 || strcasecmp(value, "false") == 0 || strcasecmp(value, "1") == 0) {
+	else if(strcasecmp(value, "no") == 0 || strcasecmp(value, "false") == 0 || strcasecmp(value, "1") == 0 || strcasecmp(value, "off") == 0) {
 		option_thumbnails.persist = FALSE;
 	}
 	else if(strcasecmp(value, "local") == 0) {
