@@ -1251,7 +1251,9 @@ BOSNode *load_images_handle_parameter_add_file(load_images_state_t state, file_t
 		info_text_queue_redraw();
 		#ifndef CONFIGURED_WITHOUT_MONTAGE_MODE
 		if(application_mode == MONTAGE) {
+			D_LOCK(file_tree);
 			montage_window_move_cursor(0, 0, FALSE);
+			D_UNLOCK(file_tree);
 			gtk_widget_queue_draw(GTK_WIDGET(main_window));
 		}
 		#endif
@@ -1786,7 +1788,7 @@ void image_file_updated_callback(GFileMonitor *monitor, GFile *file, GFile *othe
 	D_LOCK(file_tree);
 	if(event_type == G_FILE_MONITOR_EVENT_CHANGES_DONE_HINT) {
 		FILE(node)->force_reload = TRUE;
-		queue_image_load(node);
+		queue_image_load(bostree_node_weak_ref(node));
 	}
 	if(event_type == G_FILE_MONITOR_EVENT_DELETED) {
 		// It is a difficult decision what to do here. We could either unload the deleted
@@ -1810,7 +1812,7 @@ void image_file_updated_callback(GFileMonitor *monitor, GFile *file, GFile *othe
 		if(option_watch_files == ON) {
 			FILE(node)->force_reload = TRUE;
 			if(bostree_node_count(file_tree) > 1 || option_allow_empty_window) {
-				queue_image_load(node);
+				queue_image_load(bostree_node_weak_ref(node));
 			}
 		}
 	}
@@ -2190,7 +2192,7 @@ gboolean image_loader_load_single(BOSNode *node, gboolean called_from_main) {/*{
 					// a shuffle cycle is reached, such that next_file() starts a new one. Fall
 					// back to display the first image. See bug #35 in github.
 					current_file_node = bostree_node_weak_ref(bostree_select(file_tree, 0));
-					queue_image_load(current_file_node);
+					queue_image_load(bostree_node_weak_ref(current_file_node));
 				}
 				else {
 					current_file_node = NULL;
@@ -2198,7 +2200,7 @@ gboolean image_loader_load_single(BOSNode *node, gboolean called_from_main) {/*{
 			}
 			else {
 				current_file_node = bostree_node_weak_ref(current_file_node);
-				queue_image_load(current_file_node);
+				queue_image_load(bostree_node_weak_ref(current_file_node));
 			}
 			bostree_remove(file_tree, node);
 			bostree_node_weak_unref(file_tree, node);
@@ -2372,7 +2374,7 @@ gpointer image_loader_thread(gpointer user_data) {/*{{{*/
 				) {
 					// If this node had force_reload set, we must reload it to populate the cache
 					if(FILE(loaded_node)->force_reload && loaded_node == node) {
-						queue_image_load(node);
+						queue_image_load(bostree_node_weak_ref(node));
 					}
 
 					unload_image(loaded_node);
@@ -2468,11 +2470,11 @@ gboolean initialize_image_loader() {/*{{{*/
 		D_LOCK(file_tree);
 		BOSNode *next = next_file();
 		if(!FILE(next)->is_loaded) {
-			queue_image_load(next);
+			queue_image_load(bostree_node_weak_ref(next));
 		}
 		BOSNode *previous = previous_file();
 		if(!FILE(previous)->is_loaded) {
-			queue_image_load(previous);
+			queue_image_load(bostree_node_weak_ref(previous));
 		}
 		D_UNLOCK(file_tree);
 	}
@@ -2496,14 +2498,14 @@ void abort_pending_image_loads(BOSNode *new_pos) {/*{{{*/
 }/*}}}*/
 void queue_image_load(BOSNode *node) {/*{{{*/
 	struct image_loader_queue_item *it = g_slice_new(struct image_loader_queue_item);
-	it->node_ref = bostree_node_weak_ref(node);
+	it->node_ref = node; // Must be weak_ref'ed by caller. (Simplifies thread safety.)
 	it->purpose = DEFAULT;
 	g_async_queue_push(image_loader_queue, it);
 }/*}}}*/
 #ifndef CONFIGURED_WITHOUT_MONTAGE_MODE
 void queue_thumbnail_load(BOSNode *node) {/*{{{*/
 	struct image_loader_queue_item *it = g_slice_new(struct image_loader_queue_item);
-	it->node_ref = bostree_node_weak_ref(node);
+	it->node_ref = node; // Must be weak_ref'ed by caller.
 	it->purpose = MONTAGE;
 	g_async_queue_push(image_loader_queue, it);
 }/*}}}*/
@@ -2547,7 +2549,7 @@ void remove_image(BOSNode *node) {/*{{{*/
 			g_bytes_unref(CURRENT_FILE->file_data);
 			CURRENT_FILE->file_data = NULL;
 		}
-		queue_image_load(current_file_node);
+		queue_image_load(bostree_node_weak_ref(current_file_node));
 	}
 	else {
 		unload_image(node);
@@ -2563,10 +2565,10 @@ void preload_adjacent_images() {/*{{{*/
 		BOSNode *new_next = next_file();
 
 		if(!FILE(new_next)->is_loaded) {
-			queue_image_load(new_next);
+			queue_image_load(bostree_node_weak_ref(new_next));
 		}
 		if(!FILE(new_prev)->is_loaded) {
-			queue_image_load(new_prev);
+			queue_image_load(bostree_node_weak_ref(new_prev));
 		}
 		D_UNLOCK(file_tree);
 	}
@@ -2596,7 +2598,6 @@ gboolean absolute_image_movement(BOSNode *ref) {/*{{{*/
 	}
 	earlier_file_node = current_file_node;
 	current_file_node = bostree_node_weak_ref(node);
-	D_UNLOCK(file_tree);
 
 	// Update the active key binding such that redraws of the old image do not
 	// continue an active action chain anymore
@@ -2606,7 +2607,6 @@ gboolean absolute_image_movement(BOSNode *ref) {/*{{{*/
 		bostree_node_weak_unref(file_tree, current_file_node);
 	}
 	current_file_node = bostree_node_weak_ref(node);
-	D_UNLOCK(file_tree);
 #endif
 
 #ifndef CONFIGURED_WITHOUT_INFO_TEXT
@@ -2618,7 +2618,9 @@ gboolean absolute_image_movement(BOSNode *ref) {/*{{{*/
 #endif
 
 	// Load it
-	queue_image_load(current_file_node);
+	queue_image_load(bostree_node_weak_ref(current_file_node));
+
+	D_UNLOCK(file_tree);
 
 	// Preload the adjacent images
 	preload_adjacent_images();
@@ -3027,11 +3029,13 @@ void directory_image_movement(int direction) {/*{{{*/
 	}
 	#ifndef CONFIGURED_WITHOUT_MONTAGE_MODE
 	else if(application_mode == MONTAGE) {
+		D_LOCK(file_tree);
 		if(montage_window_control.selected_node != NULL) {
 			bostree_node_weak_unref(file_tree, montage_window_control.selected_node);
 		}
 		montage_window_control.selected_node = target;
 		montage_window_move_cursor(0, 0, FALSE);
+		D_UNLOCK(file_tree);
 	}
 	#endif
 }/*}}}*/
@@ -3885,6 +3889,8 @@ void montage_window_set_cursor(int pos_x, int pos_y) {
 	montage_window_control.selected_node = bostree_node_weak_ref(bostree_select(file_tree, new_selection));
 }
 void montage_window_move_cursor(int move_x, int move_y, gboolean maintain_relative_pos) {
+	// Must be called with an active lock.
+
 	const unsigned n_thumbs_x = main_window_width / (option_thumbnails.width + 10);
 	const unsigned n_thumbs_y = main_window_height / (option_thumbnails.height + 10);
 	const ptrdiff_t number_of_images = (ptrdiff_t)bostree_node_count(file_tree);
@@ -3940,16 +3946,11 @@ void montage_window_move_cursor(int move_x, int move_y, gboolean maintain_relati
 	// Queue loading of thumbnails
 	size_t top_left_id = montage_window_control.scroll_y * n_thumbs_x;
 	abort_pending_image_loads(selected_node);
-	queue_image_load(selected_node);
+	queue_image_load(bostree_node_weak_ref(selected_node));
 	BOSNode *thumb_node = bostree_select(file_tree, top_left_id);
 	for(size_t draw_now = 0; draw_now < n_thumbs_x * n_thumbs_y && thumb_node; draw_now++, thumb_node = bostree_next_node(thumb_node)) {
 		if(thumb_node != selected_node && !FILE(thumb_node)->thumbnail) {
-			queue_thumbnail_load(thumb_node);
-		}
-		else if(FILE(thumb_node)->thumbnail && cairo_image_surface_get_width(FILE(thumb_node)->thumbnail) != option_thumbnails.width && cairo_image_surface_get_height(FILE(thumb_node)->thumbnail) != option_thumbnails.height) {
-			cairo_surface_destroy(FILE(thumb_node)->thumbnail);
-			FILE(thumb_node)->thumbnail = NULL;
-			queue_thumbnail_load(thumb_node);
+			queue_thumbnail_load(bostree_node_weak_ref(thumb_node));
 		}
 	}
 }
@@ -3993,15 +3994,6 @@ gboolean window_draw_thumbnail_montage(cairo_t *cr_arg) {/*{{{*/
 			break;
 		}
 		file_t *thumb_file = FILE(thumb_node);
-
-
-		if(thumb_file->thumbnail && cairo_image_surface_get_width(thumb_file->thumbnail) != option_thumbnails.width && cairo_image_surface_get_height(thumb_file->thumbnail) != option_thumbnails.height &&
-					(thumb_file->width > (unsigned)option_thumbnails.width || thumb_file->height > (unsigned)option_thumbnails.height)
-				) {
-			cairo_surface_destroy(thumb_file->thumbnail);
-			thumb_file->thumbnail = NULL;
-			queue_thumbnail_load(thumb_node);
-		}
 
 		if(thumb_file->thumbnail) {
 			cairo_save(cr_arg);
@@ -4525,7 +4517,9 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 			if(!is_current_file_loaded()) return;
 			CURRENT_FILE->force_reload = TRUE;
 			update_info_text("Reloading image..");
-			queue_image_load(relative_image_pointer(0));
+			D_LOCK(file_tree);
+			queue_image_load(bostree_node_weak_ref(relative_image_pointer(0)));
+			D_UNLOCK(file_tree);
 			return;
 			break;
 
@@ -4720,11 +4714,13 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 						}
 						#ifndef CONFIGURED_WITHOUT_MONTAGE_MODE
 						else if(application_mode == MONTAGE) {
+							D_LOCK(file_tree);
 							if(montage_window_control.selected_node != NULL) {
 								bostree_node_weak_unref(file_tree, montage_window_control.selected_node);
 							}
 							montage_window_control.selected_node = node;
 							montage_window_move_cursor(0, 0, FALSE);
+							D_UNLOCK(file_tree);
 							gtk_widget_queue_draw(GTK_WIDGET(main_window));
 						}
 						#endif
@@ -4759,11 +4755,13 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 						}
 						#ifndef CONFIGURED_WITHOUT_MONTAGE_MODE
 						else if(application_mode == MONTAGE) {
+							D_LOCK(file_tree);
 							if(montage_window_control.selected_node != NULL) {
 								bostree_node_weak_unref(file_tree, montage_window_control.selected_node);
 							}
 							montage_window_control.selected_node = node;
 							montage_window_move_cursor(0, 0, FALSE);
+							D_UNLOCK(file_tree);
 							gtk_widget_queue_draw(GTK_WIDGET(main_window));
 						}
 						#endif
@@ -5020,8 +5018,20 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 		case ACTION_SET_THUMBNAIL_SIZE:
 			option_thumbnails.width = parameter.p2short.p1;
 			option_thumbnails.height = parameter.p2short.p2;
+
+			D_LOCK(file_tree);
+			for(BOSNode *node = bostree_select(file_tree, 0); node; node = bostree_next_node(node)) {
+				if(FILE(node)->thumbnail) {
+					cairo_surface_destroy(FILE(node)->thumbnail);
+					FILE(node)->thumbnail = NULL;
+				}
+			}
+			D_UNLOCK(file_tree);
+
 			if(application_mode == MONTAGE) {
+				D_LOCK(file_tree);
 				montage_window_move_cursor(0, 0, FALSE);
+				D_UNLOCK(file_tree);
 				gtk_widget_queue_draw(GTK_WIDGET(main_window));
 			}
 			break;
@@ -5038,11 +5048,13 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 			option_thumbnails.enabled = TRUE;
 			application_mode = MONTAGE;
 			active_key_binding_context = MONTAGE;
+			D_LOCK(file_tree);
 			if(montage_window_control.selected_node) {
 				bostree_node_weak_unref(file_tree, montage_window_control.selected_node);
 			}
 			montage_window_control.selected_node = bostree_node_weak_ref(current_file_node);
 			montage_window_move_cursor(0, 0, FALSE);
+			D_UNLOCK(file_tree);
 			update_info_text(NULL);
 			main_window_adjust_for_image();
 
@@ -5053,7 +5065,9 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 			if(application_mode != MONTAGE) {
 				break;
 			}
+			D_LOCK(file_tree);
 			montage_window_move_cursor(parameter.pint, 0, FALSE);
+			D_UNLOCK(file_tree);
 			gtk_widget_queue_draw(GTK_WIDGET(main_window));
 			break;
 
@@ -5061,7 +5075,9 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 			if(application_mode != MONTAGE) {
 				break;
 			}
+			D_LOCK(file_tree);
 			montage_window_move_cursor(0, parameter.pint, FALSE);
+			D_UNLOCK(file_tree);
 			gtk_widget_queue_draw(GTK_WIDGET(main_window));
 			break;
 
@@ -5085,7 +5101,9 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 			if(application_mode != MONTAGE) {
 				break;
 			}
+			D_LOCK(file_tree);
 			montage_window_move_cursor(0, parameter.pint * main_window_height / (option_thumbnails.height + 10), TRUE);
+			D_UNLOCK(file_tree);
 			gtk_widget_queue_draw(GTK_WIDGET(main_window));
 			break;
 
@@ -5203,7 +5221,9 @@ gboolean window_configure_callback(GtkWidget *widget, GdkEventConfigure *event, 
 	if(application_mode == MONTAGE) {
 		// Make sure that the currently selected image stays in view & that all
 		// visible thumbnails are loaded
+		D_LOCK(file_tree);
 		montage_window_move_cursor(0, 0, FALSE);
+		D_UNLOCK(file_tree);
 	}
 	#endif
 
