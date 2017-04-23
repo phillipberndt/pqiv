@@ -3885,11 +3885,12 @@ void montage_window_move_cursor(int move_x, int move_y, gboolean maintain_relati
 	const unsigned n_thumbs_x = main_window_width / (option_thumbnails.width + 10);
 	const unsigned n_thumbs_y = main_window_height / (option_thumbnails.height + 10);
 	const ptrdiff_t number_of_images = (ptrdiff_t)bostree_node_count(file_tree);
-	const ptrdiff_t n_rows_total = number_of_images / n_thumbs_x;
 
 	if(n_thumbs_x == 0 || n_thumbs_y == 0) {
 		return;
 	}
+
+	const ptrdiff_t n_rows_total = number_of_images / n_thumbs_x;
 
 	BOSNode *selected_node = bostree_node_weak_unref(file_tree, montage_window_control.selected_node);
 	if(!selected_node) {
