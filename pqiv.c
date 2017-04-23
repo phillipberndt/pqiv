@@ -2304,12 +2304,15 @@ gpointer image_loader_thread(gpointer user_data) {/*{{{*/
 		if(purpose == MONTAGE) {
 			// Unload an old thumbnail if it does not have the correct size
 			D_LOCK(file_tree);
-			if(FILE(node)->thumbnail &&
-					cairo_image_surface_get_width(FILE(node)->thumbnail) != option_thumbnails.width && cairo_image_surface_get_height(FILE(node)->thumbnail) != option_thumbnails.height &&
-					(FILE(node)->width > (unsigned)option_thumbnails.width || FILE(node)->height > (unsigned)option_thumbnails.height)
-				) {
-				cairo_surface_destroy(FILE(node)->thumbnail);
-				FILE(node)->thumbnail = NULL;
+			if(FILE(node)->thumbnail) {
+				const int thumb_width = cairo_image_surface_get_width(FILE(node)->thumbnail);
+				const int thumb_height = cairo_image_surface_get_height(FILE(node)->thumbnail);
+				if(!((thumb_width == option_thumbnails.width && thumb_height <= option_thumbnails.height) ||
+					  (thumb_width <= option_thumbnails.width && thumb_height == option_thumbnails.height) ||
+					  (thumb_width == (int)FILE(node)->width && thumb_height == (int)FILE(node)->height))) {
+					cairo_surface_destroy(FILE(node)->thumbnail);
+					FILE(node)->thumbnail = NULL;
+				}
 			}
 			D_UNLOCK(file_tree);
 			if(!FILE(node)->thumbnail && option_thumbnails.enabled && option_thumbnails.persist) {
@@ -3942,12 +3945,18 @@ void montage_window_move_cursor(int move_x, int move_y, gboolean maintain_relati
 	queue_image_load(bostree_node_weak_ref(selected_node));
 	BOSNode *thumb_node = bostree_select(file_tree, top_left_id);
 	for(size_t draw_now = 0; draw_now < n_thumbs_x * n_thumbs_y && thumb_node; draw_now++, thumb_node = bostree_next_node(thumb_node)) {
-		if(FILE(thumb_node)->thumbnail &&
-				cairo_image_surface_get_width(FILE(thumb_node)->thumbnail) != option_thumbnails.width && cairo_image_surface_get_height(FILE(thumb_node)->thumbnail) != option_thumbnails.height &&
-				(FILE(thumb_node)->width > (unsigned)option_thumbnails.width || FILE(thumb_node)->height > (unsigned)option_thumbnails.height)) {
-			queue_thumbnail_load(bostree_node_weak_ref(thumb_node));
+		if(FILE(thumb_node)->thumbnail) {
+			int thumb_width = cairo_image_surface_get_width(FILE(thumb_node)->thumbnail);
+			int thumb_height = cairo_image_surface_get_height(FILE(thumb_node)->thumbnail);
+			if(!((thumb_width == option_thumbnails.width && thumb_height <= option_thumbnails.height) ||
+					(thumb_width <= option_thumbnails.width && thumb_height == option_thumbnails.height) ||
+					(thumb_width == (int)FILE(thumb_node)->width && thumb_height == (int)FILE(thumb_node)->height))) {
+				cairo_surface_destroy(FILE(thumb_node)->thumbnail);
+				FILE(thumb_node)->thumbnail = NULL;
+				queue_thumbnail_load(bostree_node_weak_ref(thumb_node));
+			}
 		}
-		else if(thumb_node != selected_node && !FILE(thumb_node)->thumbnail) {
+		else if(thumb_node != selected_node) {
 			queue_thumbnail_load(bostree_node_weak_ref(thumb_node));
 		}
 	}
