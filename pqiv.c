@@ -3942,7 +3942,12 @@ void montage_window_move_cursor(int move_x, int move_y, gboolean maintain_relati
 	queue_image_load(bostree_node_weak_ref(selected_node));
 	BOSNode *thumb_node = bostree_select(file_tree, top_left_id);
 	for(size_t draw_now = 0; draw_now < n_thumbs_x * n_thumbs_y && thumb_node; draw_now++, thumb_node = bostree_next_node(thumb_node)) {
-		if(thumb_node != selected_node && !FILE(thumb_node)->thumbnail) {
+		if(FILE(thumb_node)->thumbnail &&
+				cairo_image_surface_get_width(FILE(thumb_node)->thumbnail) != option_thumbnails.width && cairo_image_surface_get_height(FILE(thumb_node)->thumbnail) != option_thumbnails.height &&
+				(FILE(thumb_node)->width > (unsigned)option_thumbnails.width || FILE(thumb_node)->height > (unsigned)option_thumbnails.height)) {
+			queue_thumbnail_load(bostree_node_weak_ref(thumb_node));
+		}
+		else if(thumb_node != selected_node && !FILE(thumb_node)->thumbnail) {
 			queue_thumbnail_load(bostree_node_weak_ref(thumb_node));
 		}
 	}
@@ -5011,6 +5016,10 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 		case ACTION_SET_THUMBNAIL_SIZE:
 			option_thumbnails.width = parameter.p2short.p1;
 			option_thumbnails.height = parameter.p2short.p2;
+
+			if(application_mode == MONTAGE) {
+				abort_pending_image_loads(NULL);
+			}
 
 			D_LOCK(file_tree);
 			for(BOSNode *node = bostree_select(file_tree, 0); node; node = bostree_next_node(node)) {
