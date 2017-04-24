@@ -360,6 +360,7 @@ gboolean option_status_output = FALSE;
 static const gboolean option_actions_from_stdin = FALSE;
 #endif
 double option_fading_duration = .5;
+double option_keyboard_timeout = .5;
 gint option_max_depth = -1;
 gboolean option_browse = FALSE;
 enum { QUIT, WAIT, WRAP, WRAP_NO_RESHUFFLE } option_end_of_files_action = WRAP;
@@ -675,6 +676,7 @@ const struct pqiv_action_descriptor {
 	{ "goto_earlier_file", PARAMETER_NONE },
 	{ "set_cursor_auto_hide", PARAMETER_INT },
 	{ "set_fade_duration", PARAMETER_DOUBLE },
+	{ "set_keyboard_timeout", PARAMETER_DOUBLE },
 	{ "set_thumbnail_size", PARAMETER_2SHORT },
 	{ "montage_mode_enter", PARAMETER_NONE },
 	{ "montage_mode_shift_x", PARAMETER_INT },
@@ -5015,6 +5017,10 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 			option_fading_duration = parameter.pdouble;
 			option_fading = fabs(option_fading_duration) <= 0;
 			break;
+
+		case ACTION_SET_KEYBOARD_TIMEOUT:
+			option_keyboard_timeout = parameter.pdouble;
+			break;
 #endif
 
 #ifndef CONFIGURED_WITHOUT_MONTAGE_MODE
@@ -5324,7 +5330,7 @@ void handle_input_event(guint key_binding_value) {/*{{{*/
 		if(binding->next_key_bindings) {
 			active_key_binding.key_binding = binding;
 			active_key_binding.associated_image = current_file_node;
-			active_key_binding.timeout_id = gdk_threads_add_timeout(400, handle_input_event_timeout_callback, NULL);
+			active_key_binding.timeout_id = gdk_threads_add_timeout((size_t)(option_keyboard_timeout * 1000), handle_input_event_timeout_callback, NULL);
 		}
 		else {
 			active_key_binding.key_binding = binding->next_action;
