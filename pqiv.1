@@ -403,6 +403,12 @@ Display the jump dialog.
 .BR montage_mode_enter()
 Enter montage mode, a view for interactive selection of images.
 .TP
+.BR montage_mode_follow(INT)
+Disable (by using a parameter value of 0) or enable (by using any other value)
+follow mode. In follow mode, \fBpqiv\fR will draw mnemonics on top of each
+thumbnail that is reachable by typing a key (combination). Use this to realize
+keyboard navigation similar to vimperator/pentadactyl/vimium/etc.
+.TP
 .BR montage_mode_return_proceed()
 Leave montage mode, and goto the currently selected image.
 .TP

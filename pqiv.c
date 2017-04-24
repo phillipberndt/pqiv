@@ -408,6 +408,7 @@ struct {
 struct {
 	int scroll_y;
 	BOSNode *selected_node;
+	gboolean follow_mode;
 } montage_window_control;
 #endif
 
@@ -684,6 +685,7 @@ const struct pqiv_action_descriptor {
 	{ "montage_mode_set_shift_x", PARAMETER_INT },
 	{ "montage_mode_set_shift_y", PARAMETER_INT },
 	{ "montage_mode_shift_y_pg", PARAMETER_INT },
+	{ "montage_mode_follow", PARAMETER_INT },
 	{ "montage_mode_return_proceed", PARAMETER_NONE },
 	{ "montage_mode_return_cancel", PARAMETER_NONE },
 	{ NULL, 0 }
@@ -2984,14 +2986,13 @@ BOSNode *directory_image_movement_find_different_directory(BOSNode *current, int
 
 	return target;
 }/*}}}*/
-void directory_image_movement(int direction) {/*{{{*/
+BOSNode *relative_image_pointer_directory(int direction) {/*{{{*/
 	// Directory movement
 	//
 	// This should be consistent, i.e. movements in different directions should
 	// be inverse operations of each other. This makes this function slightly
 	// complex.
-
-	D_LOCK(file_tree);
+	//
 	BOSNode *target;
 	BOSNode *current = current_file_node;
 
@@ -3014,7 +3015,17 @@ void directory_image_movement(int direction) {/*{{{*/
 		}
 	}
 
-	target = bostree_node_weak_ref(target);
+	return target;
+}/*}}}*/
+void directory_image_movement(int direction) {/*{{{*/
+	// Directory movement
+	//
+	// This should be consistent, i.e. movements in different directions should
+	// be inverse operations of each other. This makes this function slightly
+	// complex.
+
+	D_LOCK(file_tree);
+	BOSNode *target = bostree_node_weak_ref(relative_image_pointer_directory(direction));
 	D_UNLOCK(file_tree);
 
 	if(application_mode == DEFAULT) {
@@ -3959,6 +3970,123 @@ void montage_window_move_cursor(int move_x, int move_y, gboolean maintain_relati
 		}
 	}
 }
+struct window_draw_thumbnail_montage_follow_mode_data {
+	cairo_t *cr;
+	unsigned n_thumbs_x;
+	unsigned n_thumbs_y;
+	int current_x;
+	int current_y;
+	char *active_prefix;
+};
+void window_draw_thumbnail_montage_follow_mode_looper(gpointer key, gpointer value, gpointer user_data) {/*{{{*/
+	struct window_draw_thumbnail_montage_follow_mode_data data = *(struct window_draw_thumbnail_montage_follow_mode_data *)user_data;
+	guint key_binding_value = GPOINTER_TO_UINT(key);
+	key_binding_t *binding = value;
+	data.active_prefix = key_binding_sequence_to_string(key_binding_value, data.active_prefix);
+
+	if(binding->next_key_bindings) {
+		g_hash_table_foreach(binding->next_key_bindings, window_draw_thumbnail_montage_follow_mode_looper, &data);
+	}
+
+	ptrdiff_t target_index;
+	BOSNode *target_node;
+	for(; binding; binding = binding->next_action) {
+		switch(binding->action) {
+			case ACTION_MONTAGE_MODE_SET_SHIFT_X:
+				data.current_x = binding->parameter.pint;
+				break;
+			case ACTION_MONTAGE_MODE_SET_SHIFT_Y:
+				data.current_y = binding->parameter.pint;
+				break;
+			case ACTION_MONTAGE_MODE_SHIFT_X:
+				data.current_y += (data.current_x + binding->parameter.pint) / data.n_thumbs_x;
+				data.current_x  = (data.current_x + binding->parameter.pint) % data.n_thumbs_x;
+				break;
+			case ACTION_MONTAGE_MODE_SHIFT_Y:
+				data.current_y += binding->parameter.pint;
+				break;
+			case ACTION_MONTAGE_MODE_SHIFT_Y_PG:
+				// The idea of this action is to leave the region. Don't try to replicate the logic here
+				// in the hope that no user will ever write unoptimized key bindings that loop around..
+				data.current_y = -1;
+				while(binding->next_action) {
+					binding = binding->next_action;
+				}
+				break;
+			case ACTION_GOTO_FILE_RELATIVE:
+				target_index = bostree_rank(relative_image_pointer(binding->parameter.pint));
+				data.current_y = target_index / data.n_thumbs_x - montage_window_control.scroll_y;
+				data.current_x = target_index % data.n_thumbs_x;
+				break;
+			case ACTION_GOTO_FILE_BYINDEX:
+				target_index = binding->parameter.pint;
+				data.current_y = target_index / data.n_thumbs_x - montage_window_control.scroll_y;
+				data.current_x = target_index % data.n_thumbs_x;
+				break;
+			case ACTION_GOTO_FILE_BYNAME:
+				target_node = image_pointer_by_name(binding->parameter.pcharptr);
+				if(target_node) {
+					target_index = bostree_rank(target_node);
+					data.current_y = target_index / data.n_thumbs_x - montage_window_control.scroll_y;
+					data.current_x = target_index % data.n_thumbs_x;
+				}
+				break;
+			case ACTION_GOTO_DIRECTORY_RELATIVE:
+				target_node = relative_image_pointer_directory(binding->parameter.pint);
+				if(target_node) {
+					target_index = bostree_rank(target_node);
+					data.current_y = target_index / data.n_thumbs_x - montage_window_control.scroll_y;
+					data.current_x = target_index % data.n_thumbs_x;
+				}
+				break;
+			default:
+				break;
+		}
+	}
+
+	if(data.current_x >= 0 && (unsigned)data.current_x < data.n_thumbs_x && data.current_y >= 0 && (unsigned)data.current_y < data.n_thumbs_y &&
+			((data.current_x != ((struct window_draw_thumbnail_montage_follow_mode_data *)user_data)->current_x ||
+			  data.current_y != ((struct window_draw_thumbnail_montage_follow_mode_data *)user_data)->current_y))) {
+
+		cairo_t *cr_arg = data.cr;
+
+		cairo_save(cr_arg);
+
+		cairo_translate(cr_arg,
+			(main_window_width  - data.n_thumbs_x * (option_thumbnails.width + 10)) / 2  + data.current_x * (option_thumbnails.width + 10),
+			(main_window_height - data.n_thumbs_y * (option_thumbnails.height + 10)) / 2 + data.current_y * (option_thumbnails.height + 10)
+		);
+
+		BOSNode *node = bostree_select(file_tree, data.current_y * data.n_thumbs_x + data.current_x);
+		if(node && FILE(node)->thumbnail) {
+			cairo_translate(cr_arg,
+					(option_thumbnails.width  - cairo_image_surface_get_width(FILE(node)->thumbnail)) / 2 + 5,
+					(option_thumbnails.height - cairo_image_surface_get_height(FILE(node)->thumbnail)) / 2 + 5
+			);
+		}
+
+		double x1, y1, x2, y2;
+		cairo_set_font_size(cr_arg, 12);
+		cairo_text_path(cr_arg, data.active_prefix);
+		cairo_path_extents(cr_arg, &x1, &y1, &x2, &y2);
+		cairo_path_t *text_path = cairo_copy_path(cr_arg);
+		cairo_new_path(cr_arg);
+		cairo_rectangle(cr_arg, -5, -(y2 - y1) - 2, x2 - x1 + 10, y2 - y1 + 8);
+		cairo_close_path(cr_arg);
+		cairo_set_source_rgb(cr_arg, 1., 1., 0.);
+		cairo_fill(cr_arg);
+
+		cairo_new_path(cr_arg);
+		cairo_append_path(cr_arg, text_path);
+		cairo_set_source_rgb(cr_arg, 0., 0., 0.);
+		cairo_fill(cr_arg);
+		cairo_path_destroy(text_path);
+
+		cairo_restore(cr_arg);
+	}
+
+	free(data.active_prefix);
+}/*}}}*/
 gboolean window_draw_thumbnail_montage(cairo_t *cr_arg) {/*{{{*/
 	D_LOCK(file_tree);
 
@@ -4034,6 +4162,23 @@ gboolean window_draw_thumbnail_montage(cairo_t *cr_arg) {/*{{{*/
 			cairo_stroke(cr_arg);
 			cairo_restore(cr_arg);
 		}
+	}
+
+	// In follow mode, draw the key mappings on top of the images
+	if(montage_window_control.follow_mode) {
+		const int selected_x = selection_rank % n_thumbs_x;
+		const int selected_y = selection_rank / n_thumbs_x - montage_window_control.scroll_y;
+
+		struct window_draw_thumbnail_montage_follow_mode_data data = {
+			cr_arg, n_thumbs_x, n_thumbs_y, selected_x, selected_y, (char*)""
+		};
+
+		g_hash_table_foreach(
+				active_key_binding.key_binding && active_key_binding.key_binding->next_key_bindings ?
+					active_key_binding.key_binding->next_key_bindings :
+					key_bindings[active_key_binding_context],
+				window_draw_thumbnail_montage_follow_mode_looper,
+				&data);
 	}
 
 	D_UNLOCK(file_tree);
@@ -5120,6 +5265,11 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 			gtk_widget_queue_draw(GTK_WIDGET(main_window));
 			break;
 
+		case ACTION_MONTAGE_MODE_FOLLOW:
+			montage_window_control.follow_mode = !!parameter.pint;
+			gtk_widget_queue_draw(GTK_WIDGET(main_window));
+			break;
+
 		case ACTION_MONTAGE_MODE_RETURN_PROCEED:
 		case ACTION_MONTAGE_MODE_RETURN_CANCEL:
 			option_thumbnails.enabled = FALSE;
@@ -5331,6 +5481,12 @@ void handle_input_event(guint key_binding_value) {/*{{{*/
 			active_key_binding.key_binding = binding;
 			active_key_binding.associated_image = current_file_node;
 			active_key_binding.timeout_id = gdk_threads_add_timeout((size_t)(option_keyboard_timeout * 1000), handle_input_event_timeout_callback, NULL);
+
+			#ifndef CONFIGURED_WITHOUT_MONTAGE_MODE
+			if(application_mode == MONTAGE && montage_window_control.follow_mode) {
+				gtk_widget_queue_draw(GTK_WIDGET(main_window));
+			}
+			#endif
 		}
 		else {
 			active_key_binding.key_binding = binding->next_action;
@@ -5405,8 +5561,10 @@ gboolean window_motion_notify_callback(GtkWidget *widget, GdkEventMotion *event,
 		}
 
 		if(event->state & GDK_BUTTON1_MASK) {
-			current_shift_x += dev_x;
-			current_shift_y += dev_y;
+			if(application_mode == DEFAULT) {
+				current_shift_x += dev_x;
+				current_shift_y += dev_y;
+			}
 		}
 		else if(event->state & GDK_BUTTON3_MASK) {
 			current_scale_level += dev_y / 1000.;
