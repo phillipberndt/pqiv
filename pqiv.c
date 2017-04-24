@@ -4057,7 +4057,7 @@ void window_draw_thumbnail_montage_follow_mode_looper(gpointer key, gpointer val
 			(main_window_height - data.n_thumbs_y * (option_thumbnails.height + 10)) / 2 + data.current_y * (option_thumbnails.height + 10)
 		);
 
-		BOSNode *node = bostree_select(file_tree, data.current_y * data.n_thumbs_x + data.current_x);
+			BOSNode *node = bostree_select(file_tree, (montage_window_control.scroll_y + data.current_y) * data.n_thumbs_x + data.current_x);
 		if(node && FILE(node)->thumbnail) {
 			cairo_translate(cr_arg,
 					(option_thumbnails.width  - cairo_image_surface_get_width(FILE(node)->thumbnail)) / 2 + 5,
