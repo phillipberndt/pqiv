@@ -3856,7 +3856,7 @@ void calculate_base_draw_pos_and_size(int *image_transform_width, int *image_tra
 	}
 }/*}}}*/
 #ifndef CONFIGURED_WITHOUT_MONTAGE_MODE
-void montage_window_set_cursor(int pos_x, int pos_y) {
+void montage_window_set_cursor(int pos_x, int pos_y) {/*{{{*/
 	const unsigned n_thumbs_x = main_window_width / (option_thumbnails.width + 10);
 	const unsigned n_thumbs_y = main_window_height / (option_thumbnails.height + 10);
 	const size_t number_of_images = (ptrdiff_t)bostree_node_count(file_tree);
@@ -3891,8 +3891,8 @@ void montage_window_set_cursor(int pos_x, int pos_y) {
 	}
 
 	montage_window_control.selected_node = bostree_node_weak_ref(bostree_select(file_tree, new_selection));
-}
-void montage_window_move_cursor(int move_x, int move_y, gboolean maintain_relative_pos) {
+}/*}}}*/
+void montage_window_move_cursor(int move_x, int move_y, gboolean maintain_relative_pos) {/*{{{*/
 	// Must be called with an active lock.
 
 	const unsigned n_thumbs_x = main_window_width / (option_thumbnails.width + 10);
@@ -3969,7 +3969,7 @@ void montage_window_move_cursor(int move_x, int move_y, gboolean maintain_relati
 			queue_thumbnail_load(bostree_node_weak_ref(thumb_node));
 		}
 	}
-}
+}/*}}}*/
 struct window_draw_thumbnail_montage_follow_mode_data {
 	cairo_t *cr;
 	unsigned n_thumbs_x;
