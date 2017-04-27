@@ -408,7 +408,7 @@ struct {
 struct {
 	int scroll_y;
 	BOSNode *selected_node;
-	gboolean follow_mode;
+	gboolean show_binding_overlays;
 } montage_window_control;
 #endif
 
@@ -501,6 +501,10 @@ const char * const key_binding_context_names[] = {
 };
 #endif
 enum context_t { DEFAULT, MONTAGE };
+
+#ifndef CONFIGURED_WITHOUT_MONTAGE_MODE
+static char montage_mode_default_keys[] = "asdfghjkl";
+#endif
 
 static const struct default_key_bindings_struct {
 	enum context_t context;
@@ -600,6 +604,7 @@ static const struct default_key_bindings_struct {
 	{ MONTAGE, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_Escape           ), ACTION_MONTAGE_MODE_RETURN_CANCEL      , { 0   }},
 	{ MONTAGE, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_m                ), ACTION_MONTAGE_MODE_RETURN_CANCEL      , { 0   }},
 	{ MONTAGE, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_f                ), ACTION_TOGGLE_FULLSCREEN               , { 0   }},
+	{ MONTAGE, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_g                ), ACTION_MONTAGE_MODE_FOLLOW             , { .pcharptr = (char*)montage_mode_default_keys }},
 	{ MONTAGE, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_q                ), ACTION_QUIT                            , { 0   }},
 #endif
 
@@ -624,6 +629,11 @@ struct {
 	BOSNode *associated_image;
 	gint timeout_id;
 } active_key_binding = { NULL, NULL, -1 };
+
+#ifndef CONFIGURED_WITHOUT_MONTAGE_MODE
+key_binding_t follow_mode_key_binding = { ACTION_MONTAGE_MODE_FOLLOW_PROCEED, { .p2short = { -1, -1 } }, NULL, NULL };
+#endif
+
 #endif
 
 const struct pqiv_action_descriptor {
@@ -685,7 +695,9 @@ const struct pqiv_action_descriptor {
 	{ "montage_mode_set_shift_x", PARAMETER_INT },
 	{ "montage_mode_set_shift_y", PARAMETER_INT },
 	{ "montage_mode_shift_y_pg", PARAMETER_INT },
-	{ "montage_mode_follow", PARAMETER_INT },
+	{ "montage_mode_show_binding_overlays", PARAMETER_INT },
+	{ "montage_mode_follow", PARAMETER_CHARPTR },
+	{ "montage_mode_follow_proceed", PARAMETER_2SHORT },
 	{ "montage_mode_return_proceed", PARAMETER_NONE },
 	{ "montage_mode_return_cancel", PARAMETER_NONE },
 	{ NULL, 0 }
@@ -756,6 +768,7 @@ static void UNUSED_FUNCTION unblock_active_input_event_action_chain();
 void draw_current_image_to_context(cairo_t *cr);
 #ifndef CONFIGURED_WITHOUT_ACTIONS
 gboolean window_auto_hide_cursor_callback(gpointer user_data);
+gboolean handle_input_event_timeout_callback(gpointer user_data);
 #endif
 #ifndef CONFIGURED_WITHOUT_MONTAGE_MODE
 void montage_window_move_cursor(int, int, gboolean);
@@ -2294,7 +2307,9 @@ gpointer image_loader_thread(gpointer user_data) {/*{{{*/
 		// Handle new queued image load
 		struct image_loader_queue_item *it = g_async_queue_pop(image_loader_queue);
 		BOSNode *node = it->node_ref;
+		#ifndef CONFIGURED_WITHOUT_MONTAGE_MODE
 		image_loader_purpose_t purpose = it->purpose;
+		#endif
 		g_slice_free(struct image_loader_queue_item, it);
 
 		// Short-circuit: If we want to load this image for its thumbnail, check the cache first.
@@ -3890,7 +3905,11 @@ void montage_window_set_cursor(int pos_x, int pos_y) {/*{{{*/
 		new_selection = number_of_images - 1;
 	}
 
-	montage_window_control.selected_node = bostree_node_weak_ref(bostree_select(file_tree, new_selection));
+	BOSNode *new_selected_node = bostree_select(file_tree, new_selection);
+	if(!new_selected_node) {
+		new_selected_node = selected_node;
+	}
+	montage_window_control.selected_node = bostree_node_weak_ref(new_selected_node);
 }/*}}}*/
 void montage_window_move_cursor(int move_x, int move_y, gboolean maintain_relative_pos) {/*{{{*/
 	// Must be called with an active lock.
@@ -3970,7 +3989,8 @@ void montage_window_move_cursor(int move_x, int move_y, gboolean maintain_relati
 		}
 	}
 }/*}}}*/
-struct window_draw_thumbnail_montage_follow_mode_data {
+#ifndef CONFIGURED_WITHOUT_ACTIONS
+struct window_draw_thumbnail_montage_show_binding_overlays_data {
 	cairo_t *cr;
 	unsigned n_thumbs_x;
 	unsigned n_thumbs_y;
@@ -3978,14 +3998,14 @@ struct window_draw_thumbnail_montage_follow_mode_data {
 	int current_y;
 	char *active_prefix;
 };
-void window_draw_thumbnail_montage_follow_mode_looper(gpointer key, gpointer value, gpointer user_data) {/*{{{*/
-	struct window_draw_thumbnail_montage_follow_mode_data data = *(struct window_draw_thumbnail_montage_follow_mode_data *)user_data;
+void window_draw_thumbnail_montage_show_binding_overlays_looper(gpointer key, gpointer value, gpointer user_data) {/*{{{*/
+	struct window_draw_thumbnail_montage_show_binding_overlays_data data = *(struct window_draw_thumbnail_montage_show_binding_overlays_data *)user_data;
 	guint key_binding_value = GPOINTER_TO_UINT(key);
 	key_binding_t *binding = value;
 	data.active_prefix = key_binding_sequence_to_string(key_binding_value, data.active_prefix);
 
 	if(binding->next_key_bindings) {
-		g_hash_table_foreach(binding->next_key_bindings, window_draw_thumbnail_montage_follow_mode_looper, &data);
+		g_hash_table_foreach(binding->next_key_bindings, window_draw_thumbnail_montage_show_binding_overlays_looper, &data);
 	}
 
 	ptrdiff_t target_index;
@@ -3997,6 +4017,14 @@ void window_draw_thumbnail_montage_follow_mode_looper(gpointer key, gpointer val
 				break;
 			case ACTION_MONTAGE_MODE_SET_SHIFT_Y:
 				data.current_y = binding->parameter.pint;
+				break;
+			case ACTION_MONTAGE_MODE_FOLLOW_PROCEED:
+				if(binding->parameter.p2short.p1 >= 0) {
+					data.current_x = binding->parameter.p2short.p1;
+				}
+				if(binding->parameter.p2short.p2 >= 0) {
+					data.current_y = binding->parameter.p2short.p2;
+				}
 				break;
 			case ACTION_MONTAGE_MODE_SHIFT_X:
 				data.current_y += (data.current_x + binding->parameter.pint) / data.n_thumbs_x;
@@ -4045,8 +4073,8 @@ void window_draw_thumbnail_montage_follow_mode_looper(gpointer key, gpointer val
 	}
 
 	if(data.current_x >= 0 && (unsigned)data.current_x < data.n_thumbs_x && data.current_y >= 0 && (unsigned)data.current_y < data.n_thumbs_y &&
-			((data.current_x != ((struct window_draw_thumbnail_montage_follow_mode_data *)user_data)->current_x ||
-			  data.current_y != ((struct window_draw_thumbnail_montage_follow_mode_data *)user_data)->current_y))) {
+			((data.current_x != ((struct window_draw_thumbnail_montage_show_binding_overlays_data *)user_data)->current_x ||
+			  data.current_y != ((struct window_draw_thumbnail_montage_show_binding_overlays_data *)user_data)->current_y))) {
 
 		cairo_t *cr_arg = data.cr;
 
@@ -4087,6 +4115,7 @@ void window_draw_thumbnail_montage_follow_mode_looper(gpointer key, gpointer val
 
 	free(data.active_prefix);
 }/*}}}*/
+#endif
 gboolean window_draw_thumbnail_montage(cairo_t *cr_arg) {/*{{{*/
 	D_LOCK(file_tree);
 
@@ -4164,12 +4193,13 @@ gboolean window_draw_thumbnail_montage(cairo_t *cr_arg) {/*{{{*/
 		}
 	}
 
+#ifndef CONFIGURED_WITHOUT_ACTIONS
 	// In follow mode, draw the key mappings on top of the images
-	if(montage_window_control.follow_mode) {
+	if(montage_window_control.show_binding_overlays) {
 		const int selected_x = selection_rank % n_thumbs_x;
 		const int selected_y = selection_rank / n_thumbs_x - montage_window_control.scroll_y;
 
-		struct window_draw_thumbnail_montage_follow_mode_data data = {
+		struct window_draw_thumbnail_montage_show_binding_overlays_data data = {
 			cr_arg, n_thumbs_x, n_thumbs_y, selected_x, selected_y, (char*)""
 		};
 
@@ -4177,9 +4207,10 @@ gboolean window_draw_thumbnail_montage(cairo_t *cr_arg) {/*{{{*/
 				active_key_binding.key_binding && active_key_binding.key_binding->next_key_bindings ?
 					active_key_binding.key_binding->next_key_bindings :
 					key_bindings[active_key_binding_context],
-				window_draw_thumbnail_montage_follow_mode_looper,
+				window_draw_thumbnail_montage_show_binding_overlays_looper,
 				&data);
 	}
+#endif
 
 	D_UNLOCK(file_tree);
 	return TRUE;
@@ -4557,6 +4588,21 @@ gboolean set_scale_level_to_fit_callback(gpointer user_data) {
 	return FALSE;
 }
 /*}}}*/
+#ifndef CONFIGURED_WITHOUT_ACTIONS
+void key_binding_t_destroy_callback(gpointer data) {/*{{{*/
+	key_binding_t *binding = (key_binding_t *)data;
+	if(binding->next_action) {
+		key_binding_t_destroy_callback(binding->next_action);
+	}
+	if(pqiv_action_descriptors[binding->action].parameter_type == PARAMETER_CHARPTR) {
+		g_free(binding->parameter.pcharptr);
+	}
+	if(binding->next_key_bindings) {
+		g_hash_table_unref(binding->next_key_bindings);
+	}
+	g_slice_free(key_binding_t, binding);
+}/*}}}*/
+#endif
 void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 	switch(action_id) {
 		case ACTION_NOP:
@@ -5265,9 +5311,97 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 			gtk_widget_queue_draw(GTK_WIDGET(main_window));
 			break;
 
-		case ACTION_MONTAGE_MODE_FOLLOW:
-			montage_window_control.follow_mode = !!parameter.pint;
+		case ACTION_MONTAGE_MODE_SHOW_BINDING_OVERLAYS:
+			montage_window_control.show_binding_overlays = !!parameter.pint;
 			gtk_widget_queue_draw(GTK_WIDGET(main_window));
+			break;
+
+		case ACTION_MONTAGE_MODE_FOLLOW:
+			if(parameter.pcharptr[0] == 0 || parameter.pcharptr[1] == 0) {
+				g_printerr("Error: montage_mode_follow requires at least two characters to work with.\n");
+				break;
+			}
+
+			montage_window_control.show_binding_overlays = 1;
+			option_keyboard_timeout = 5;
+
+			if(follow_mode_key_binding.next_key_bindings) {
+				g_hash_table_unref(follow_mode_key_binding.next_key_bindings);
+				follow_mode_key_binding.next_key_bindings = NULL;
+			}
+			follow_mode_key_binding.next_key_bindings = g_hash_table_new_full((GHashFunc)g_direct_hash, (GEqualFunc)g_direct_equal, NULL, key_binding_t_destroy_callback);
+
+			{
+				const int n_thumbs_x = main_window_width / (option_thumbnails.width + 10);
+				const int n_thumbs_y = main_window_height / (option_thumbnails.height + 10);
+				const ptrdiff_t number_of_images = (ptrdiff_t)bostree_node_count(file_tree);
+				const ptrdiff_t visible_thumbnails = (montage_window_control.scroll_y + n_thumbs_y) * n_thumbs_x > number_of_images ? number_of_images - montage_window_control.scroll_y * n_thumbs_x : n_thumbs_x * n_thumbs_y;
+				const int number_of_characters = strlen(parameter.pcharptr);
+
+				const int binding_length = (int)floor(log(visible_thumbnails) / log(number_of_characters));
+				const int base = number_of_characters;
+
+				for(short x=0; x<n_thumbs_x; x++) {
+					for(short y=0; y<n_thumbs_y; y++) {
+						int image_id = n_thumbs_x * y + x;
+						if(image_id >= visible_thumbnails) {
+							break;
+						}
+
+						key_binding_t *active_binding = &follow_mode_key_binding;
+
+						unsigned divisor = (int)pow(base, binding_length);
+						while(divisor > 1) {
+							guint key_binding_value = KEY_BINDING_VALUE(0, 0, parameter.pcharptr[image_id / divisor]);
+							image_id %= divisor;
+							divisor /= base;
+
+							key_binding_t *binding = g_hash_table_lookup(active_binding->next_key_bindings, GUINT_TO_POINTER(key_binding_value));
+
+							if(!binding) {
+								binding = g_slice_new(key_binding_t);
+								binding->action = ACTION_MONTAGE_MODE_FOLLOW_PROCEED;
+								binding->parameter.p2short.p1 = -1;
+								binding->parameter.p2short.p2 = -1;
+								binding->next_action = NULL;
+								binding->next_key_bindings = g_hash_table_new_full((GHashFunc)g_direct_hash, (GEqualFunc)g_direct_equal, NULL, key_binding_t_destroy_callback);
+								g_hash_table_insert(active_binding->next_key_bindings, GUINT_TO_POINTER(key_binding_value), binding);
+							}
+							else if(!binding->next_key_bindings) {
+								binding->next_key_bindings = g_hash_table_new_full((GHashFunc)g_direct_hash, (GEqualFunc)g_direct_equal, NULL, key_binding_t_destroy_callback);
+							}
+
+							active_binding = binding;
+						}
+
+						key_binding_t *binding = g_slice_new0(key_binding_t);
+						binding->action = ACTION_MONTAGE_MODE_FOLLOW_PROCEED;
+						binding->parameter.p2short.p1 = x;
+						binding->parameter.p2short.p2 = y;
+
+						g_hash_table_insert(active_binding->next_key_bindings, GUINT_TO_POINTER(parameter.pcharptr[image_id]), binding);
+					}
+				}
+			}
+
+			active_key_binding.key_binding = &follow_mode_key_binding;
+			active_key_binding.associated_image = current_file_node;
+			active_key_binding.timeout_id = gdk_threads_add_timeout((size_t)(option_keyboard_timeout * 1000), handle_input_event_timeout_callback, NULL);
+
+			gtk_widget_queue_draw(GTK_WIDGET(main_window));
+			break;
+
+		case ACTION_MONTAGE_MODE_FOLLOW_PROCEED:
+			option_keyboard_timeout = .5;
+			montage_window_control.show_binding_overlays = 0;
+			if(parameter.p2short.p1 >= 0 || parameter.p2short.p2 >= 0) {
+				montage_window_set_cursor(parameter.p2short.p1, parameter.p2short.p2);
+			}
+			gtk_widget_queue_draw(GTK_WIDGET(main_window));
+			if(follow_mode_key_binding.next_key_bindings) {
+				g_hash_table_unref(follow_mode_key_binding.next_key_bindings);
+				follow_mode_key_binding.next_key_bindings = NULL;
+			}
 			break;
 
 		case ACTION_MONTAGE_MODE_RETURN_PROCEED:
@@ -5483,7 +5617,7 @@ void handle_input_event(guint key_binding_value) {/*{{{*/
 			active_key_binding.timeout_id = gdk_threads_add_timeout((size_t)(option_keyboard_timeout * 1000), handle_input_event_timeout_callback, NULL);
 
 			#ifndef CONFIGURED_WITHOUT_MONTAGE_MODE
-			if(application_mode == MONTAGE && montage_window_control.follow_mode) {
+			if(application_mode == MONTAGE && montage_window_control.show_binding_overlays) {
 				gtk_widget_queue_draw(GTK_WIDGET(main_window));
 			}
 			#endif
@@ -6104,7 +6238,7 @@ void parse_key_bindings(const gchar *bindings) {/*{{{*/
 						#define PARSE_KEY_BINDINGS_BIND(keyboard_key_value) \
 							keyboard_state = 0; \
 							if(!*active_key_bindings_table) { \
-								*active_key_bindings_table = g_hash_table_new((GHashFunc)g_direct_hash, (GEqualFunc)g_direct_equal); \
+								*active_key_bindings_table = g_hash_table_new_full((GHashFunc)g_direct_hash, (GEqualFunc)g_direct_equal, NULL, key_binding_t_destroy_callback); \
 							} \
 							binding = g_hash_table_lookup(*active_key_bindings_table, GUINT_TO_POINTER(keyboard_key_value)); \
 							if(!binding) { \
@@ -6503,7 +6637,7 @@ gpointer read_commands_thread(gpointer user_data) {/*{{{*/
 }/*}}}*/
 void initialize_key_bindings() {/*{{{*/
 	for(int i=0; i<KEY_BINDING_CONTEXTS_COUNT; i++) {
-		key_bindings[i] = g_hash_table_new((GHashFunc)g_direct_hash, (GEqualFunc)g_direct_equal);
+		key_bindings[i] = g_hash_table_new_full((GHashFunc)g_direct_hash, (GEqualFunc)g_direct_equal, NULL, key_binding_t_destroy_callback);
 	}
 
 	for(const struct default_key_bindings_struct *kb = default_key_bindings; kb->key_binding_value; kb++) {

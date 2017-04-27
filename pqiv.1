@@ -403,11 +403,11 @@ Display the jump dialog.
 .BR montage_mode_enter()
 Enter montage mode, a view for interactive selection of images.
 .TP
-.BR montage_mode_follow(INT)
-Disable (by using a parameter value of 0) or enable (by using any other value)
-follow mode. In follow mode, \fBpqiv\fR will draw mnemonics on top of each
-thumbnail that is reachable by typing a key (combination). Use this to realize
-keyboard navigation similar to vimperator/pentadactyl/vimium/etc.
+.BR montage_mode_follow(KEYS)
+Set up "follow" mode: Bind a sequence composed of the keys in KEYS to each
+visible thumbnail, such that typing that sequence moves the cursor to said
+position. At the same time, turn on binding overlays, increase the keyboard
+timeout, and revert everything after an image has been selected.
 .TP
 .BR montage_mode_return_proceed()
 Leave montage mode, and goto the currently selected image.
@@ -415,6 +415,12 @@ Leave montage mode, and goto the currently selected image.
 .BR montage_mode_return_cancel()
 Leave montage mode, and return to the last image viewed before entering montage
 mode.
+.TP
+.BR montage_mode_set_shift_x(INT)
+Set the horizontal cursor position in montage mode to an absolute value, indexed from 0.
+.TP
+.BR montage_mode_set_shift_y(INT)
+Set the vertical cursor position in montage mode to an absolute value, indexed from 0.
 .TP
 .BR montage_mode_shift_x(INT)
 Shift the cursor in montage mode in horizontal direction. Shifts wrap around
@@ -424,11 +430,11 @@ to its beginning.
 .BR montage_mode_shift_y(INT)
 Shift the cursor in montage mode in vertical direction.
 .TP
-.BR montage_mode_set_shift_x(INT)
-Set the horizontal cursor position in montage mode to an absolute value, indexed from 0.
-.TP
-.BR montage_mode_set_shift_y(INT)
-Set the vertical cursor position in montage mode to an absolute value, indexed from 0.
+.BR montage_mode_show_binding_overlays(INT)
+Disable (by using a parameter value of 0) or enable (by using any other value)
+follow mode. In follow mode, \fBpqiv\fR will draw mnemonics on top of each
+thumbnail that is reachable by typing a key (combination). Use this to realize
+keyboard navigation similar to vimperator/pentadactyl/vimium/etc.
 .TP
 .BR montage_mode_shift_y_pg(INT)
 Shift the cursor in montage mode in vertical direction by \fIn\fR pages.
@@ -581,7 +587,8 @@ Toggle visibility of the info box.
 Show a dialog with a list of all files for quick selection.
 .IP m
 Toggle \fImontage\fR mode, an interactive image selection mode. Use cursor keys
-to select an image and Return to return to single image view.
+to select an image and Return to return to single image view. Use \fIg\fR to
+quickly navigate to a thumbnail.
 .IP q
 Quit \fBpqiv\fR
 .IP r
