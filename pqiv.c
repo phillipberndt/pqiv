@@ -1954,6 +1954,8 @@ void main_window_adjust_for_image() {/*{{{*/
 			gtk_window_resize(main_window, new_window_width / screen_scale_factor, new_window_height / screen_scale_factor);
 #if GTK_MAJOR_VERSION < 3
 			if(option_enforce_window_aspect_ratio) {
+				int image_width, image_height;
+				calculate_current_image_transformed_size(&image_width, &image_height);
 				hints.min_aspect = hints.max_aspect = image_width * 1.0 / image_height;
 				gtk_window_set_geometry_hints(main_window, NULL, &hints, GDK_HINT_ASPECT);
 			}
@@ -5328,6 +5330,7 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 			gtk_widget_queue_draw(GTK_WIDGET(main_window));
 			break;
 
+#ifndef CONFIGURED_WITHOUT_ACTIONS
 		case ACTION_MONTAGE_MODE_FOLLOW:
 			if(parameter.pcharptr[0] == 0 || parameter.pcharptr[1] == 0) {
 				g_printerr("Error: montage_mode_follow requires at least two characters to work with.\n");
@@ -5525,7 +5528,8 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 
 			update_info_text(NULL);
 			break;
-#endif
+#endif // without actions
+#endif // without montage
 
 		default:
 			break;

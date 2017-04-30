@@ -204,9 +204,6 @@ gboolean check_png_attributes(gchar *file_name, gchar *file_uri, time_t file_mti
 			lseek(fd, header_length + 4, SEEK_CUR);
 		}
 	}
-
-	g_close(fd, NULL);
-	return FALSE;
 }
 
 static cairo_surface_t *load_thumbnail(gchar *file_name, gchar *file_uri, time_t file_mtime, unsigned width, unsigned height) {
@@ -382,11 +379,15 @@ static cairo_status_t png_writer(struct png_writer_info *info, const unsigned ch
 
 		int uri_length = strlen(info->Thumb_URI);
 		int output_length = 4 + 4 + sizeof("Thumb::URI") + uri_length + 4;
+
+
 		char *output = g_malloc(output_length);
-		*(uint32_t*)output = htonl(sizeof("Thumb::URI") + uri_length);
+		uint32_t write_uint32 = htonl(sizeof("Thumb::URI") + uri_length);
+		memcpy(output, &write_uint32, sizeof(uint32_t));
 		strcpy(&output[4], "tEXtThumb::URI");
 		strcpy(&output[19], info->Thumb_URI);
-		*(uint32_t*)&output[19+uri_length] = htonl(crc(0, (unsigned char*)&output[4], 19 + uri_length - 4));
+		write_uint32 = htonl(crc(0, (unsigned char*)&output[4], 19 + uri_length - 4));
+		memcpy(&output[19+uri_length] , &write_uint32, sizeof(uint32_t));
 		if(write(info->output_file_fd, output, output_length) != output_length) {
 			return CAIRO_STATUS_WRITE_ERROR;
 		}
@@ -395,10 +396,12 @@ static cairo_status_t png_writer(struct png_writer_info *info, const unsigned ch
 		int mtime_length = strlen(info->Thumb_MTime);
 		output_length = 4 + 4 + sizeof("Thumb::MTime") + mtime_length + 4;
 		output = g_malloc(output_length);
-		*(uint32_t*)output = htonl(sizeof("Thumb::MTime") + mtime_length);
+		write_uint32 = htonl(sizeof("Thumb::MTime") + mtime_length);
+		memcpy(output, &write_uint32, sizeof(uint32_t));
 		strcpy(&output[4], "tEXtThumb::MTime");
 		strcpy(&output[21], info->Thumb_MTime);
-		*(uint32_t*)&output[21+mtime_length] = htonl(crc(0, (unsigned char*)&output[4], 21 + mtime_length - 4));
+		write_uint32 = htonl(crc(0, (unsigned char*)&output[4], 21 + mtime_length - 4));
+		memcpy(&output[21+mtime_length], &write_uint32, sizeof(uint32_t));
 		if(write(info->output_file_fd, output, output_length) != output_length) {
 			return CAIRO_STATUS_WRITE_ERROR;
 		}
