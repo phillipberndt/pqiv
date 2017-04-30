@@ -271,6 +271,12 @@ To sort by file modification date.
 Adjust the size of thumbnails in \fImontage\fR mode. The default is 128x128.
 .\"
 .TP
+.BR \-\-thumbnail\-preload=\fICOUNT\fR
+Preload \fICOUNT\fR thumbnails adjacent to the current image while displaying
+images. This can be used to speed up montage mode, but will lead to high CPU
+loads.
+.\"
+.TP
 .BR \-\-thumbnail\-persistence=\fIDIRECTORY/STATUS\fR
 Persist thumbnails to disk. The simplest way to use this option is to supply
 a value of \fIyes\fR. Thumbnails are then stored according to the Thumbnail
@@ -537,6 +543,10 @@ stdout, once upon activation and then whenever the user moves between images.
 The format is compatible with shell variable definitions. Variables currently
 implemented are \fICURRENT_FILE_NAME\fR and \fICURRENT_FILE_INDEX\fR. An
 output sweep always ends with an empty line.
+.TP
+.BR set_thumbnail_preload(INT)
+Change the amount of thumbnails to be preloaded. A value of zero disables
+the feature.
 .TP
 .BR set_thumbnail_size(INT, INT)
 Change the size of thumbnails. The order of the arguments is width, then

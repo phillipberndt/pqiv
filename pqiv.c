@@ -25,6 +25,7 @@
 #include <cairo/cairo.h>
 #include <gio/gio.h>
 #include <glib/gstdio.h>
+#include <errno.h>
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
@@ -383,6 +384,7 @@ gboolean help_show_key_bindings(const gchar *option_name, const gchar *value, gp
 gboolean help_show_version(const gchar *option_name, const gchar *value, gpointer data, GError **error);
 gboolean option_window_position_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error);
 gboolean option_thumbnail_size_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error);
+gboolean option_thumbnail_preload_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error);
 gboolean option_scale_level_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error);
 gboolean option_thumbnail_persistence_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error);
 gboolean option_end_of_files_action_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error);
@@ -403,7 +405,8 @@ struct {
 	gchar *special_thumbnail_directory;
 	gint width;
 	gint height;
-} option_thumbnails = { 0, 0, NULL, 128, 128 };
+	gint auto_generate_for_adjacents;
+} option_thumbnails = { 0, 0, NULL, 128, 128, -1 };
 
 struct {
 	int scroll_y;
@@ -465,6 +468,7 @@ GOptionEntry options[] = {
 	{ "sort-key", 0, 0, G_OPTION_ARG_CALLBACK, (gpointer)&option_sort_key_callback, "Key to use for sorting", "PROPERTY" },
 #ifndef CONFIGURED_WITHOUT_MONTAGE_MODE
 	{ "thumbnail-size", 0, 0, G_OPTION_ARG_CALLBACK, (gpointer)&option_thumbnail_size_callback, "Set the dimensions of thumbnails in montage mode", "WIDTHxHEIGHT" },
+	{ "thumbnail-preload", 0, 0, G_OPTION_ARG_CALLBACK, (gpointer)&option_thumbnail_preload_callback, "Preload the adjacent COUNT thumbnails for faster montage mode transition", "COUNT" },
 	{ "thumbnail-persistence", 0, 0, G_OPTION_ARG_CALLBACK, (gpointer)&option_thumbnail_persistence_callback, "Persist thumbnails to disk, to DIRECTORY.", "DIRECTORY" },
 #endif
 	{ "wait-for-images-to-appear", 0, 0, G_OPTION_ARG_NONE, &option_wait_for_images_to_appear, "If no images are found, wait until at least one appears", NULL },
@@ -689,6 +693,7 @@ const struct pqiv_action_descriptor {
 	{ "set_fade_duration", PARAMETER_DOUBLE },
 	{ "set_keyboard_timeout", PARAMETER_DOUBLE },
 	{ "set_thumbnail_size", PARAMETER_2SHORT },
+	{ "set_thumbnail_preload", PARAMETER_INT },
 	{ "montage_mode_enter", PARAMETER_NONE },
 	{ "montage_mode_shift_x", PARAMETER_INT },
 	{ "montage_mode_shift_y", PARAMETER_INT },
@@ -743,6 +748,7 @@ gboolean initialize_gui_callback(gpointer);
 gboolean initialize_image_loader();
 void window_hide_cursor();
 void window_show_cursor();
+void preload_adjacent_images();
 void window_center_mouse();
 void calculate_current_image_transformed_size(int *image_width, int *image_height);
 cairo_surface_t *get_scaled_image_surface_for_current_image();
@@ -818,6 +824,16 @@ gboolean option_thumbnail_size_callback(const gchar *option_name, const gchar *v
 
 	g_set_error(error, G_OPTION_ERROR, G_OPTION_ERROR_FAILED, "Unexpected argument value for the --thumbnail-size option. Format must be e.g. `320x240'.");
 	return FALSE;
+}/*}}}*/
+gboolean option_thumbnail_preload_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error) {/*{{{*/
+	option_thumbnails.enabled = 1;
+	option_thumbnails.auto_generate_for_adjacents = g_ascii_strtoll(value, NULL, 10);
+
+	if(errno == EINVAL || errno == ERANGE) {
+		g_set_error(error, G_OPTION_ERROR, G_OPTION_ERROR_FAILED, "Unexpected argument value for the --thumbnail-preload option.");
+		return FALSE;
+	}
+	return TRUE;
 }/*}}}*/
 gboolean option_thumbnail_persistence_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error) {/*{{{*/
 	if(value == NULL || !*value || strcasecmp(value, "yes") == 0 || strcasecmp(value, "true") == 0 || strcasecmp(value, "1") == 0 || strcasecmp(value, "on") == 0) {
@@ -2331,7 +2347,7 @@ gpointer image_loader_thread(gpointer user_data) {/*{{{*/
 				}
 			}
 			D_UNLOCK(file_tree);
-			if(!FILE(node)->thumbnail && option_thumbnails.enabled && option_thumbnails.persist) {
+			if(!FILE(node)->thumbnail && (option_thumbnails.enabled || application_mode == MONTAGE) && option_thumbnails.persist) {
 				if(load_thumbnail_from_cache(FILE(node), option_thumbnails.width, option_thumbnails.height, option_thumbnails.special_thumbnail_directory) == TRUE) {
 					// Loading the thumbnail succeeded. We may break here.
 					D_LOCK(file_tree);
@@ -2419,7 +2435,7 @@ gpointer image_loader_thread(gpointer user_data) {/*{{{*/
 				FILE(node)->thumbnail = NULL;
 			}
 			D_UNLOCK(file_tree);
-			if(!FILE(node)->thumbnail && option_thumbnails.enabled) {
+			if(!FILE(node)->thumbnail && (option_thumbnails.enabled || application_mode == MONTAGE)) {
 				if(!option_thumbnails.persist || load_thumbnail_from_cache(FILE(node), option_thumbnails.width, option_thumbnails.height, option_thumbnails.special_thumbnail_directory) == FALSE) {
 					image_loader_create_thumbnail(FILE(node));
 					if(FILE(node)->thumbnail && option_thumbnails.persist) {
@@ -2479,16 +2495,7 @@ gboolean initialize_image_loader() {/*{{{*/
 	g_thread_new("image-loader", image_loader_thread, NULL);
 
 	if(!option_lowmem) {
-		D_LOCK(file_tree);
-		BOSNode *next = next_file();
-		if(!FILE(next)->is_loaded) {
-			queue_image_load(bostree_node_weak_ref(next));
-		}
-		BOSNode *previous = previous_file();
-		if(!FILE(previous)->is_loaded) {
-			queue_image_load(bostree_node_weak_ref(previous));
-		}
-		D_UNLOCK(file_tree);
+		preload_adjacent_images();
 	}
 
 	image_loader_initialization_succeeded = TRUE;
@@ -2584,6 +2591,41 @@ void preload_adjacent_images() {/*{{{*/
 		}
 		D_UNLOCK(file_tree);
 	}
+
+#ifndef CONFIGURED_WITHOUT_MONTAGE_MODE
+	if(option_thumbnails.enabled && option_thumbnails.auto_generate_for_adjacents > 0) {
+		D_LOCK(file_tree);
+		size_t thumbnail_rank = bostree_rank(current_file_node);
+		size_t count;
+		if(thumbnail_rank > (unsigned)option_thumbnails.auto_generate_for_adjacents) {
+			count = 2 * option_thumbnails.auto_generate_for_adjacents + 2;
+			thumbnail_rank -= option_thumbnails.auto_generate_for_adjacents;
+		}
+		else {
+			count = thumbnail_rank + option_thumbnails.auto_generate_for_adjacents + 1;
+			thumbnail_rank = 0;
+		}
+		BOSNode *thumbnail_node = bostree_select(file_tree, thumbnail_rank);
+		for(; thumbnail_node && count > 0; thumbnail_node = bostree_next_node(thumbnail_node), count--) {
+			if(FILE(thumbnail_node)->thumbnail) {
+				const int thumb_width = cairo_image_surface_get_width(FILE(thumbnail_node)->thumbnail);
+				const int thumb_height = cairo_image_surface_get_height(FILE(thumbnail_node)->thumbnail);
+				if(!((thumb_width == option_thumbnails.width && thumb_height <= option_thumbnails.height) ||
+					  (thumb_width <= option_thumbnails.width && thumb_height == option_thumbnails.height) ||
+					  (thumb_width == (int)FILE(thumbnail_node)->width && thumb_height == (int)FILE(thumbnail_node)->height))) {
+					cairo_surface_destroy(FILE(thumbnail_node)->thumbnail);
+					FILE(thumbnail_node)->thumbnail = NULL;
+				}
+			}
+
+			if(!FILE(thumbnail_node)->thumbnail) {
+				queue_thumbnail_load(bostree_node_weak_ref(thumbnail_node));
+			}
+		}
+		D_UNLOCK(file_tree);
+	}
+#endif
+
 }/*}}}*/
 gboolean absolute_image_movement_still_unloaded_timer_callback(gpointer user_data) {/*{{{*/
 	if(user_data == (void *)current_file_node && !CURRENT_FILE->is_loaded) {
@@ -5254,6 +5296,18 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 			}
 			break;
 
+		case ACTION_SET_THUMBNAIL_PRELOAD:
+			option_thumbnails.enabled = parameter.pint > 0;
+			option_thumbnails.auto_generate_for_adjacents = parameter.pint;
+			if(parameter.pint > 0) {
+				preload_adjacent_images();
+				UPDATE_INFO_TEXT("Thumbnail generation enabled for %d adjacent images", parameter.pint);
+			}
+			else {
+				update_info_text("Thumbnail generation disabled");
+			}
+			break;
+
 		case ACTION_MONTAGE_MODE_ENTER:
 			if(slideshow_timeout_id > 0) {
 				g_source_remove(slideshow_timeout_id);
@@ -5263,7 +5317,6 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 				g_source_remove(current_image_animation_timeout_id);
 				current_image_animation_timeout_id = 0;
 			}
-			option_thumbnails.enabled = TRUE;
 			application_mode = MONTAGE;
 			active_key_binding_context = MONTAGE;
 			D_LOCK(file_tree);
@@ -5495,7 +5548,6 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 
 		case ACTION_MONTAGE_MODE_RETURN_PROCEED:
 		case ACTION_MONTAGE_MODE_RETURN_CANCEL:
-			option_thumbnails.enabled = FALSE;
 			application_mode = DEFAULT;
 			active_key_binding_context = DEFAULT;
 			main_window_adjust_for_image();
