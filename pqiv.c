@@ -4589,6 +4589,18 @@ gboolean set_scale_level_to_fit_callback(gpointer user_data) {
 }
 /*}}}*/
 #ifndef CONFIGURED_WITHOUT_ACTIONS
+key_binding_t *key_binding_t_duplicate(key_binding_t *binding) {/*{{{*/
+	key_binding_t *retval = g_slice_new(key_binding_t);
+	retval->action = binding->action;
+	retval->parameter = retval->parameter;
+	if(pqiv_action_descriptors[binding->action].parameter_type == PARAMETER_CHARPTR) {
+		retval->parameter.pcharptr = g_strdup(retval->parameter.pcharptr);
+	}
+	retval->next_action = binding->next_action ? key_binding_t_duplicate(binding->next_action) : NULL;
+	retval->next_key_bindings = binding->next_key_bindings ? g_hash_table_ref(binding->next_key_bindings) : NULL;
+
+	return retval;
+}/*}}}*/
 void key_binding_t_destroy_callback(gpointer data) {/*{{{*/
 	key_binding_t *binding = (key_binding_t *)data;
 	if(binding->next_action) {
@@ -5335,26 +5347,69 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 				const int n_thumbs_x = main_window_width / (option_thumbnails.width + 10);
 				const int n_thumbs_y = main_window_height / (option_thumbnails.height + 10);
 				const ptrdiff_t number_of_images = (ptrdiff_t)bostree_node_count(file_tree);
-				const ptrdiff_t visible_thumbnails = (montage_window_control.scroll_y + n_thumbs_y) * n_thumbs_x > number_of_images ? number_of_images - montage_window_control.scroll_y * n_thumbs_x : n_thumbs_x * n_thumbs_y;
+				const ptrdiff_t visible_thumbnails = ((montage_window_control.scroll_y + n_thumbs_y) * n_thumbs_x > number_of_images ? number_of_images - montage_window_control.scroll_y * n_thumbs_x : n_thumbs_x * n_thumbs_y);
 				const int number_of_characters = strlen(parameter.pcharptr);
 
-				const int binding_length = (int)floor(log(visible_thumbnails) / log(number_of_characters));
-				const int base = number_of_characters;
+				/*
+					On the algorithm used for generating follow mode key bindings:
 
-				for(short x=0; x<n_thumbs_x; x++) {
-					for(short y=0; y<n_thumbs_y; y++) {
-						int image_id = n_thumbs_x * y + x;
+					The problem of finding a prefix code in base m (I have m keys) for integers up to n (I have n integers) such that the total length
+					of the encoding of the entire alphabet is minimized can be solved easily by looking at the base m representation of a number.
+
+					Let l = log(n) / log(m). Observe how the problem is trivial if l is integer: Represent all images by their index in base m with
+					leading "zeros" (that is, the first key). And you're done, there can't be a better representation. The nontrivial case is if we
+					are between two powers of the basis. Let's look in detail at that case:
+
+					Let k = m^(floor(l))-1; k is the largest number which can be represented using l-1 symbols, and the largest one that has a leading
+					zero which could be omitted. The issue obviously is that this would destroy the prefix property. But note the following: If the
+					leading digit of n in base m is d<m-1, then for all digits between d+1 and m-1, there actually isn't any ambiguity. This property
+					is what the following code exploits to form short prefixes: It determines how many digits exactly have to be reserved in the leading
+					position to represent all numbers larger than k, uses up all other ones (by iterating over numbers of length l-1) and then proceeds
+					to count with length l.
+
+					As an example, if m = 4 and n = 12, then l = 1.79, k = 03. We can index images starting at 0, so the largest one is going to be
+					represented by 11b10 = 23b4. Hence, we will never see numbers in base 4 that start with 3, so we can use one symbol as a single digit
+					without ambiguity. We start counting with a single digit instead of two, count only to one (since we are only allowed to use one
+					symbol), and then continue with two digits. We end up with the numbers:
+
+					0, 10, 11, 12, 13, 20, 21, 22, 23, 30, 31, 32
+				*/
+
+				const int binding_length = (int)ceil(log(visible_thumbnails) / log(number_of_characters));
+				const int most_significant_power = (int)pow(number_of_characters, binding_length - 1);
+				const int high_image_digit = (number_of_characters - 1) - ((visible_thumbnails - most_significant_power + 1) / most_significant_power);
+
+				// 0 means "end of string", any other number is an index (starting from 1) into parameter.pcharptr
+				unsigned char key_sequence[binding_length+1];
+				if(binding_length > 1) {
+					memset(key_sequence, 1, binding_length);
+					if(high_image_digit > 0) {
+						key_sequence[binding_length-1] = 0;
+					}
+				}
+				else {
+					key_sequence[0] = 1;
+				}
+				key_sequence[binding_length] = 0;
+
+				// Walk through the grid
+				for(short y=0; y<n_thumbs_y; y++) {
+					for(short x=0; x<n_thumbs_x; x++) {
+						// Maintain a running counter
+						const int image_id = n_thumbs_x * y + x;
 						if(image_id >= visible_thumbnails) {
 							break;
 						}
 
+						// Now just bind the goto (x,y) command to the sequence in key_sequence
 						key_binding_t *active_binding = &follow_mode_key_binding;
 
-						unsigned divisor = (int)pow(base, binding_length);
-						while(divisor > 1) {
-							guint key_binding_value = KEY_BINDING_VALUE(0, 0, parameter.pcharptr[image_id / divisor]);
-							image_id %= divisor;
-							divisor /= base;
+						int binding_pos;
+						for(binding_pos=0; binding_pos<binding_length-1; binding_pos++) {
+							if(key_sequence[binding_pos+1] == 0) {
+								break;
+							}
+							guint key_binding_value = KEY_BINDING_VALUE(0, 0, parameter.pcharptr[key_sequence[binding_pos] - 1]);
 
 							key_binding_t *binding = g_hash_table_lookup(active_binding->next_key_bindings, GUINT_TO_POINTER(key_binding_value));
 
@@ -5379,7 +5434,29 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 						binding->parameter.p2short.p1 = x;
 						binding->parameter.p2short.p2 = y;
 
-						g_hash_table_insert(active_binding->next_key_bindings, GUINT_TO_POINTER(parameter.pcharptr[image_id]), binding);
+						// We bind the continuation of the current action chain
+						// as the next action.
+						if(active_key_binding.key_binding) {
+							binding->next_action = key_binding_t_duplicate(active_key_binding.key_binding);
+						}
+
+						guint key_binding_value = KEY_BINDING_VALUE(0, 0, parameter.pcharptr[key_sequence[binding_pos] - 1]);
+						g_hash_table_insert(active_binding->next_key_bindings, GUINT_TO_POINTER(key_binding_value), binding);
+
+						// Increase the key_sequence "number"
+						int pos = binding_length;
+						while(key_sequence[pos] == 0) {
+							pos--;
+						}
+						while((++key_sequence[pos]) > number_of_characters) {
+							key_sequence[pos] = 1;
+							pos--;
+						}
+						if(pos == 0 && key_sequence[0] - 1 == high_image_digit) {
+							// We have transitioned into the regime starting
+							// from which we need to add another digit.
+							memset(key_sequence + 1, 1, binding_length - 1);
+						}
 					}
 				}
 			}
@@ -5389,6 +5466,8 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 			active_key_binding.timeout_id = gdk_threads_add_timeout((size_t)(option_keyboard_timeout * 1000), handle_input_event_timeout_callback, NULL);
 
 			gtk_widget_queue_draw(GTK_WIDGET(main_window));
+
+			return;
 			break;
 
 		case ACTION_MONTAGE_MODE_FOLLOW_PROCEED:
@@ -5398,10 +5477,17 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 				montage_window_set_cursor(parameter.p2short.p1, parameter.p2short.p2);
 			}
 			gtk_widget_queue_draw(GTK_WIDGET(main_window));
+			// If we have an action chain to continue, do that *now*, because we will
+			// unreference the pointer in the next line.
+			while(active_key_binding.key_binding) {
+				continue_active_input_event_action_chain();
+			}
 			if(follow_mode_key_binding.next_key_bindings) {
 				g_hash_table_unref(follow_mode_key_binding.next_key_bindings);
 				follow_mode_key_binding.next_key_bindings = NULL;
 			}
+			active_key_binding.key_binding = NULL;
+			return;
 			break;
 
 		case ACTION_MONTAGE_MODE_RETURN_PROCEED:
@@ -6084,7 +6170,7 @@ char *key_binding_sequence_to_string(guint key_binding_value, gchar *prefix) {/*
 	}
 	else {
 		char *keyval_name = gdk_keyval_name(keycode);
-		str_key = g_strdup_printf("%s%s%s%s%s ", prefix ? prefix : "", modifier, keyval_name[1] == 0 ? "" : "<", keyval_name, keyval_name[1] == 0 ? "" : ">");
+		str_key = g_strdup_printf("%s%s%s%s%s ", prefix ? prefix : "", modifier, keyval_name && keyval_name[0] && !keyval_name[1] ? "" : "<", keyval_name, keyval_name && keyval_name[0] && !keyval_name[1] ? "" : ">");
 	}
 
 	return str_key;
