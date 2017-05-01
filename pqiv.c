@@ -2494,9 +2494,7 @@ gboolean initialize_image_loader() {/*{{{*/
 	}
 	g_thread_new("image-loader", image_loader_thread, NULL);
 
-	if(!option_lowmem) {
-		preload_adjacent_images();
-	}
+	preload_adjacent_images();
 
 	image_loader_initialization_succeeded = TRUE;
 	return TRUE;
