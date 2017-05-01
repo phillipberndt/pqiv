@@ -1994,7 +1994,11 @@ void main_window_adjust_for_image() {/*{{{*/
 gboolean image_loaded_handler(gconstpointer node) {/*{{{*/
 	// Execute logic below only if the loaded image is the current one
 	if(node != NULL && node != current_file_node) {
-		gtk_widget_queue_draw(GTK_WIDGET(main_window));
+#ifndef CONFIGURED_WITHOUT_MONTAGE_MODE
+		if(application_mode == MONTAGE) {
+			gtk_widget_queue_draw(GTK_WIDGET(main_window));
+		}
+#endif
 		return FALSE;
 	}
 
