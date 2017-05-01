@@ -5441,7 +5441,7 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 
 				const int binding_length = (int)ceil(log(visible_thumbnails) / log(number_of_characters));
 				const int most_significant_power = (int)pow(number_of_characters, binding_length - 1);
-				const int high_image_digit = (number_of_characters - 1) - ((visible_thumbnails - most_significant_power + 1) / most_significant_power);
+				const int high_image_digit = number_of_characters - (visible_thumbnails / most_significant_power);
 
 				// 0 means "end of string", any other number is an index (starting from 1) into parameter.pcharptr
 				unsigned char key_sequence[binding_length+1];
