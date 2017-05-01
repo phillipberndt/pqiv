@@ -468,7 +468,7 @@ GOptionEntry options[] = {
 	{ "sort-key", 0, 0, G_OPTION_ARG_CALLBACK, (gpointer)&option_sort_key_callback, "Key to use for sorting", "PROPERTY" },
 #ifndef CONFIGURED_WITHOUT_MONTAGE_MODE
 	{ "thumbnail-size", 0, 0, G_OPTION_ARG_CALLBACK, (gpointer)&option_thumbnail_size_callback, "Set the dimensions of thumbnails in montage mode", "WIDTHxHEIGHT" },
-	{ "thumbnail-preload", 0, 0, G_OPTION_ARG_CALLBACK, (gpointer)&option_thumbnail_preload_callback, "Preload the adjacent COUNT thumbnails for faster montage mode transition", "COUNT" },
+	{ "thumbnail-preload", 0, 0, G_OPTION_ARG_CALLBACK, (gpointer)&option_thumbnail_preload_callback, "Preload the adjacent COUNT thumbnails", "COUNT" },
 	{ "thumbnail-persistence", 0, 0, G_OPTION_ARG_CALLBACK, (gpointer)&option_thumbnail_persistence_callback, "Persist thumbnails to disk, to DIRECTORY.", "DIRECTORY" },
 #endif
 	{ "wait-for-images-to-appear", 0, 0, G_OPTION_ARG_NONE, &option_wait_for_images_to_appear, "If no images are found, wait until at least one appears", NULL },
@@ -736,6 +736,7 @@ void queue_draw();
 gboolean main_window_center();
 void window_screen_changed_callback(GtkWidget *widget, GdkScreen *previous_screen, gpointer user_data);
 typedef int image_loader_purpose_t;
+gboolean test_and_invalidate_thumbnail(file_t *file);
 gboolean image_loader_load_single(BOSNode *node, gboolean called_from_main);
 gboolean fading_timeout_callback(gpointer user_data);
 void queue_image_load(BOSNode *);
@@ -1769,6 +1770,19 @@ void load_images() {/*{{{*/
 }/*}}}*/
 // }}}
 /* (A-)synchronous image loading and image operations {{{ */
+gboolean test_and_invalidate_thumbnail(file_t *file) {/*{{{*/
+	if(file->thumbnail) {
+		const int thumb_width = cairo_image_surface_get_width(file->thumbnail);
+		const int thumb_height = cairo_image_surface_get_height(file->thumbnail);
+		if(!((thumb_width == option_thumbnails.width && thumb_height <= option_thumbnails.height) ||
+			  (thumb_width <= option_thumbnails.width && thumb_height == option_thumbnails.height) ||
+			  (thumb_width == (int)file->width && thumb_height == (int)file->height))) {
+			cairo_surface_destroy(file->thumbnail);
+			file->thumbnail = NULL;
+		}
+	}
+	return !!file->thumbnail;
+}/*}}}*/
 void invalidate_current_scaled_image_surface() {/*{{{*/
 	if(current_scaled_image_surface != NULL) {
 		cairo_surface_destroy(current_scaled_image_surface);
@@ -2340,16 +2354,7 @@ gpointer image_loader_thread(gpointer user_data) {/*{{{*/
 		if(purpose == MONTAGE) {
 			// Unload an old thumbnail if it does not have the correct size
 			D_LOCK(file_tree);
-			if(FILE(node)->thumbnail) {
-				const int thumb_width = cairo_image_surface_get_width(FILE(node)->thumbnail);
-				const int thumb_height = cairo_image_surface_get_height(FILE(node)->thumbnail);
-				if(!((thumb_width == option_thumbnails.width && thumb_height <= option_thumbnails.height) ||
-					  (thumb_width <= option_thumbnails.width && thumb_height == option_thumbnails.height) ||
-					  (thumb_width == (int)FILE(node)->width && thumb_height == (int)FILE(node)->height))) {
-					cairo_surface_destroy(FILE(node)->thumbnail);
-					FILE(node)->thumbnail = NULL;
-				}
-			}
+			test_and_invalidate_thumbnail(FILE(node));
 			D_UNLOCK(file_tree);
 			if(!FILE(node)->thumbnail && (option_thumbnails.enabled || application_mode == MONTAGE) && option_thumbnails.persist) {
 				if(load_thumbnail_from_cache(FILE(node), option_thumbnails.width, option_thumbnails.height, option_thumbnails.special_thumbnail_directory) == TRUE) {
@@ -2431,13 +2436,7 @@ gpointer image_loader_thread(gpointer user_data) {/*{{{*/
 		if(FILE(node)->is_loaded) {
 #ifndef CONFIGURED_WITHOUT_MONTAGE_MODE
 			D_LOCK(file_tree);
-			if(FILE(node)->thumbnail &&
-					cairo_image_surface_get_width(FILE(node)->thumbnail) != option_thumbnails.width && cairo_image_surface_get_height(FILE(node)->thumbnail) != option_thumbnails.height &&
-					(FILE(node)->width > (unsigned)option_thumbnails.width || FILE(node)->height > (unsigned)option_thumbnails.height)
-				) {
-				cairo_surface_destroy(FILE(node)->thumbnail);
-				FILE(node)->thumbnail = NULL;
-			}
+			test_and_invalidate_thumbnail(FILE(node));
 			D_UNLOCK(file_tree);
 			if(!FILE(node)->thumbnail && (option_thumbnails.enabled || application_mode == MONTAGE)) {
 				if(!option_thumbnails.persist || load_thumbnail_from_cache(FILE(node), option_thumbnails.width, option_thumbnails.height, option_thumbnails.special_thumbnail_directory) == FALSE) {
@@ -2609,18 +2608,7 @@ void preload_adjacent_images() {/*{{{*/
 		}
 		BOSNode *thumbnail_node = bostree_select(file_tree, thumbnail_rank);
 		for(; thumbnail_node && count > 0; thumbnail_node = bostree_next_node(thumbnail_node), count--) {
-			if(FILE(thumbnail_node)->thumbnail) {
-				const int thumb_width = cairo_image_surface_get_width(FILE(thumbnail_node)->thumbnail);
-				const int thumb_height = cairo_image_surface_get_height(FILE(thumbnail_node)->thumbnail);
-				if(!((thumb_width == option_thumbnails.width && thumb_height <= option_thumbnails.height) ||
-					  (thumb_width <= option_thumbnails.width && thumb_height == option_thumbnails.height) ||
-					  (thumb_width == (int)FILE(thumbnail_node)->width && thumb_height == (int)FILE(thumbnail_node)->height))) {
-					cairo_surface_destroy(FILE(thumbnail_node)->thumbnail);
-					FILE(thumbnail_node)->thumbnail = NULL;
-				}
-			}
-
-			if(!FILE(thumbnail_node)->thumbnail) {
+			if(!test_and_invalidate_thumbnail(FILE(thumbnail_node))) {
 				queue_thumbnail_load(bostree_node_weak_ref(thumbnail_node));
 			}
 		}
@@ -4018,20 +4006,20 @@ void montage_window_move_cursor(int move_x, int move_y, gboolean maintain_relati
 	abort_pending_image_loads(selected_node);
 	queue_image_load(bostree_node_weak_ref(selected_node));
 	BOSNode *thumb_node = bostree_select(file_tree, top_left_id);
-	for(size_t draw_now = 0; draw_now < n_thumbs_x * n_thumbs_y && thumb_node; draw_now++, thumb_node = bostree_next_node(thumb_node)) {
-		if(FILE(thumb_node)->thumbnail) {
-			int thumb_width = cairo_image_surface_get_width(FILE(thumb_node)->thumbnail);
-			int thumb_height = cairo_image_surface_get_height(FILE(thumb_node)->thumbnail);
-			if(!((thumb_width == option_thumbnails.width && thumb_height <= option_thumbnails.height) ||
-					(thumb_width <= option_thumbnails.width && thumb_height == option_thumbnails.height) ||
-					(thumb_width == (int)FILE(thumb_node)->width && thumb_height == (int)FILE(thumb_node)->height))) {
-				cairo_surface_destroy(FILE(thumb_node)->thumbnail);
-				FILE(thumb_node)->thumbnail = NULL;
+	BOSNode *init_node = thumb_node;
+	const size_t total_count = n_thumbs_x * n_thumbs_y + (option_thumbnails.auto_generate_for_adjacents > 0 ? option_thumbnails.auto_generate_for_adjacents : 0);
+	for(size_t draw_now = 0; draw_now < total_count && thumb_node; draw_now++, thumb_node = bostree_next_node(thumb_node)) {
+		if(!test_and_invalidate_thumbnail(FILE(thumb_node)) && thumb_node != selected_node) {
+			queue_thumbnail_load(bostree_node_weak_ref(thumb_node));
+		}
+	}
+	if(option_thumbnails.auto_generate_for_adjacents > 0) {
+		thumb_node = bostree_previous_node(init_node);
+
+		for(int draw_now = 0; draw_now < option_thumbnails.auto_generate_for_adjacents && thumb_node; draw_now++, thumb_node = bostree_previous_node(thumb_node)) {
+			if(!test_and_invalidate_thumbnail(FILE(thumb_node))) {
 				queue_thumbnail_load(bostree_node_weak_ref(thumb_node));
 			}
-		}
-		else if(thumb_node != selected_node) {
-			queue_thumbnail_load(bostree_node_weak_ref(thumb_node));
 		}
 	}
 }/*}}}*/
