@@ -3767,10 +3767,12 @@ void update_info_text(const gchar *action) {/*{{{*/
 
 	#ifndef CONFIGURED_WITHOUT_MONTAGE_MODE
 	if(application_mode == MONTAGE) {
-		if(current_info_text != NULL) {
-			g_free(current_info_text);
+		if(!option_hide_info_box) {
+			if(current_info_text != NULL) {
+				g_free(current_info_text);
+			}
+			current_info_text = g_strdup("Montage mode");
 		}
-		current_info_text = g_strdup("Montage mode");
 		gtk_window_set_title(GTK_WINDOW(main_window), "pqiv: Montage mode");
 		D_UNLOCK(file_tree);
 		return;
@@ -3778,15 +3780,17 @@ void update_info_text(const gchar *action) {/*{{{*/
 	#endif
 
 	if(!current_file_node) {
-		if(current_info_text != NULL) {
-			g_free(current_info_text);
-		}
 		const char *none_loaded = "No image loaded";
-		if(action) {
-			current_info_text = g_strdup_printf("%s - %s", action, none_loaded);
-		}
-		else {
-			current_info_text = g_strdup(none_loaded);
+		if(!option_hide_info_box) {
+			if(current_info_text != NULL) {
+				g_free(current_info_text);
+			}
+			if(action) {
+				current_info_text = g_strdup_printf("%s - %s", action, none_loaded);
+			}
+			else {
+				current_info_text = g_strdup(none_loaded);
+			}
 		}
 		gtk_window_set_title(GTK_WINDOW(main_window), "pqiv: No image loaded");
 		D_UNLOCK(file_tree);
@@ -3810,7 +3814,9 @@ void update_info_text(const gchar *action) {/*{{{*/
 
 	if(!CURRENT_FILE->is_loaded) {
 		// Image not loaded yet. Use loading information and abort.
-		current_info_text = g_strdup_printf("%s (Image is still loading...)", display_name);
+		if(!option_hide_info_box) {
+			current_info_text = g_strdup_printf("%s (Image is still loading...)", display_name);
+		}
 		gtk_window_set_title(GTK_WINDOW(main_window), "pqiv");
 
 		g_free(file_name);
