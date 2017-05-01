@@ -4451,9 +4451,20 @@ gboolean window_draw_callback(GtkWidget *widget, cairo_t *cr_arg, gpointer user_
 		// The image has not yet been loaded. If available, draw from the
 		// temporary image surface from the last call
 		if(last_visible_image_surface != NULL) {
-			cairo_set_source_surface(cr_arg, last_visible_image_surface, 0, 0);
-			cairo_set_operator(cr_arg, CAIRO_OPERATOR_SOURCE);
-			cairo_paint(cr_arg);
+			// But only do it if the window size hasn't changed. It looks weird
+			// to have an image drawn somewhere into the window.
+			// TODO An overall neater solution would be to have
+			// last_visible_image_surface store only the image part, and do the
+			// centering here.
+			if(cairo_image_surface_get_width(last_visible_image_surface) != main_window_width || cairo_image_surface_get_height(last_visible_image_surface) != main_window_height) {
+				cairo_surface_destroy(last_visible_image_surface);
+				last_visible_image_surface = NULL;
+			}
+			else {
+				cairo_set_source_surface(cr_arg, last_visible_image_surface, 0, 0);
+				cairo_set_operator(cr_arg, CAIRO_OPERATOR_SOURCE);
+				cairo_paint(cr_arg);
+			}
 		}
 	}
 	D_UNLOCK(file_tree);
