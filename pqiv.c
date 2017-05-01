@@ -2952,6 +2952,7 @@ void relative_image_movement(ptrdiff_t movement) {/*{{{*/
 		montage_window_move_cursor(0, 0, FALSE);
 		D_UNLOCK(file_tree);
 		gtk_widget_queue_draw(GTK_WIDGET(main_window));
+		return;
 	}
 	#endif
 
