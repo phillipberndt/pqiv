@@ -4009,24 +4009,41 @@ void montage_window_move_cursor(int move_x, int move_y, gboolean maintain_relati
 	}
 
 	// Queue loading of thumbnails
-	size_t top_left_id = montage_window_control.scroll_y * n_thumbs_x;
 	abort_pending_image_loads(selected_node);
 	queue_image_load(bostree_node_weak_ref(selected_node));
-	BOSNode *thumb_node = bostree_select(file_tree, top_left_id);
-	BOSNode *init_node = thumb_node;
-	const size_t total_count = n_thumbs_x * n_thumbs_y + (option_thumbnails.auto_generate_for_adjacents > 0 ? option_thumbnails.auto_generate_for_adjacents : 0);
-	for(size_t draw_now = 0; draw_now < total_count && thumb_node; draw_now++, thumb_node = bostree_next_node(thumb_node)) {
-		if(!test_and_invalidate_thumbnail(FILE(thumb_node)) && thumb_node != selected_node) {
-			queue_thumbnail_load(bostree_node_weak_ref(thumb_node));
-		}
-	}
-	if(option_thumbnails.auto_generate_for_adjacents > 0) {
-		thumb_node = bostree_previous_node(init_node);
 
-		for(int draw_now = 0; draw_now < option_thumbnails.auto_generate_for_adjacents && thumb_node; draw_now++, thumb_node = bostree_previous_node(thumb_node)) {
-			if(!test_and_invalidate_thumbnail(FILE(thumb_node))) {
-				queue_thumbnail_load(bostree_node_weak_ref(thumb_node));
+	size_t thumb_node_fwd_ctr = new_selection + 1;
+	BOSNode *thumb_node_fwd = bostree_next_node(selected_node);
+	size_t thumb_node_fwd_stop = (montage_window_control.scroll_y + n_thumbs_y) * n_thumbs_x + 1 + (option_thumbnails.auto_generate_for_adjacents > 0 ? option_thumbnails.auto_generate_for_adjacents : 0);
+
+	size_t thumb_node_bwd_ctr = new_selection - 1;
+	BOSNode *thumb_node_bwd = bostree_previous_node(selected_node);
+	size_t thumb_node_bwd_stop = montage_window_control.scroll_y * n_thumbs_x - 1 - (option_thumbnails.auto_generate_for_adjacents > 0 ? option_thumbnails.auto_generate_for_adjacents : 0);
+	if(thumb_node_bwd_stop > thumb_node_bwd_ctr) {
+		// An overflow in thumb_node_bwd_stop isn't a problem, because thumb_node_bwd will become NULL below.
+		thumb_node_bwd_stop = (size_t)-1;
+	}
+
+	while(TRUE) {
+		gboolean did_something = FALSE;
+		if(thumb_node_fwd && thumb_node_fwd_ctr != thumb_node_fwd_stop) {
+			if(!test_and_invalidate_thumbnail(FILE(thumb_node_fwd)) && thumb_node_fwd != selected_node) {
+				queue_thumbnail_load(bostree_node_weak_ref(thumb_node_fwd));
 			}
+			thumb_node_fwd = bostree_next_node(thumb_node_fwd);
+			thumb_node_fwd_ctr++;
+			did_something = TRUE;
+		}
+		if(thumb_node_bwd && thumb_node_bwd_ctr != thumb_node_bwd_stop) {
+			if(!test_and_invalidate_thumbnail(FILE(thumb_node_bwd)) && thumb_node_bwd != selected_node) {
+				queue_thumbnail_load(bostree_node_weak_ref(thumb_node_bwd));
+			}
+			thumb_node_bwd = bostree_previous_node(thumb_node_bwd);
+			thumb_node_bwd_ctr--;
+			did_something = TRUE;
+		}
+		if(!did_something) {
+			break;
 		}
 	}
 }/*}}}*/
