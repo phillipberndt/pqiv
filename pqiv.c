@@ -5466,7 +5466,20 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 
 				const int binding_length = (int)ceil(log(visible_thumbnails) / log(number_of_characters));
 				const int most_significant_power = (int)pow(number_of_characters, binding_length - 1);
-				const int high_image_digit = number_of_characters - (visible_thumbnails / most_significant_power);
+				int high_image_digit = number_of_characters - (visible_thumbnails / most_significant_power);
+
+				// We have one special case:
+				// Due to the integer arithmetic in the formulation above we
+				// can be off by one. An easy alternative to working in double
+				// precision floats entirely is to check whether this is the
+				// case and decrease high_image_digit if so.
+				//
+				// The following statement is mathematically equivalent to
+				// "most_significant_power < visible_thumbnails/number_of_characters"
+				// which is never true.
+				if(high_image_digit * (most_significant_power / number_of_characters) + (number_of_characters - high_image_digit) * most_significant_power < visible_thumbnails) {
+					high_image_digit--;
+				}
 
 				// 0 means "end of string", any other number is an index (starting from 1) into parameter.pcharptr
 				unsigned char key_sequence[binding_length+1];
