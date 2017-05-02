@@ -5342,6 +5342,12 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 				g_source_remove(current_image_animation_timeout_id);
 				current_image_animation_timeout_id = 0;
 			}
+			if(last_visible_image_surface) {
+				cairo_surface_destroy(last_visible_image_surface);
+				last_visible_image_surface = NULL;
+			}
+			invalidate_current_scaled_image_surface();
+
 			application_mode = MONTAGE;
 			active_key_binding_context = MONTAGE;
 			D_LOCK(file_tree);
@@ -5578,15 +5584,32 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 			main_window_adjust_for_image();
 			gtk_widget_queue_draw(GTK_WIDGET(main_window));
 
+			D_LOCK(file_tree);
+			BOSNode *target;
 			if(action_id == ACTION_MONTAGE_MODE_RETURN_PROCEED) {
-				absolute_image_movement(montage_window_control.selected_node);
+				target = montage_window_control.selected_node;
+				montage_window_control.selected_node = NULL;
+			}
+			else if(current_file_node) {
+				target = bostree_node_weak_ref(current_file_node);
+				bostree_node_weak_unref(file_tree, montage_window_control.selected_node);
 				montage_window_control.selected_node = NULL;
 			}
 			else {
 				bostree_node_weak_unref(file_tree, montage_window_control.selected_node);
 				montage_window_control.selected_node = NULL;
-				image_loaded_handler(NULL);
+				if(!file_tree_valid) {
+					break;
+				}
+				target = bostree_select(file_tree, 0);
+				if(!target) {
+					break;
+				}
+				target = bostree_node_weak_ref(target);
 			}
+			D_UNLOCK(file_tree);
+
+			absolute_image_movement(target);
 
 			if(option_lowmem) {
 				D_LOCK(file_tree);
