@@ -603,6 +603,8 @@ static const struct default_key_bindings_struct {
 	{ MONTAGE, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_Page_Up          ), ACTION_MONTAGE_MODE_SHIFT_Y_PG         , { -1  }},
 	{ MONTAGE, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_KP_Page_Up       ), ACTION_MONTAGE_MODE_SHIFT_Y_PG         , { -1  }},
 	{ MONTAGE, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_KP_Page_Down     ), ACTION_MONTAGE_MODE_SHIFT_Y_PG         , { 1 }},
+	{ MONTAGE, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_Home             ), ACTION_GOTO_FILE_BYINDEX               , { 0   }},
+	{ MONTAGE, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_End              ), ACTION_GOTO_FILE_BYINDEX               , { -1  }},
 
 	{ MONTAGE, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_Return           ), ACTION_MONTAGE_MODE_RETURN_PROCEED     , { 0   }},
 	{ MONTAGE, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_Escape           ), ACTION_MONTAGE_MODE_RETURN_CANCEL      , { 0   }},
