@@ -413,6 +413,8 @@ struct {
 	BOSNode *selected_node;
 	gboolean show_binding_overlays;
 } montage_window_control;
+
+enum { MONTAGE_MODE_WRAP_OFF, MONTAGE_MODE_WRAP_ROWS, MONTAGE_MODE_WRAP_FULL, _MONTAGE_MODE_WRAP_SENTINEL } option_montage_mode_wrap_mode = MONTAGE_MODE_WRAP_ROWS;
 #endif
 
 // Hint: Only types G_OPTION_ARG_NONE, G_OPTION_ARG_STRING, G_OPTION_ARG_DOUBLE/INTEGER and G_OPTION_ARG_CALLBACK are
@@ -701,6 +703,7 @@ const struct pqiv_action_descriptor {
 	{ "montage_mode_shift_y", PARAMETER_INT },
 	{ "montage_mode_set_shift_x", PARAMETER_INT },
 	{ "montage_mode_set_shift_y", PARAMETER_INT },
+	{ "montage_mode_set_wrap_mode", PARAMETER_INT },
 	{ "montage_mode_shift_y_pg", PARAMETER_INT },
 	{ "montage_mode_show_binding_overlays", PARAMETER_INT },
 	{ "montage_mode_follow", PARAMETER_CHARPTR },
@@ -780,7 +783,8 @@ gboolean window_auto_hide_cursor_callback(gpointer user_data);
 gboolean handle_input_event_timeout_callback(gpointer user_data);
 #endif
 #ifndef CONFIGURED_WITHOUT_MONTAGE_MODE
-void montage_window_move_cursor(int, int, gboolean);
+gboolean montage_window_get_move_cursor_target(int, int, int, int*, int*, int*, BOSNode **);
+void montage_window_move_cursor(int, int, int);
 #endif
 // }}}
 /* Helper functions {{{ */
@@ -1286,7 +1290,7 @@ BOSNode *load_images_handle_parameter_add_file(load_images_state_t state, file_t
 		#ifndef CONFIGURED_WITHOUT_MONTAGE_MODE
 		if(application_mode == MONTAGE) {
 			D_LOCK(file_tree);
-			montage_window_move_cursor(0, 0, FALSE);
+			montage_window_move_cursor(0, 0,  0);
 			D_UNLOCK(file_tree);
 			gtk_widget_queue_draw(GTK_WIDGET(main_window));
 		}
@@ -2951,7 +2955,7 @@ void relative_image_movement(ptrdiff_t movement) {/*{{{*/
 			bostree_node_weak_unref(file_tree, montage_window_control.selected_node);
 		}
 		montage_window_control.selected_node = target;
-		montage_window_move_cursor(0, 0, FALSE);
+		montage_window_move_cursor(0, 0,  0);
 		D_UNLOCK(file_tree);
 		gtk_widget_queue_draw(GTK_WIDGET(main_window));
 		return;
@@ -3090,7 +3094,7 @@ void directory_image_movement(int direction) {/*{{{*/
 			bostree_node_weak_unref(file_tree, montage_window_control.selected_node);
 		}
 		montage_window_control.selected_node = target;
-		montage_window_move_cursor(0, 0, FALSE);
+		montage_window_move_cursor(0, 0,  0);
 		D_UNLOCK(file_tree);
 	}
 	#endif
@@ -3954,18 +3958,131 @@ void montage_window_set_cursor(int pos_x, int pos_y) {/*{{{*/
 	}
 	montage_window_control.selected_node = bostree_node_weak_ref(new_selected_node);
 }/*}}}*/
-void montage_window_move_cursor(int move_x, int move_y, gboolean maintain_relative_pos) {/*{{{*/
-	// Must be called with an active lock.
+gboolean montage_window_get_move_cursor_target(int pos_x, int pos_y, int move_y_pages, int *target_x, int *target_y, int *target_scroll_y, BOSNode **target_node) {/*{{{*/
+	/* The idea to call this function with a possibly invalid pair of on-screen coordinates
+	   (pos_x, pos_y) and an amount of pages to scroll move_y_pages. The function will
+	   calculate a valid set of coordinates based on the wrapping rules and store them in
+	   the output pointers. It returns whether the target is visible on the screen without
+	   scrolling
+	 */
 
-	const unsigned n_thumbs_x = main_window_width / (option_thumbnails.width + 10);
-	const unsigned n_thumbs_y = main_window_height / (option_thumbnails.height + 10);
+	const int n_thumbs_x = main_window_width / (option_thumbnails.width + 10);
+	const int n_thumbs_y = main_window_height / (option_thumbnails.height + 10);
 	const ptrdiff_t number_of_images = (ptrdiff_t)bostree_node_count(file_tree);
+	const int n_rows_total       = (number_of_images + n_thumbs_x - 1) / n_thumbs_x;
+	const int last_row_n_thumbs  = number_of_images % n_thumbs_x;
+
+	int scroll_y = montage_window_control.scroll_y;
+	int original_scroll_y = scroll_y;
+
+	// Use absolute pos_y coordinates
+	pos_y += scroll_y;
+
+	// Adjust x position to fit, ignoring the end of the file list for now
+	if(option_montage_mode_wrap_mode == MONTAGE_MODE_WRAP_OFF) {
+		if(pos_x < 0) pos_x = 0;
+		if(pos_x >= n_thumbs_x) pos_x = n_thumbs_x - 1;
+	}
+	else {
+		if(pos_x <= -n_thumbs_x || pos_x >= n_thumbs_x) {
+			pos_y += pos_x / n_thumbs_x;
+			pos_x %= n_thumbs_x;
+		}
+		if(pos_x < 0) {
+			pos_y--;
+			pos_x += n_thumbs_x;
+		}
+	}
+
+	// Scroll pages
+	if(move_y_pages) {
+		pos_y += move_y_pages * n_thumbs_y;
+		scroll_y += move_y_pages * n_thumbs_y;
+	}
+
+	// Adjust y position to fit
+	int wrap = 0;
+	if(pos_y < 0) {
+		if(option_montage_mode_wrap_mode != MONTAGE_MODE_WRAP_FULL) {
+			pos_y = 0;
+			pos_x = 0;
+		}
+		else {
+			while(pos_y < 0) {
+				pos_y += n_rows_total;
+			}
+			wrap = 1;
+		}
+	}
+	if(pos_y >= n_rows_total) {
+		if(option_montage_mode_wrap_mode != MONTAGE_MODE_WRAP_FULL) {
+			pos_y = n_rows_total - 1;
+			pos_x = last_row_n_thumbs - 1;
+		}
+		else {
+			while(pos_y >= n_rows_total) {
+				pos_y -= n_rows_total;
+			}
+			wrap = -1;
+		}
+	}
+	if(pos_y == n_rows_total - 1) {
+		if(pos_x >= last_row_n_thumbs) {
+			if(option_montage_mode_wrap_mode != MONTAGE_MODE_WRAP_FULL) {
+				pos_x = last_row_n_thumbs - 1;
+			}
+			else {
+				if(wrap == 1) {
+					pos_x -= (n_thumbs_x - last_row_n_thumbs);
+				}
+				else {
+					pos_y = 0;
+					pos_x -= last_row_n_thumbs;
+				}
+			}
+		}
+	}
+
+	// Fixup scroll position if necessary
+	if(scroll_y < 0) {
+		scroll_y = 0;
+	}
+	if(scroll_y > n_rows_total - n_thumbs_y) {
+		scroll_y = n_rows_total - n_thumbs_y;
+	}
+	if(scroll_y > pos_y) {
+		scroll_y = pos_y;
+	}
+	if(scroll_y + n_thumbs_y <= pos_y) {
+		scroll_y = pos_y - n_thumbs_y + 1;
+	}
+
+	// Return to page coordinates
+	pos_y -= scroll_y;
+
+	if(target_x) {
+		*target_x = pos_x;
+	}
+	if(target_y) {
+		*target_y = pos_y;
+	}
+	if(target_scroll_y) {
+		*target_scroll_y = scroll_y;
+	}
+	if(target_node) {
+		*target_node = bostree_select(file_tree, (scroll_y + pos_y) * n_thumbs_x + pos_x);
+	}
+
+	return scroll_y == original_scroll_y;
+}/*}}}*/
+void montage_window_move_cursor(int move_x, int move_y, int move_y_pages) {/*{{{*/
+	// Must be called with an active lock.
+	const int n_thumbs_x = main_window_width / (option_thumbnails.width + 10);
+	const int n_thumbs_y = main_window_height / (option_thumbnails.height + 10);
 
 	if(n_thumbs_x == 0 || n_thumbs_y == 0) {
 		return;
 	}
-
-	const ptrdiff_t n_rows_total = number_of_images / n_thumbs_x;
 
 	BOSNode *selected_node = bostree_node_weak_unref(file_tree, montage_window_control.selected_node);
 	if(!selected_node) {
@@ -3980,64 +4097,44 @@ void montage_window_move_cursor(int move_x, int move_y, gboolean maintain_relati
 	}
 
 	size_t old_selection = bostree_rank(selected_node);
-	ptrdiff_t new_selection = old_selection + (ptrdiff_t)move_x + move_y * (ptrdiff_t)n_thumbs_x;
-	if(new_selection < 0) {
-		new_selection = 0;
-	}
-	if(new_selection >= number_of_images) {
-		new_selection = number_of_images - 1;
-	}
-	selected_node = bostree_select(file_tree, new_selection);
-	montage_window_control.selected_node = bostree_node_weak_ref(selected_node);
-
-	ptrdiff_t pos_y = new_selection / n_thumbs_x;
-
-	if(maintain_relative_pos) {
-		montage_window_control.scroll_y += (new_selection - old_selection) / n_thumbs_x;
-	}
-
+	int pos_x = old_selection % n_thumbs_x;
+	int pos_y = old_selection / n_thumbs_x;
 	if(montage_window_control.scroll_y + n_thumbs_y <= pos_y) {
 		montage_window_control.scroll_y = pos_y - n_thumbs_y + 1;
 	}
 	else if(montage_window_control.scroll_y > pos_y) {
 		montage_window_control.scroll_y = pos_y;
 	}
+	pos_y -= montage_window_control.scroll_y;
 
-	if(montage_window_control.scroll_y < 0) {
-		montage_window_control.scroll_y = 0;
+	if(move_x != 0 || move_y != 0 || move_y_pages != 0) {
+		selected_node = NULL;
+		montage_window_get_move_cursor_target(pos_x + move_x, pos_y + move_y, move_y_pages, &pos_x, &pos_y, &montage_window_control.scroll_y, &selected_node);
 	}
-	else if(montage_window_control.scroll_y > n_rows_total - n_thumbs_y + 1) {
-		montage_window_control.scroll_y = n_rows_total - n_thumbs_y + 1;
-	}
+
+	montage_window_control.selected_node = bostree_node_weak_ref(selected_node);
 
 	// Queue loading of thumbnails
 	abort_pending_image_loads(selected_node);
-	queue_image_load(bostree_node_weak_ref(selected_node));
 
-	size_t thumb_node_fwd_ctr = new_selection + 1;
-	BOSNode *thumb_node_fwd = bostree_next_node(selected_node);
-	size_t thumb_node_fwd_stop = (montage_window_control.scroll_y + n_thumbs_y) * n_thumbs_x + 1 + (option_thumbnails.auto_generate_for_adjacents > 0 ? option_thumbnails.auto_generate_for_adjacents : 0);
+	int thumb_node_fwd_ctr = (n_thumbs_y - pos_y - 1) * n_thumbs_x + (n_thumbs_x - pos_x - 1) + (option_thumbnails.auto_generate_for_adjacents > 0 ? option_thumbnails.auto_generate_for_adjacents : 0) + 1;
+	BOSNode *thumb_node_fwd = selected_node;
 
-	size_t thumb_node_bwd_ctr = new_selection - 1;
+	int thumb_node_bwd_ctr = pos_y  * n_thumbs_x + pos_x + (option_thumbnails.auto_generate_for_adjacents > 0 ? option_thumbnails.auto_generate_for_adjacents : 0);
 	BOSNode *thumb_node_bwd = bostree_previous_node(selected_node);
-	size_t thumb_node_bwd_stop = montage_window_control.scroll_y * n_thumbs_x - 1 - (option_thumbnails.auto_generate_for_adjacents > 0 ? option_thumbnails.auto_generate_for_adjacents : 0);
-	if(thumb_node_bwd_stop > thumb_node_bwd_ctr) {
-		// An overflow in thumb_node_bwd_stop isn't a problem, because thumb_node_bwd will become NULL below.
-		thumb_node_bwd_stop = (size_t)-1;
-	}
 
 	while(TRUE) {
 		gboolean did_something = FALSE;
-		if(thumb_node_fwd && thumb_node_fwd_ctr != thumb_node_fwd_stop) {
-			if(!test_and_invalidate_thumbnail(FILE(thumb_node_fwd)) && thumb_node_fwd != selected_node) {
+		if(thumb_node_fwd && thumb_node_fwd_ctr) {
+			if(!test_and_invalidate_thumbnail(FILE(thumb_node_fwd))) {
 				queue_thumbnail_load(bostree_node_weak_ref(thumb_node_fwd));
 			}
 			thumb_node_fwd = bostree_next_node(thumb_node_fwd);
-			thumb_node_fwd_ctr++;
+			thumb_node_fwd_ctr--;
 			did_something = TRUE;
 		}
-		if(thumb_node_bwd && thumb_node_bwd_ctr != thumb_node_bwd_stop) {
-			if(!test_and_invalidate_thumbnail(FILE(thumb_node_bwd)) && thumb_node_bwd != selected_node) {
+		if(thumb_node_bwd && thumb_node_bwd_ctr) {
+			if(!test_and_invalidate_thumbnail(FILE(thumb_node_bwd))) {
 				queue_thumbnail_load(bostree_node_weak_ref(thumb_node_bwd));
 			}
 			thumb_node_bwd = bostree_previous_node(thumb_node_bwd);
@@ -4052,13 +4149,17 @@ void montage_window_move_cursor(int move_x, int move_y, gboolean maintain_relati
 #ifndef CONFIGURED_WITHOUT_ACTIONS
 struct window_draw_thumbnail_montage_show_binding_overlays_data {
 	cairo_t *cr;
-	unsigned n_thumbs_x;
-	unsigned n_thumbs_y;
 	int current_x;
 	int current_y;
 	char *active_prefix;
 };
 void window_draw_thumbnail_montage_show_binding_overlays_looper(gpointer key, gpointer value, gpointer user_data) {/*{{{*/
+	const int n_thumbs_x = main_window_width / (option_thumbnails.width + 10);
+	const int n_thumbs_y = main_window_height / (option_thumbnails.height + 10);
+	const ptrdiff_t number_of_images = (ptrdiff_t)bostree_node_count(file_tree);
+	const int n_rows_total       = (number_of_images + n_thumbs_x - 1) / n_thumbs_x;
+	const int last_row_n_thumbs  = number_of_images % n_thumbs_x;
+
 	struct window_draw_thumbnail_montage_show_binding_overlays_data data = *(struct window_draw_thumbnail_montage_show_binding_overlays_data *)user_data;
 	guint key_binding_value = GPOINTER_TO_UINT(key);
 	key_binding_t *binding = value;
@@ -4087,44 +4188,53 @@ void window_draw_thumbnail_montage_show_binding_overlays_looper(gpointer key, gp
 				}
 				break;
 			case ACTION_MONTAGE_MODE_SHIFT_X:
-				data.current_y += (data.current_x + binding->parameter.pint) / data.n_thumbs_x;
-				data.current_x  = (data.current_x + binding->parameter.pint) % data.n_thumbs_x;
+				if(!montage_window_get_move_cursor_target(data.current_x + binding->parameter.pint, data.current_y, 0, &data.current_x, &data.current_y, NULL, NULL)) {
+					data.current_y = -1;
+					while(binding->next_action) binding = binding->next_action;
+					break;
+				}
 				break;
 			case ACTION_MONTAGE_MODE_SHIFT_Y:
-				data.current_y += binding->parameter.pint;
+				if(!montage_window_get_move_cursor_target(data.current_x, data.current_y + binding->parameter.pint, 0, &data.current_x, &data.current_y, NULL, NULL)) {
+					data.current_y = -1;
+					while(binding->next_action) binding = binding->next_action;
+					break;
+				}
 				break;
 			case ACTION_MONTAGE_MODE_SHIFT_Y_PG:
-				// The idea of this action is to leave the region. Don't try to replicate the logic here
-				// in the hope that no user will ever write unoptimized key bindings that loop around..
-				data.current_y = -1;
-				while(binding->next_action) {
-					binding = binding->next_action;
+				if(!montage_window_get_move_cursor_target(data.current_x, data.current_y, binding->parameter.pint, &data.current_x, &data.current_y, NULL, NULL)) {
+					data.current_y = -1;
+					while(binding->next_action) binding = binding->next_action;
+					break;
 				}
 				break;
 			case ACTION_GOTO_FILE_RELATIVE:
 				target_index = bostree_rank(relative_image_pointer(binding->parameter.pint));
-				data.current_y = target_index / data.n_thumbs_x - montage_window_control.scroll_y;
-				data.current_x = target_index % data.n_thumbs_x;
+				data.current_y = target_index / n_thumbs_x - montage_window_control.scroll_y;
+				data.current_x = target_index % n_thumbs_x;
 				break;
 			case ACTION_GOTO_FILE_BYINDEX:
 				target_index = binding->parameter.pint;
-				data.current_y = target_index / data.n_thumbs_x - montage_window_control.scroll_y;
-				data.current_x = target_index % data.n_thumbs_x;
+				if(target_index < 0 || target_index > bostree_node_count(file_tree) - 1) {
+					target_index = bostree_node_count(file_tree) - 1;
+				}
+				data.current_y = target_index / n_thumbs_x - montage_window_control.scroll_y;
+				data.current_x = target_index % n_thumbs_x;
 				break;
 			case ACTION_GOTO_FILE_BYNAME:
 				target_node = image_pointer_by_name(binding->parameter.pcharptr);
 				if(target_node) {
 					target_index = bostree_rank(target_node);
-					data.current_y = target_index / data.n_thumbs_x - montage_window_control.scroll_y;
-					data.current_x = target_index % data.n_thumbs_x;
+					data.current_y = target_index / n_thumbs_x - montage_window_control.scroll_y;
+					data.current_x = target_index % n_thumbs_x;
 				}
 				break;
 			case ACTION_GOTO_DIRECTORY_RELATIVE:
 				target_node = relative_image_pointer_directory(binding->parameter.pint);
 				if(target_node) {
 					target_index = bostree_rank(target_node);
-					data.current_y = target_index / data.n_thumbs_x - montage_window_control.scroll_y;
-					data.current_x = target_index % data.n_thumbs_x;
+					data.current_y = target_index / n_thumbs_x - montage_window_control.scroll_y;
+					data.current_x = target_index % n_thumbs_x;
 				}
 				break;
 			default:
@@ -4132,7 +4242,8 @@ void window_draw_thumbnail_montage_show_binding_overlays_looper(gpointer key, gp
 		}
 	}
 
-	if(data.current_x >= 0 && (unsigned)data.current_x < data.n_thumbs_x && data.current_y >= 0 && (unsigned)data.current_y < data.n_thumbs_y &&
+	if(data.current_x >= 0 && data.current_x < n_thumbs_x && data.current_y >= 0 && data.current_y < n_thumbs_y &&
+			(data.current_y + montage_window_control.scroll_y != n_rows_total - 1 || data.current_x < last_row_n_thumbs) &&
 			((data.current_x != ((struct window_draw_thumbnail_montage_show_binding_overlays_data *)user_data)->current_x ||
 			  data.current_y != ((struct window_draw_thumbnail_montage_show_binding_overlays_data *)user_data)->current_y))) {
 
@@ -4141,11 +4252,11 @@ void window_draw_thumbnail_montage_show_binding_overlays_looper(gpointer key, gp
 		cairo_save(cr_arg);
 
 		cairo_translate(cr_arg,
-			(main_window_width  - data.n_thumbs_x * (option_thumbnails.width + 10)) / 2  + data.current_x * (option_thumbnails.width + 10),
-			(main_window_height - data.n_thumbs_y * (option_thumbnails.height + 10)) / 2 + data.current_y * (option_thumbnails.height + 10)
+			(main_window_width  - n_thumbs_x * (option_thumbnails.width + 10)) / 2  + data.current_x * (option_thumbnails.width + 10),
+			(main_window_height - n_thumbs_y * (option_thumbnails.height + 10)) / 2 + data.current_y * (option_thumbnails.height + 10)
 		);
 
-			BOSNode *node = bostree_select(file_tree, (montage_window_control.scroll_y + data.current_y) * data.n_thumbs_x + data.current_x);
+		BOSNode *node = bostree_select(file_tree, (montage_window_control.scroll_y + data.current_y) * n_thumbs_x + data.current_x);
 		if(node && FILE(node)->thumbnail) {
 			cairo_translate(cr_arg,
 					(option_thumbnails.width  - cairo_image_surface_get_width(FILE(node)->thumbnail)) / 2 + 5,
@@ -4203,7 +4314,7 @@ gboolean window_draw_thumbnail_montage(cairo_t *cr_arg) {/*{{{*/
 
 	// Do a check if the selected image is out of bounds. Fix if it is.
 	if(top_left_id > selection_rank || top_left_id + n_thumbs_x * n_thumbs_y < selection_rank) {
-		montage_window_move_cursor(0, 0, FALSE);
+		montage_window_move_cursor(0, 0,  0);
 		top_left_id = montage_window_control.scroll_y * n_thumbs_x;
 	}
 
@@ -4260,7 +4371,7 @@ gboolean window_draw_thumbnail_montage(cairo_t *cr_arg) {/*{{{*/
 		const int selected_y = selection_rank / n_thumbs_x - montage_window_control.scroll_y;
 
 		struct window_draw_thumbnail_montage_show_binding_overlays_data data = {
-			cr_arg, n_thumbs_x, n_thumbs_y, selected_x, selected_y, (char*)""
+			cr_arg, selected_x, selected_y, (char*)""
 		};
 
 		g_hash_table_foreach(
@@ -4998,7 +5109,7 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 								bostree_node_weak_unref(file_tree, montage_window_control.selected_node);
 							}
 							montage_window_control.selected_node = node;
-							montage_window_move_cursor(0, 0, FALSE);
+							montage_window_move_cursor(0, 0,  0);
 							D_UNLOCK(file_tree);
 							gtk_widget_queue_draw(GTK_WIDGET(main_window));
 						}
@@ -5039,7 +5150,7 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 								bostree_node_weak_unref(file_tree, montage_window_control.selected_node);
 							}
 							montage_window_control.selected_node = node;
-							montage_window_move_cursor(0, 0, FALSE);
+							montage_window_move_cursor(0, 0, 0);
 							D_UNLOCK(file_tree);
 							gtk_widget_queue_draw(GTK_WIDGET(main_window));
 						}
@@ -5317,7 +5428,7 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 
 			if(application_mode == MONTAGE) {
 				D_LOCK(file_tree);
-				montage_window_move_cursor(0, 0, FALSE);
+				montage_window_move_cursor(0, 0, 0);
 				D_UNLOCK(file_tree);
 				gtk_widget_queue_draw(GTK_WIDGET(main_window));
 			}
@@ -5357,7 +5468,7 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 				bostree_node_weak_unref(file_tree, montage_window_control.selected_node);
 			}
 			montage_window_control.selected_node = bostree_node_weak_ref(current_file_node);
-			montage_window_move_cursor(0, 0, FALSE);
+			montage_window_move_cursor(0, 0, 0);
 			D_UNLOCK(file_tree);
 			update_info_text(NULL);
 			main_window_adjust_for_image();
@@ -5370,7 +5481,7 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 				break;
 			}
 			D_LOCK(file_tree);
-			montage_window_move_cursor(parameter.pint, 0, FALSE);
+			montage_window_move_cursor(parameter.pint, 0, 0);
 			D_UNLOCK(file_tree);
 			gtk_widget_queue_draw(GTK_WIDGET(main_window));
 			break;
@@ -5380,9 +5491,17 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 				break;
 			}
 			D_LOCK(file_tree);
-			montage_window_move_cursor(0, parameter.pint, FALSE);
+			montage_window_move_cursor(0, parameter.pint, 0);
 			D_UNLOCK(file_tree);
 			gtk_widget_queue_draw(GTK_WIDGET(main_window));
+			break;
+
+		case ACTION_MONTAGE_MODE_SET_WRAP_MODE:
+			if(parameter.pint < 0 || parameter.pint >= _MONTAGE_MODE_WRAP_SENTINEL) {
+				g_printerr("Invalid parameter for montage_mode_set_wrap_mode()\n");
+				break;
+			}
+			option_montage_mode_wrap_mode = parameter.pint;
 			break;
 
 		case ACTION_MONTAGE_MODE_SET_SHIFT_X:
@@ -5406,7 +5525,7 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 				break;
 			}
 			D_LOCK(file_tree);
-			montage_window_move_cursor(0, parameter.pint * main_window_height / (option_thumbnails.height + 10), TRUE);
+			montage_window_move_cursor(0, 0, parameter.pint);
 			D_UNLOCK(file_tree);
 			gtk_widget_queue_draw(GTK_WIDGET(main_window));
 			break;
@@ -5724,7 +5843,7 @@ gboolean window_configure_callback(GtkWidget *widget, GdkEventConfigure *event, 
 		// Make sure that the currently selected image stays in view & that all
 		// visible thumbnails are loaded
 		D_LOCK(file_tree);
-		montage_window_move_cursor(0, 0, FALSE);
+		montage_window_move_cursor(0, 0,  0);
 		D_UNLOCK(file_tree);
 	}
 	#endif

@@ -428,6 +428,11 @@ Set the horizontal cursor position in montage mode to an absolute value, indexed
 .BR montage_mode_set_shift_y(INT)
 Set the vertical cursor position in montage mode to an absolute value, indexed from 0.
 .TP
+.BR montage_mode_set_wrap_mode(INT)
+Adjust how wrapping around edges works when shifting the cursor position in montage mode:
+The default, \fI1\fR, is to wrap around rows but not around the whole image list. Set
+this to \fI0\fR to disable wrapping entirely. A value of \fI2\fR enables full wrapping.
+.TP
 .BR montage_mode_shift_x(INT)
 Shift the cursor in montage mode in horizontal direction. Shifts wrap around
 edges to the adjacent vertical lines, but not around the end of the list back
