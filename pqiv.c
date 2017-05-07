@@ -3966,8 +3966,9 @@ gboolean montage_window_get_move_cursor_target(int pos_x, int pos_y, int move_y_
 	if(scroll_y < 0) {
 		scroll_y = 0;
 	}
-	if(scroll_y > n_rows_total - n_thumbs_y) {
-		scroll_y = n_rows_total - n_thumbs_y;
+	int upper_bound = n_rows_total > n_thumbs_y ? n_rows_total - n_thumbs_y : n_rows_total;
+	if(scroll_y > upper_bound) {
+		scroll_y = upper_bound;
 	}
 	if(scroll_y > pos_y) {
 		scroll_y = pos_y;
