@@ -3889,7 +3889,7 @@ gboolean montage_window_get_move_cursor_target(int pos_x, int pos_y, int move_y_
 	const int n_thumbs_y = main_window_height / (option_thumbnails.height + 10);
 	const ptrdiff_t number_of_images = (ptrdiff_t)bostree_node_count(file_tree);
 	const int n_rows_total       = (number_of_images + n_thumbs_x - 1) / n_thumbs_x;
-	const int last_row_n_thumbs  = number_of_images % n_thumbs_x;
+	const int last_row_n_thumbs  = (number_of_images % n_thumbs_x == 0) ? n_thumbs_x : number_of_images % n_thumbs_x;
 
 	int scroll_y = montage_window_control.scroll_y;
 	int original_scroll_y = scroll_y;
@@ -4077,7 +4077,7 @@ void window_draw_thumbnail_montage_show_binding_overlays_looper(gpointer key, gp
 	const int n_thumbs_y = main_window_height / (option_thumbnails.height + 10);
 	const ptrdiff_t number_of_images = (ptrdiff_t)bostree_node_count(file_tree);
 	const int n_rows_total       = (number_of_images + n_thumbs_x - 1) / n_thumbs_x;
-	const int last_row_n_thumbs  = number_of_images % n_thumbs_x;
+	const int last_row_n_thumbs  = (number_of_images % n_thumbs_x == 0) ? n_thumbs_x : number_of_images % n_thumbs_x;
 
 	struct window_draw_thumbnail_montage_show_binding_overlays_data data = *(struct window_draw_thumbnail_montage_show_binding_overlays_data *)user_data;
 	guint key_binding_value = GPOINTER_TO_UINT(key);
