@@ -4510,6 +4510,15 @@ gboolean window_draw_callback(GtkWidget *widget, cairo_t *cr_arg, gpointer user_
 				cairo_paint(cr_arg);
 			}
 		}
+		else {
+			// Draw black background
+			// This must be done explicitly in GTK2, otherwise the background will be white.
+			cairo_save(cr_arg);
+			cairo_set_source_rgba(cr_arg, 0., 0., 0., option_transparent_background ? 0. : 1.);
+			cairo_set_operator(cr_arg, CAIRO_OPERATOR_SOURCE);
+			cairo_paint(cr_arg);
+			cairo_restore(cr_arg);
+		}
 	}
 	D_UNLOCK(file_tree);
 
