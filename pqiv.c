@@ -1776,6 +1776,7 @@ void load_images() {/*{{{*/
 }/*}}}*/
 // }}}
 /* (A-)synchronous image loading and image operations {{{ */
+#ifndef CONFIGURED_WITHOUT_MONTAGE_MODE
 gboolean test_and_invalidate_thumbnail(file_t *file) {/*{{{*/
 	if(file->thumbnail) {
 		const int thumb_width = cairo_image_surface_get_width(file->thumbnail);
@@ -1789,6 +1790,7 @@ gboolean test_and_invalidate_thumbnail(file_t *file) {/*{{{*/
 	}
 	return !!file->thumbnail;
 }/*}}}*/
+#endif
 void invalidate_current_scaled_image_surface() {/*{{{*/
 	if(current_scaled_image_surface != NULL) {
 		cairo_surface_destroy(current_scaled_image_surface);
