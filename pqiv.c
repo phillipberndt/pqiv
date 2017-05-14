@@ -201,8 +201,7 @@ char **global_argv;
 cairo_surface_t *last_visible_image_surface = NULL;
 cairo_surface_t *current_scaled_image_surface = NULL;
 
-#ifndef CONFIGURED_WITHOUT_INFO_TEXT
-gint current_info_text_cached_font_size = -1;
+#if !defined(CONFIGURED_WITHOUT_INFO_TEXT) || !defined(CONFIGURED_WITHOUT_MONTAGE_MODE)
 struct {
 	double fg_red;
 	double fg_green;
@@ -210,7 +209,10 @@ struct {
 	double bg_red;
 	double bg_green;
 	double bg_blue;
-} option_info_box_colors = { 0., 0., 0., 1., 1., 0. };
+} option_box_colors = { 0., 0., 0., 1., 1., 0. };
+#endif
+#ifndef CONFIGURED_WITHOUT_INFO_TEXT
+gint current_info_text_cached_font_size = -1;
 gchar *current_info_text = NULL;
 cairo_rectangle_int_t current_info_text_bounding_box = { 0, 0, 0, 0 };
 #endif
@@ -327,8 +329,8 @@ gboolean option_end_of_files_action_callback(const gchar *option_name, const gch
 gboolean option_watch_files_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error);
 gboolean option_sort_key_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error);
 gboolean option_action_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error);
-#ifndef CONFIGURED_WITHOUT_INFO_TEXT
-gboolean option_info_box_colors_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error);
+#if !defined(CONFIGURED_WITHOUT_INFO_TEXT) || !defined(CONFIGURED_WITHOUT_MONTAGE_MODE)
+gboolean option_box_colors_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error);
 #endif
 void load_images_handle_parameter(char *param, load_images_state_t state, gint depth, GSList *recursion_folder_stack);
 
@@ -397,15 +399,15 @@ GOptionEntry options[] = {
 	{ "allow-empty-window", 0, 0, G_OPTION_ARG_NONE, &option_allow_empty_window, "Show pqiv/do not quit even though no files are loaded", NULL },
 	{ "bind-key", 0, 0, G_OPTION_ARG_CALLBACK, &options_bind_key_callback, "Rebind a key to another action, see manpage and --show-keybindings output for details.", "KEY BINDING" },
 #endif
+#if !defined(CONFIGURED_WITHOUT_INFO_TEXT) || !defined(CONFIGURED_WITHOUT_MONTAGE_MODE)
+	{ "box-colors", 0, 0, G_OPTION_ARG_CALLBACK, (gpointer)&option_box_colors_callback, "Set box colors", "TEXT:BACKGROUND" },
+#endif
 	{ "browse", 0, 0, G_OPTION_ARG_NONE, &option_browse, "For each command line argument, additionally load all images from the image's directory", NULL },
 	{ "disable-backends", 0, 0, G_OPTION_ARG_STRING, &option_disable_backends, "Disable the given backends", "BACKENDS" },
 	{ "disable-scaling", 0, G_OPTION_FLAG_NO_ARG, G_OPTION_ARG_CALLBACK, &option_scale_level_callback, "Disable scaling of images", NULL },
 	{ "end-of-files-action", 0, 0, G_OPTION_ARG_CALLBACK, &option_end_of_files_action_callback, "Action to take after all images have been viewed. (`quit', `wait', `wrap', `wrap-no-reshuffle')", "ACTION" },
 	{ "enforce-window-aspect-ratio", 0, 0, G_OPTION_ARG_NONE, &option_enforce_window_aspect_ratio, "Fix the aspect ratio of the window to match the current image's", NULL },
 	{ "fade-duration", 0, 0, G_OPTION_ARG_DOUBLE, &option_fading_duration, "Adjust fades' duration", "SECONDS" },
-#ifndef CONFIGURED_WITHOUT_INFO_TEXT
-	{ "info-box-colors", 0, 0, G_OPTION_ARG_CALLBACK, (gpointer)&option_info_box_colors_callback, "Set info box colors", "TEXT:BACKGROUND" },
-#endif
 	{ "low-memory", 0, 0, G_OPTION_ARG_NONE, &option_lowmem, "Try to keep memory usage to a minimum", NULL },
 	{ "max-depth", 0, 0, G_OPTION_ARG_INT, &option_max_depth, "Descend at most LEVELS levels of directories below the command line arguments", "LEVELS" },
 	{ "recreate-window", 0, 0, G_OPTION_ARG_NONE, &option_recreate_window, "Create a new window instead of resizing the old one", NULL },
@@ -885,8 +887,8 @@ gboolean option_end_of_files_action_callback(const gchar *option_name, const gch
 	}
 	return TRUE;
 }/*}}}*/
-#ifndef CONFIGURED_WITHOUT_INFO_TEXT
-gboolean option_info_box_colors_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error) {/*{{{*/
+#if !defined(CONFIGURED_WITHOUT_INFO_TEXT) || !defined(CONFIGURED_WITHOUT_MONTAGE_MODE)
+gboolean option_box_colors_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error) {/*{{{*/
 	// Parse manually rather than with sscanf to have the flexibility to use
 	// hex notation without doing black magic
 	unsigned char pos;
@@ -920,7 +922,7 @@ gboolean option_info_box_colors_callback(const gchar *option_name, const gchar *
 
 					value++;
 				}
-				*((double *)&option_info_box_colors + pos) = mchar / 255.;
+				*((double *)&option_box_colors + pos) = mchar / 255.;
 			}
 			pos--;
 		}
@@ -930,7 +932,7 @@ gboolean option_info_box_colors_callback(const gchar *option_name, const gchar *
 				ivalue = ivalue * 10 + (*value - '0');
 				value++;
 			}
-			*((double *)&option_info_box_colors + pos) = ivalue / 255.;
+			*((double *)&option_box_colors + pos) = ivalue / 255.;
 			if(pos != 2) {
 				while(*value == ' ') {
 					value++;
@@ -958,7 +960,7 @@ gboolean option_info_box_colors_callback(const gchar *option_name, const gchar *
 	}
 
 	if(pos != 6) {
-		g_set_error(error, G_OPTION_ERROR, G_OPTION_ERROR_FAILED, "Unexpected argument value for the --info-box-colors option. Syntax is foreground-color:background-color, colors either given as a r,g,b pair or #aabbcc hex code.");
+		g_set_error(error, G_OPTION_ERROR, G_OPTION_ERROR_FAILED, "Unexpected argument value for the --box-colors option. Syntax is foreground-color:background-color, colors either given as a r,g,b pair or #aabbcc hex code.");
 		return FALSE;
 	}
 	return TRUE;
@@ -4331,12 +4333,12 @@ void window_draw_thumbnail_montage_show_binding_overlays_looper(gpointer key, gp
 		cairo_new_path(cr_arg);
 		cairo_rectangle(cr_arg, -5, -(y2 - y1) - 2, x2 - x1 + 10, y2 - y1 + 8);
 		cairo_close_path(cr_arg);
-		cairo_set_source_rgb(cr_arg, 1., 1., 0.);
+		cairo_set_source_rgb(cr_arg, option_box_colors.bg_red, option_box_colors.bg_green, option_box_colors.bg_blue);
 		cairo_fill(cr_arg);
 
 		cairo_new_path(cr_arg);
 		cairo_append_path(cr_arg, text_path);
-		cairo_set_source_rgb(cr_arg, 0., 0., 0.);
+		cairo_set_source_rgb(cr_arg, option_box_colors.fg_red, option_box_colors.fg_green, option_box_colors.fg_blue);
 		cairo_fill(cr_arg);
 		cairo_path_destroy(text_path);
 
@@ -4403,7 +4405,7 @@ gboolean window_draw_thumbnail_montage(cairo_t *cr_arg) {/*{{{*/
 
 			if(top_left_id + draw_now == selection_rank) {
 				cairo_rectangle(cr_arg, 0, 0, cairo_image_surface_get_width(thumb_file->thumbnail), cairo_image_surface_get_height(thumb_file->thumbnail));
-				cairo_set_source_rgb(cr_arg, 1., 1., 0.);
+				cairo_set_source_rgb(cr_arg, option_box_colors.bg_red, option_box_colors.bg_green, option_box_colors.bg_blue);
 				cairo_set_line_width(cr_arg, 8.);
 				cairo_stroke(cr_arg);
 			}
@@ -4417,7 +4419,7 @@ gboolean window_draw_thumbnail_montage(cairo_t *cr_arg) {/*{{{*/
 				(main_window_height - n_thumbs_y * (option_thumbnails.height + 10)) / 2 + (draw_now / n_thumbs_x) * (option_thumbnails.height + 10) + (option_thumbnails.height - 5)/2
 			);
 			cairo_rectangle(cr_arg, 0, 0, 5, 5);
-			cairo_set_source_rgb(cr_arg, 1., 1., 0.);
+			cairo_set_source_rgb(cr_arg, option_box_colors.bg_red, option_box_colors.bg_green, option_box_colors.bg_blue);
 			cairo_set_line_width(cr_arg, 8.);
 			cairo_stroke(cr_arg);
 			cairo_restore(cr_arg);
@@ -4687,7 +4689,7 @@ gboolean window_draw_callback(GtkWidget *widget, cairo_t *cr_arg, gpointer user_
 				cairo_translate(cr_arg, x < 0 ? 0 : x, y < 0 ? 0 : y);
 			}
 
-			cairo_set_source_rgb(cr_arg, option_info_box_colors.bg_red, option_info_box_colors.bg_green, option_info_box_colors.bg_blue);
+			cairo_set_source_rgb(cr_arg, option_box_colors.bg_red, option_box_colors.bg_green, option_box_colors.bg_blue);
 			cairo_translate(cr_arg, 10 * screen_scale_factor, 20 * screen_scale_factor);
 			cairo_text_path(cr_arg, current_info_text);
 			cairo_path_extents(cr_arg, &x1, &y1, &x2, &y2);
@@ -4705,7 +4707,7 @@ gboolean window_draw_callback(GtkWidget *widget, cairo_t *cr_arg, gpointer user_
 			cairo_rectangle(cr_arg, -5, -(y2 - y1) - 2, x2 - x1 + 10, y2 - y1 + 8);
 			cairo_close_path(cr_arg);
 			cairo_fill(cr_arg);
-			cairo_set_source_rgb(cr_arg, option_info_box_colors.fg_red, option_info_box_colors.fg_green, option_info_box_colors.fg_blue);
+			cairo_set_source_rgb(cr_arg, option_box_colors.fg_red, option_box_colors.fg_green, option_box_colors.fg_blue);
 			cairo_append_path(cr_arg, text_path);
 			cairo_fill(cr_arg);
 			cairo_path_destroy(text_path);

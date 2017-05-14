@@ -174,6 +174,13 @@ and insert the special key bindings within the curly braces.
 .RE
 .\"
 .TP
+.BR \-\--box\-colors=\fIFOREGROUND\ COLOR:BACKGROUND\ COLOR\fR
+Customize the colors used to draw the info box and montage mode borders. Colors
+can be specified either as a comma separated list of RBG-values in the range
+from 0 to 255 or as a hexvalue, e.g., #aabbcc. The default value is
+\fI#000000:#ffff00\fR.
+.\"
+.TP
 .BR \-\-browse
 For each command line argument, additionally load all images from the image's
 directory. \fBpqiv\fR will still start at the image that was given as the first
@@ -225,12 +232,6 @@ drawn with the correct aspect ratio, with black borders added at the sides.
 .BR \-\-fade\-duration=\fISECONDS\fR
 With \fB\-\-fade\fR, make each fade this long. Floating point values are
 accepted, e.g. 0.5 makes each fade take half a second.
-.\"
-.TP
-.BR \-\-info\-box\-colors=\fIFOREGROUND\ COLOR:BACKGROUND\ COLOR\fR
-Customize the colors used to draw the info box. Colors can be specified either
-as a comma separated list of RBG-values in the range from 0 to 255 or as a
-hexvalue, e.g., #aabbcc. The default value is \fI#000000:#ffff00\fR.
 .\"
 .TP
 .BR \-\-low\-memory
