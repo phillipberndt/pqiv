@@ -137,12 +137,12 @@ BOSNode *file_type_archive_alloc(load_images_state_t state, file_t *file) {/*{{{
 	while(archive_read_next_header(archive, &entry) == ARCHIVE_OK) {
 		const gchar *entry_name = archive_entry_pathname(entry);
 
-		#if ARCHIVE_VERSION_NUMBER <= 3003002
+		#if ARCHIVE_VERSION_NUMBER < 3003002
 			// Affected by libarchive bug #869
 			if(archive_entry_size(entry) == 0) {
 				const char *archive_format = archive_format_name(archive);
 				if(strncmp("ZIP", archive_format, 3) == 0) {
-					g_printerr("Failed to load archive %s: This ZIP file is affected by libarchive bug #869, which has been fixed in v3.3.2. Skipping file.\n", file->display_name);
+					g_printerr("Failed to load archive %s: This ZIP file is affected by libarchive bug #869, which was fixed in v3.3.2. Skipping file.\n", file->display_name);
 					archive_read_free(archive);
 					buffered_file_unref(file);
 					file_free(file);
