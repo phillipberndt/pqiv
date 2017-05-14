@@ -2273,6 +2273,15 @@ gpointer image_loader_thread(gpointer user_data) {/*{{{*/
 		#endif
 		g_slice_free(struct image_loader_queue_item, it);
 
+		// The image might still be in the loader queue though it has already
+		// been invalidated. In this case, skip it.
+		if(!bostree_node_weak_unref(file_tree, bostree_node_weak_ref(node))) {
+			D_LOCK(file_tree);
+			bostree_node_weak_unref(file_tree, node);
+			D_UNLOCK(file_tree);
+			continue;
+		}
+
 		// Short-circuit: If we want to load this image for its thumbnail, check the cache first.
 		// We might not have to load it at all.
 		#ifndef CONFIGURED_WITHOUT_MONTAGE_MODE
