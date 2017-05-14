@@ -1695,6 +1695,7 @@ void load_images() {/*{{{*/
 /* (A-)synchronous image loading and image operations {{{ */
 #ifndef CONFIGURED_WITHOUT_MONTAGE_MODE
 gboolean test_and_invalidate_thumbnail(file_t *file) {/*{{{*/
+	// Must be called with an active lock!
 	if(file->thumbnail) {
 		const int thumb_width = cairo_image_surface_get_width(file->thumbnail);
 		const int thumb_height = cairo_image_surface_get_height(file->thumbnail);
@@ -2289,11 +2290,9 @@ gpointer image_loader_thread(gpointer user_data) {/*{{{*/
 			// Unload an old thumbnail if it does not have the correct size
 			D_LOCK(file_tree);
 			test_and_invalidate_thumbnail(FILE(node));
-			D_UNLOCK(file_tree);
 			if(!FILE(node)->thumbnail && (option_thumbnails.enabled || application_mode == MONTAGE) && option_thumbnails.persist) {
 				if(load_thumbnail_from_cache(FILE(node), option_thumbnails.width, option_thumbnails.height, option_thumbnails.special_thumbnail_directory) == TRUE) {
 					// Loading the thumbnail succeeded. We may break here.
-					D_LOCK(file_tree);
 					bostree_node_weak_unref(file_tree, node);
 					D_UNLOCK(file_tree);
 
@@ -2302,6 +2301,7 @@ gpointer image_loader_thread(gpointer user_data) {/*{{{*/
 					continue;
 				}
 			}
+			D_UNLOCK(file_tree);
 		}
 		#endif
 
@@ -2371,15 +2371,17 @@ gpointer image_loader_thread(gpointer user_data) {/*{{{*/
 #ifndef CONFIGURED_WITHOUT_MONTAGE_MODE
 			D_LOCK(file_tree);
 			test_and_invalidate_thumbnail(FILE(node));
-			D_UNLOCK(file_tree);
 			if(!FILE(node)->thumbnail && (option_thumbnails.enabled || application_mode == MONTAGE)) {
 				if(!option_thumbnails.persist || load_thumbnail_from_cache(FILE(node), option_thumbnails.width, option_thumbnails.height, option_thumbnails.special_thumbnail_directory) == FALSE) {
+					D_UNLOCK(file_tree);
 					image_loader_create_thumbnail(FILE(node));
+					D_LOCK(file_tree);
 					if(FILE(node)->thumbnail && option_thumbnails.persist) {
 						store_thumbnail_to_cache(FILE(node), option_thumbnails.width, option_thumbnails.height, option_thumbnails.special_thumbnail_directory);
 					}
 				}
 			}
+			D_UNLOCK(file_tree);
 #endif
 			if(node == current_file_node) {
 				current_image_drawn = FALSE;
@@ -4248,6 +4250,7 @@ gboolean window_draw_thumbnail_montage(cairo_t *cr_arg) {/*{{{*/
 	}
 
 	if(!file_tree_valid) {
+		D_UNLOCK(file_tree);
 		return FALSE;
 	}
 	BOSNode *thumb_node = bostree_select(file_tree, top_left_id);
