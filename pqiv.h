@@ -91,6 +91,11 @@ struct _file {
 	guint width;
 	guint height;
 
+#ifndef CONFIGURED_WITHOUT_MONTAGE_MODE
+	// Cached thumbnail
+	cairo_surface_t *thumbnail;
+#endif
+
 	// File-type specific data, allocated and freed by the file type handlers
 	void *private;
 };
@@ -167,6 +172,9 @@ extern gdouble current_scale_level;
 
 // Load a file from disc/memory/network
 GInputStream *image_loader_stream_file(file_t *file, GError **error_pointer);
+
+// Create a GFile for a file's name (We have a wrapper to support names with colons)
+GFile *gfile_for_commandline_arg(const char *parameter);
 
 // Duplicate a file_t; the private section does not get duplicated, only the pointer gets copied
 file_t *image_loader_duplicate_file(file_t *file, gchar *custom_file_name, gchar *custom_display_name, gchar *custom_sort_name);
@@ -247,7 +255,22 @@ typedef enum {
 	ACTION_ANIMATION_SET_SPEED_RELATIVE,
 	ACTION_GOTO_EARLIER_FILE,
 	ACTION_SET_CURSOR_AUTO_HIDE,
-	ACTION_SET_FADE_DURATION
+	ACTION_SET_FADE_DURATION,
+	ACTION_SET_KEYBOARD_TIMEOUT,
+	ACTION_SET_THUMBNAIL_SIZE,
+	ACTION_SET_THUMBNAIL_PRELOAD,
+	ACTION_MONTAGE_MODE_ENTER,
+	ACTION_MONTAGE_MODE_SHIFT_X,
+	ACTION_MONTAGE_MODE_SHIFT_Y,
+	ACTION_MONTAGE_MODE_SET_SHIFT_X,
+	ACTION_MONTAGE_MODE_SET_SHIFT_Y,
+	ACTION_MONTAGE_MODE_SET_WRAP_MODE,
+	ACTION_MONTAGE_MODE_SHIFT_Y_PG,
+	ACTION_MONTAGE_MODE_SHOW_BINDING_OVERLAYS,
+	ACTION_MONTAGE_MODE_FOLLOW,
+	ACTION_MONTAGE_MODE_FOLLOW_PROCEED,
+	ACTION_MONTAGE_MODE_RETURN_PROCEED,
+	ACTION_MONTAGE_MODE_RETURN_CANCEL,
 } pqiv_action_t;
 
 typedef union {

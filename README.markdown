@@ -30,6 +30,7 @@ Features
  * Caches zoomed images for smoother movement
  * Supports fade image transition animations
  * Supports various image and video formats through a rich set of backends
+ * Comes with an interactive montage mode (a.k.a. "image grid")
  * Customizable key-bindings with support for VIM-like key sequences, action
    cycling and binding multiple actions to a single key
 
@@ -136,6 +137,7 @@ pqiv 2.9 (wip)
  * Add --version
  * Bind Control+t to toggle to "maintain scale mode" by default
  * Fixed support for huge images (>32,767px) to the GdkPixbuf backend
+ * Added a montage/image grid mode (bound to `m` by default)
 
 pqiv 2.8.5
  * Fixed an issue where the checkerboard pattern sometimes was visible at image

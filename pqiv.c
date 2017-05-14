@@ -20,11 +20,12 @@
 
 #include "pqiv.h"
 #include "lib/config_parser.h"
-
+#include "lib/thumbnailcache.h"
 #include "lib/strnatcmp.h"
 #include <cairo/cairo.h>
 #include <gio/gio.h>
 #include <glib/gstdio.h>
+#include <errno.h>
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
@@ -88,90 +89,7 @@
 #define GDK_BUTTON_SECONDARY 3
 
 #define GDK_KEY_VoidSymbol 0xffffff
-#define GDK_KEY_Escape 0xff1b
-#define GDK_KEY_Return 0xff0d
-#define GDK_KEY_Left 0xff51
-#define GDK_KEY_Up 0xff52
-#define GDK_KEY_Right 0xff53
-#define GDK_KEY_Down 0xff54
-#define GDK_KEY_KP_Left 0xff96
-#define GDK_KEY_KP_Up 0xff97
-#define GDK_KEY_KP_Right 0xff98
-#define GDK_KEY_KP_Down 0xff99
-#define GDK_KEY_plus 0x02b
-#define GDK_KEY_KP_Add 0xffab
-#define GDK_KEY_KP_Subtract 0xffad
-#define GDK_KEY_minus 0x02d
-#define GDK_KEY_space 0x020
-#define GDK_KEY_KP_Page_Up 0xff9a
-#define GDK_KEY_Page_Up 0xff55
-#define GDK_KEY_BackSpace 0xff08
-#define GDK_KEY_Page_Down 0xff56
-#define GDK_KEY_KP_Page_Down 0xff9b
-#define GDK_KEY_0 0x030
-#define GDK_KEY_1 0x031
-#define GDK_KEY_2 0x032
-#define GDK_KEY_3 0x033
-#define GDK_KEY_4 0x034
-#define GDK_KEY_5 0x035
-#define GDK_KEY_6 0x036
-#define GDK_KEY_7 0x037
-#define GDK_KEY_8 0x038
-#define GDK_KEY_9 0x039
-#define GDK_KEY_A 0x041
-#define GDK_KEY_B 0x042
-#define GDK_KEY_C 0x043
-#define GDK_KEY_D 0x044
-#define GDK_KEY_E 0x045
-#define GDK_KEY_F 0x046
-#define GDK_KEY_G 0x047
-#define GDK_KEY_H 0x048
-#define GDK_KEY_I 0x049
-#define GDK_KEY_J 0x04a
-#define GDK_KEY_K 0x04b
-#define GDK_KEY_L 0x04c
-#define GDK_KEY_M 0x04d
-#define GDK_KEY_N 0x04e
-#define GDK_KEY_O 0x04f
-#define GDK_KEY_P 0x050
-#define GDK_KEY_Q 0x051
-#define GDK_KEY_R 0x052
-#define GDK_KEY_S 0x053
-#define GDK_KEY_T 0x054
-#define GDK_KEY_U 0x055
-#define GDK_KEY_V 0x056
-#define GDK_KEY_W 0x057
-#define GDK_KEY_X 0x058
-#define GDK_KEY_Y 0x059
-#define GDK_KEY_Z 0x05a
-#define GDK_KEY_a 0x061
-#define GDK_KEY_b 0x062
-#define GDK_KEY_c 0x063
-#define GDK_KEY_d 0x064
-#define GDK_KEY_e 0x065
-#define GDK_KEY_f 0x066
-#define GDK_KEY_g 0x067
-#define GDK_KEY_h 0x068
-#define GDK_KEY_i 0x069
-#define GDK_KEY_j 0x06a
-#define GDK_KEY_k 0x06b
-#define GDK_KEY_l 0x06c
-#define GDK_KEY_m 0x06d
-#define GDK_KEY_n 0x06e
-#define GDK_KEY_o 0x06f
-#define GDK_KEY_p 0x070
-#define GDK_KEY_q 0x071
-#define GDK_KEY_r 0x072
-#define GDK_KEY_s 0x073
-#define GDK_KEY_t 0x074
-#define GDK_KEY_u 0x075
-#define GDK_KEY_v 0x076
-#define GDK_KEY_w 0x077
-#define GDK_KEY_x 0x078
-#define GDK_KEY_y 0x079
-#define GDK_KEY_z 0x07a
-
-#define GDK_KEY_period 0x02e
+#include <gdk/gdkkeysyms.h>
 
 #endif // }}}
 
@@ -210,6 +128,10 @@ BOSNode *image_loader_thread_currently_loading = NULL;
 gboolean file_tree_valid = FALSE;
 
 // We asynchroniously load images in a separate thread
+struct image_loader_queue_item {
+	BOSNode *node_ref;
+	int purpose;
+};
 GAsyncQueue *image_loader_queue = NULL;
 GCancellable *image_loader_cancellable = NULL;
 
@@ -356,6 +278,7 @@ gboolean option_status_output = FALSE;
 static const gboolean option_actions_from_stdin = FALSE;
 #endif
 double option_fading_duration = .5;
+double option_keyboard_timeout = .5;
 gint option_max_depth = -1;
 gboolean option_browse = FALSE;
 enum { QUIT, WAIT, WRAP, WRAP_NO_RESHUFFLE } option_end_of_files_action = WRAP;
@@ -377,7 +300,10 @@ gboolean help_show_key_bindings(const gchar *option_name, const gchar *value, gp
 #endif
 gboolean help_show_version(const gchar *option_name, const gchar *value, gpointer data, GError **error);
 gboolean option_window_position_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error);
+gboolean option_thumbnail_size_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error);
+gboolean option_thumbnail_preload_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error);
 gboolean option_scale_level_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error);
+gboolean option_thumbnail_persistence_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error);
 gboolean option_end_of_files_action_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error);
 gboolean option_watch_files_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error);
 gboolean option_sort_key_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error);
@@ -388,6 +314,25 @@ struct {
 	gint x;
 	gint y;
 } option_window_position = { -2, -2 };
+
+#ifndef CONFIGURED_WITHOUT_MONTAGE_MODE /* option --without-montage: Do not include support for a thumbnail overview */
+struct {
+	gboolean enabled;
+	gboolean persist;
+	gchar *special_thumbnail_directory;
+	gint width;
+	gint height;
+	gint auto_generate_for_adjacents;
+} option_thumbnails = { 0, 0, NULL, 128, 128, -1 };
+
+struct {
+	int scroll_y;
+	BOSNode *selected_node;
+	gboolean show_binding_overlays;
+} montage_window_control;
+
+enum { MONTAGE_MODE_WRAP_OFF, MONTAGE_MODE_WRAP_ROWS, MONTAGE_MODE_WRAP_FULL, _MONTAGE_MODE_WRAP_SENTINEL } option_montage_mode_wrap_mode = MONTAGE_MODE_WRAP_ROWS;
+#endif
 
 // Hint: Only types G_OPTION_ARG_NONE, G_OPTION_ARG_STRING, G_OPTION_ARG_DOUBLE/INTEGER and G_OPTION_ARG_CALLBACK are
 // implemented for option parsing.
@@ -440,6 +385,11 @@ GOptionEntry options[] = {
 	{ "show-bindings", 0, G_OPTION_FLAG_NO_ARG, G_OPTION_ARG_CALLBACK, &help_show_key_bindings, "Display the keyboard and mouse bindings and exit", NULL },
 #endif
 	{ "sort-key", 0, 0, G_OPTION_ARG_CALLBACK, (gpointer)&option_sort_key_callback, "Key to use for sorting", "PROPERTY" },
+#ifndef CONFIGURED_WITHOUT_MONTAGE_MODE
+	{ "thumbnail-size", 0, 0, G_OPTION_ARG_CALLBACK, (gpointer)&option_thumbnail_size_callback, "Set the dimensions of thumbnails in montage mode", "WIDTHxHEIGHT" },
+	{ "thumbnail-preload", 0, 0, G_OPTION_ARG_CALLBACK, (gpointer)&option_thumbnail_preload_callback, "Preload the adjacent COUNT thumbnails", "COUNT" },
+	{ "thumbnail-persistence", 0, 0, G_OPTION_ARG_CALLBACK, (gpointer)&option_thumbnail_persistence_callback, "Persist thumbnails to disk, to DIRECTORY.", "DIRECTORY" },
+#endif
 	{ "wait-for-images-to-appear", 0, 0, G_OPTION_ARG_NONE, &option_wait_for_images_to_appear, "If no images are found, wait until at least one appears", NULL },
 	{ "watch-directories", 0, 0, G_OPTION_ARG_NONE, &option_watch_directories, "Watch directories for new files", NULL },
 	{ "watch-files", 0, 0, G_OPTION_ARG_CALLBACK, (gpointer)&option_watch_files_callback, "Watch files for changes on disk (`on`, `off', `changes-only', i.e. do nothing on deletetion)", "VALUE" },
@@ -457,90 +407,137 @@ GOptionEntry options[] = {
 #define  KEY_BINDINGS_COMMAND_SEPARATOR_SYMBOL         ';'
 #define  KEY_BINDINGS_COMMAND_PARAMETER_BEGIN_SYMBOL   '('
 #define  KEY_BINDINGS_COMMAND_PARAMETER_END_SYMBOL     ')'
+#define  KEY_BINDINGS_CONTEXT_SWITCH_SYMBOL            '@'
 
 #define KEY_BINDING_STATE_BITS 4
 #define KEY_BINDING_VALUE(is_mouse, state, keycode) ((guint)(((is_mouse & 1) << 31) | (((state & ((1 << KEY_BINDING_STATE_BITS) - 1)) << (31 - KEY_BINDING_STATE_BITS)) | (keycode & ((1 << (31 - KEY_BINDING_STATE_BITS)) - 1)))))
 
+#define KEY_BINDING_CONTEXTS_COUNT 2
+#ifndef CONFIGURED_WITHOUT_ACTIONS
+const char * const key_binding_context_names[] = {
+	"DEFAULT",
+#ifndef CONFIGURED_WITHOUT_MONTAGE_MODE
+	"MONTAGE",
+#else
+	"",
+#endif
+};
+#endif
+enum context_t { DEFAULT, MONTAGE };
+
+#ifndef CONFIGURED_WITHOUT_MONTAGE_MODE
+static char montage_mode_default_keys[] = "asdfghjkl";
+#endif
+
 static const struct default_key_bindings_struct {
+	enum context_t context;
 	guint key_binding_value;
 	pqiv_action_t action;
 	pqiv_action_parameter_t parameter;
 } default_key_bindings[] = {
-	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_Up               ), ACTION_SHIFT_Y                         , { 10  }},
-	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_KP_Up            ), ACTION_SHIFT_Y                         , { 10  }},
-	{ KEY_BINDING_VALUE(0 , GDK_CONTROL_MASK , GDK_KEY_Up               ), ACTION_SHIFT_Y                         , { 50  }},
-	{ KEY_BINDING_VALUE(0 , GDK_CONTROL_MASK , GDK_KEY_KP_Up            ), ACTION_SHIFT_Y                         , { 50  }},
-	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_Down             ), ACTION_SHIFT_Y                         , { -10 }},
-	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_KP_Down          ), ACTION_SHIFT_Y                         , { -10 }},
-	{ KEY_BINDING_VALUE(0 , GDK_CONTROL_MASK , GDK_KEY_Down             ), ACTION_SHIFT_Y                         , { -50 }},
-	{ KEY_BINDING_VALUE(0 , GDK_CONTROL_MASK , GDK_KEY_KP_Down          ), ACTION_SHIFT_Y                         , { -50 }},
-	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_Left             ), ACTION_SHIFT_X                         , { 10  }},
-	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_KP_Left          ), ACTION_SHIFT_X                         , { 10  }},
-	{ KEY_BINDING_VALUE(0 , GDK_CONTROL_MASK , GDK_KEY_Left             ), ACTION_SHIFT_X                         , { 50  }},
-	{ KEY_BINDING_VALUE(0 , GDK_CONTROL_MASK , GDK_KEY_KP_Left          ), ACTION_SHIFT_X                         , { 50  }},
-	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_Right            ), ACTION_SHIFT_X                         , { -10 }},
-	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_KP_Right         ), ACTION_SHIFT_X                         , { -10 }},
-	{ KEY_BINDING_VALUE(0 , GDK_CONTROL_MASK , GDK_KEY_Right            ), ACTION_SHIFT_X                         , { -50 }},
-	{ KEY_BINDING_VALUE(0 , GDK_CONTROL_MASK , GDK_KEY_KP_Right         ), ACTION_SHIFT_X                         , { -50 }},
-	{ KEY_BINDING_VALUE(0 , GDK_CONTROL_MASK , GDK_KEY_plus             ), ACTION_SET_SLIDESHOW_INTERVAL_RELATIVE , { .pdouble = 1.  }},
-	{ KEY_BINDING_VALUE(0 , GDK_CONTROL_MASK , GDK_KEY_KP_Add           ), ACTION_SET_SLIDESHOW_INTERVAL_RELATIVE , { .pdouble = 1.  }},
-	{ KEY_BINDING_VALUE(0 , GDK_MOD1_MASK    , GDK_KEY_KP_Add           ), ACTION_ANIMATION_SET_SPEED_RELATIVE    , { .pdouble = 1.1  }},
-	{ KEY_BINDING_VALUE(0 , GDK_MOD1_MASK    , GDK_KEY_plus             ), ACTION_ANIMATION_SET_SPEED_RELATIVE    , { .pdouble = 1.1  }},
-	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_plus             ), ACTION_SET_SCALE_LEVEL_RELATIVE        , { .pdouble = 1.1 }},
-	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_KP_Add           ), ACTION_SET_SCALE_LEVEL_RELATIVE        , { .pdouble = 1.1 }},
-	{ KEY_BINDING_VALUE(0 , GDK_CONTROL_MASK , GDK_KEY_minus            ), ACTION_SET_SLIDESHOW_INTERVAL_RELATIVE , { .pdouble = -1. }},
-	{ KEY_BINDING_VALUE(0 , GDK_CONTROL_MASK , GDK_KEY_KP_Subtract      ), ACTION_SET_SLIDESHOW_INTERVAL_RELATIVE , { .pdouble = -1. }},
-	{ KEY_BINDING_VALUE(0 , GDK_MOD1_MASK    , GDK_KEY_minus            ), ACTION_ANIMATION_SET_SPEED_RELATIVE    , { .pdouble = 0.9  }},
-	{ KEY_BINDING_VALUE(0 , GDK_MOD1_MASK    , GDK_KEY_KP_Subtract      ), ACTION_ANIMATION_SET_SPEED_RELATIVE    , { .pdouble = 0.9  }},
-	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_minus            ), ACTION_SET_SCALE_LEVEL_RELATIVE        , { .pdouble = 0.9 }},
-	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_KP_Subtract      ), ACTION_SET_SCALE_LEVEL_RELATIVE        , { .pdouble = 0.9 }},
-	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_t                ), ACTION_TOGGLE_SCALE_MODE               , { 0   }},
-	{ KEY_BINDING_VALUE(0 , GDK_CONTROL_MASK , GDK_KEY_t                ), ACTION_TOGGLE_SCALE_MODE               , { 4   }},
-	{ KEY_BINDING_VALUE(0 , GDK_CONTROL_MASK , GDK_KEY_r                ), ACTION_TOGGLE_SHUFFLE_MODE             , { 0   }},
-	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_r                ), ACTION_RELOAD                          , { 0   }},
-	{ KEY_BINDING_VALUE(0 , GDK_CONTROL_MASK , GDK_KEY_p                ), ACTION_GOTO_EARLIER_FILE               , { 0   }},
-	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_0                ), ACTION_RESET_SCALE_LEVEL               , { 0   }},
-	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_f                ), ACTION_TOGGLE_FULLSCREEN               , { 0   }},
-	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_h                ), ACTION_FLIP_HORIZONTALLY               , { 0   }},
-	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_v                ), ACTION_FLIP_VERTICALLY                 , { 0   }},
-	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_l                ), ACTION_ROTATE_LEFT                     , { 0   }},
-	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_k                ), ACTION_ROTATE_RIGHT                    , { 0   }},
-	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_i                ), ACTION_TOGGLE_INFO_BOX                 , { 0   }},
-	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_j                ), ACTION_JUMP_DIALOG                     , { 0   }},
-	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_s                ), ACTION_TOGGLE_SLIDESHOW                , { 0   }},
-	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_a                ), ACTION_HARDLINK_CURRENT_IMAGE          , { 0   }},
-	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_period           ), ACTION_ANIMATION_STEP                  , { 1   }},
-	{ KEY_BINDING_VALUE(0 , GDK_CONTROL_MASK , GDK_KEY_period           ), ACTION_ANIMATION_CONTINUE              , { 0   }},
-	{ KEY_BINDING_VALUE(0 , GDK_CONTROL_MASK , GDK_KEY_BackSpace        ), ACTION_GOTO_DIRECTORY_RELATIVE         , { -1  }},
-	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_BackSpace        ), ACTION_GOTO_FILE_RELATIVE              , { -1  }},
-	{ KEY_BINDING_VALUE(0 , GDK_CONTROL_MASK , GDK_KEY_space            ), ACTION_GOTO_DIRECTORY_RELATIVE         , { 1   }},
-	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_space            ), ACTION_GOTO_FILE_RELATIVE              , { 1   }},
-	{ KEY_BINDING_VALUE(0 , GDK_CONTROL_MASK , GDK_KEY_Page_Up          ), ACTION_GOTO_FILE_RELATIVE              , { 10  }},
-	{ KEY_BINDING_VALUE(0 , GDK_CONTROL_MASK , GDK_KEY_KP_Page_Up       ), ACTION_GOTO_FILE_RELATIVE              , { 10  }},
-	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_Page_Down        ), ACTION_GOTO_FILE_RELATIVE              , { -10 }},
-	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_Page_Up          ), ACTION_GOTO_FILE_RELATIVE              , { 10  }},
-	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_KP_Page_Up       ), ACTION_GOTO_FILE_RELATIVE              , { 10  }},
-	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_KP_Page_Down     ), ACTION_GOTO_FILE_RELATIVE              , { -10 }},
-	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_q                ), ACTION_QUIT                            , { 0   }},
-	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_Escape           ), ACTION_QUIT                            , { 0   }},
-	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_1                ), ACTION_NUMERIC_COMMAND                 , { 1   }},
-	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_2                ), ACTION_NUMERIC_COMMAND                 , { 2   }},
-	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_3                ), ACTION_NUMERIC_COMMAND                 , { 3   }},
-	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_4                ), ACTION_NUMERIC_COMMAND                 , { 4   }},
-	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_5                ), ACTION_NUMERIC_COMMAND                 , { 5   }},
-	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_6                ), ACTION_NUMERIC_COMMAND                 , { 6   }},
-	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_7                ), ACTION_NUMERIC_COMMAND                 , { 7   }},
-	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_8                ), ACTION_NUMERIC_COMMAND                 , { 8   }},
-	{ KEY_BINDING_VALUE(0 , 0                , GDK_KEY_9                ), ACTION_NUMERIC_COMMAND                 , { 9   }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_Up               ), ACTION_SHIFT_Y                         , { 10  }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_KP_Up            ), ACTION_SHIFT_Y                         , { 10  }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , GDK_CONTROL_MASK , GDK_KEY_Up               ), ACTION_SHIFT_Y                         , { 50  }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , GDK_CONTROL_MASK , GDK_KEY_KP_Up            ), ACTION_SHIFT_Y                         , { 50  }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_Down             ), ACTION_SHIFT_Y                         , { -10 }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_KP_Down          ), ACTION_SHIFT_Y                         , { -10 }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , GDK_CONTROL_MASK , GDK_KEY_Down             ), ACTION_SHIFT_Y                         , { -50 }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , GDK_CONTROL_MASK , GDK_KEY_KP_Down          ), ACTION_SHIFT_Y                         , { -50 }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_Left             ), ACTION_SHIFT_X                         , { 10  }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_KP_Left          ), ACTION_SHIFT_X                         , { 10  }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , GDK_CONTROL_MASK , GDK_KEY_Left             ), ACTION_SHIFT_X                         , { 50  }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , GDK_CONTROL_MASK , GDK_KEY_KP_Left          ), ACTION_SHIFT_X                         , { 50  }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_Right            ), ACTION_SHIFT_X                         , { -10 }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_KP_Right         ), ACTION_SHIFT_X                         , { -10 }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , GDK_CONTROL_MASK , GDK_KEY_Right            ), ACTION_SHIFT_X                         , { -50 }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , GDK_CONTROL_MASK , GDK_KEY_KP_Right         ), ACTION_SHIFT_X                         , { -50 }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , GDK_CONTROL_MASK , GDK_KEY_plus             ), ACTION_SET_SLIDESHOW_INTERVAL_RELATIVE , { .pdouble = 1.  }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , GDK_CONTROL_MASK , GDK_KEY_KP_Add           ), ACTION_SET_SLIDESHOW_INTERVAL_RELATIVE , { .pdouble = 1.  }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , GDK_MOD1_MASK    , GDK_KEY_KP_Add           ), ACTION_ANIMATION_SET_SPEED_RELATIVE    , { .pdouble = 1.1  }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , GDK_MOD1_MASK    , GDK_KEY_plus             ), ACTION_ANIMATION_SET_SPEED_RELATIVE    , { .pdouble = 1.1  }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_plus             ), ACTION_SET_SCALE_LEVEL_RELATIVE        , { .pdouble = 1.1 }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_KP_Add           ), ACTION_SET_SCALE_LEVEL_RELATIVE        , { .pdouble = 1.1 }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , GDK_CONTROL_MASK , GDK_KEY_minus            ), ACTION_SET_SLIDESHOW_INTERVAL_RELATIVE , { .pdouble = -1. }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , GDK_CONTROL_MASK , GDK_KEY_KP_Subtract      ), ACTION_SET_SLIDESHOW_INTERVAL_RELATIVE , { .pdouble = -1. }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , GDK_MOD1_MASK    , GDK_KEY_minus            ), ACTION_ANIMATION_SET_SPEED_RELATIVE    , { .pdouble = 0.9  }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , GDK_MOD1_MASK    , GDK_KEY_KP_Subtract      ), ACTION_ANIMATION_SET_SPEED_RELATIVE    , { .pdouble = 0.9  }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_minus            ), ACTION_SET_SCALE_LEVEL_RELATIVE        , { .pdouble = 0.9 }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_KP_Subtract      ), ACTION_SET_SCALE_LEVEL_RELATIVE        , { .pdouble = 0.9 }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_t                ), ACTION_TOGGLE_SCALE_MODE               , { 0   }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , GDK_CONTROL_MASK , GDK_KEY_t                ), ACTION_TOGGLE_SCALE_MODE               , { 4   }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , GDK_CONTROL_MASK , GDK_KEY_r                ), ACTION_TOGGLE_SHUFFLE_MODE             , { 0   }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_r                ), ACTION_RELOAD                          , { 0   }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , GDK_CONTROL_MASK , GDK_KEY_p                ), ACTION_GOTO_EARLIER_FILE               , { 0   }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_0                ), ACTION_RESET_SCALE_LEVEL               , { 0   }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_f                ), ACTION_TOGGLE_FULLSCREEN               , { 0   }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_h                ), ACTION_FLIP_HORIZONTALLY               , { 0   }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_v                ), ACTION_FLIP_VERTICALLY                 , { 0   }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_l                ), ACTION_ROTATE_LEFT                     , { 0   }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_k                ), ACTION_ROTATE_RIGHT                    , { 0   }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_i                ), ACTION_TOGGLE_INFO_BOX                 , { 0   }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_j                ), ACTION_JUMP_DIALOG                     , { 0   }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_m                ), ACTION_MONTAGE_MODE_ENTER             , { 0   }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_s                ), ACTION_TOGGLE_SLIDESHOW                , { 0   }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_a                ), ACTION_HARDLINK_CURRENT_IMAGE          , { 0   }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_period           ), ACTION_ANIMATION_STEP                  , { 1   }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , GDK_CONTROL_MASK , GDK_KEY_period           ), ACTION_ANIMATION_CONTINUE              , { 0   }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , GDK_CONTROL_MASK , GDK_KEY_BackSpace        ), ACTION_GOTO_DIRECTORY_RELATIVE         , { -1  }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_BackSpace        ), ACTION_GOTO_FILE_RELATIVE              , { -1  }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , GDK_CONTROL_MASK , GDK_KEY_space            ), ACTION_GOTO_DIRECTORY_RELATIVE         , { 1   }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_space            ), ACTION_GOTO_FILE_RELATIVE              , { 1   }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , GDK_CONTROL_MASK , GDK_KEY_Page_Up          ), ACTION_GOTO_FILE_RELATIVE              , { 10  }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , GDK_CONTROL_MASK , GDK_KEY_KP_Page_Up       ), ACTION_GOTO_FILE_RELATIVE              , { 10  }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_Page_Down        ), ACTION_GOTO_FILE_RELATIVE              , { -10 }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_Page_Up          ), ACTION_GOTO_FILE_RELATIVE              , { 10  }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_KP_Page_Up       ), ACTION_GOTO_FILE_RELATIVE              , { 10  }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_KP_Page_Down     ), ACTION_GOTO_FILE_RELATIVE              , { -10 }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_q                ), ACTION_QUIT                            , { 0   }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_Escape           ), ACTION_QUIT                            , { 0   }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_1                ), ACTION_NUMERIC_COMMAND                 , { 1   }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_2                ), ACTION_NUMERIC_COMMAND                 , { 2   }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_3                ), ACTION_NUMERIC_COMMAND                 , { 3   }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_4                ), ACTION_NUMERIC_COMMAND                 , { 4   }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_5                ), ACTION_NUMERIC_COMMAND                 , { 5   }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_6                ), ACTION_NUMERIC_COMMAND                 , { 6   }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_7                ), ACTION_NUMERIC_COMMAND                 , { 7   }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_8                ), ACTION_NUMERIC_COMMAND                 , { 8   }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_9                ), ACTION_NUMERIC_COMMAND                 , { 9   }},
 
-	{ KEY_BINDING_VALUE(1 , 0                , GDK_BUTTON_PRIMARY       ), ACTION_GOTO_FILE_RELATIVE              , { -1  }},
-	{ KEY_BINDING_VALUE(1 , 0                , GDK_BUTTON_MIDDLE        ), ACTION_QUIT                            , { 0   }},
-	{ KEY_BINDING_VALUE(1 , 0                , GDK_BUTTON_SECONDARY     ), ACTION_GOTO_FILE_RELATIVE              , { 1   }},
-	{ KEY_BINDING_VALUE(1 , 0                , (GDK_SCROLL_UP+1) << 2   ), ACTION_GOTO_FILE_RELATIVE              , { 1   }},
-	{ KEY_BINDING_VALUE(1 , 0                , (GDK_SCROLL_DOWN+1) << 2 ), ACTION_GOTO_FILE_RELATIVE              , { -1  }},
+	{ DEFAULT, KEY_BINDING_VALUE(1 , 0                , GDK_BUTTON_PRIMARY       ), ACTION_GOTO_FILE_RELATIVE              , { -1  }},
+	{ DEFAULT, KEY_BINDING_VALUE(1 , 0                , GDK_BUTTON_MIDDLE        ), ACTION_QUIT                            , { 0   }},
+	{ DEFAULT, KEY_BINDING_VALUE(1 , 0                , GDK_BUTTON_SECONDARY     ), ACTION_GOTO_FILE_RELATIVE              , { 1   }},
+	{ DEFAULT, KEY_BINDING_VALUE(1 , 0                , (GDK_SCROLL_UP+1) << 2   ), ACTION_GOTO_FILE_RELATIVE              , { 1   }},
+	{ DEFAULT, KEY_BINDING_VALUE(1 , 0                , (GDK_SCROLL_DOWN+1) << 2 ), ACTION_GOTO_FILE_RELATIVE              , { -1  }},
 
-	{ 0, 0, { 0 } }
+#ifndef CONFIGURED_WITHOUT_MONTAGE_MODE
+	{ MONTAGE, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_Down             ), ACTION_MONTAGE_MODE_SHIFT_Y            , { 1   }},
+	{ MONTAGE, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_Up               ), ACTION_MONTAGE_MODE_SHIFT_Y            , { -1  }},
+	{ MONTAGE, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_Left             ), ACTION_MONTAGE_MODE_SHIFT_X            , { -1  }},
+	{ MONTAGE, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_Right            ), ACTION_MONTAGE_MODE_SHIFT_X            , { 1   }},
+	{ MONTAGE, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_KP_Down          ), ACTION_MONTAGE_MODE_SHIFT_Y            , { 1   }},
+	{ MONTAGE, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_KP_Up            ), ACTION_MONTAGE_MODE_SHIFT_Y            , { -1  }},
+	{ MONTAGE, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_KP_Left          ), ACTION_MONTAGE_MODE_SHIFT_X            , { -1  }},
+	{ MONTAGE, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_KP_Right         ), ACTION_MONTAGE_MODE_SHIFT_X            , { 1   }},
+	{ MONTAGE, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_Page_Down        ), ACTION_MONTAGE_MODE_SHIFT_Y_PG         , { 1 }},
+	{ MONTAGE, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_Page_Up          ), ACTION_MONTAGE_MODE_SHIFT_Y_PG         , { -1  }},
+	{ MONTAGE, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_KP_Page_Up       ), ACTION_MONTAGE_MODE_SHIFT_Y_PG         , { -1  }},
+	{ MONTAGE, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_KP_Page_Down     ), ACTION_MONTAGE_MODE_SHIFT_Y_PG         , { 1 }},
+	{ MONTAGE, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_Home             ), ACTION_GOTO_FILE_BYINDEX               , { 0   }},
+	{ MONTAGE, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_End              ), ACTION_GOTO_FILE_BYINDEX               , { -1  }},
+
+	{ MONTAGE, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_Return           ), ACTION_MONTAGE_MODE_RETURN_PROCEED     , { 0   }},
+	{ MONTAGE, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_Escape           ), ACTION_MONTAGE_MODE_RETURN_CANCEL      , { 0   }},
+	{ MONTAGE, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_m                ), ACTION_MONTAGE_MODE_RETURN_CANCEL      , { 0   }},
+	{ MONTAGE, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_f                ), ACTION_TOGGLE_FULLSCREEN               , { 0   }},
+	{ MONTAGE, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_g                ), ACTION_MONTAGE_MODE_FOLLOW             , { .pcharptr = (char*)montage_mode_default_keys }},
+	{ MONTAGE, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_q                ), ACTION_QUIT                            , { 0   }},
+#endif
+
+	{ DEFAULT, 0, 0, { 0 } }
 };
+
+enum context_t active_key_binding_context = DEFAULT;
+enum context_t application_mode = DEFAULT;
 
 #ifndef CONFIGURED_WITHOUT_ACTIONS
 typedef struct key_binding key_binding_t;
@@ -549,14 +546,19 @@ struct key_binding {
 	pqiv_action_parameter_t parameter;
 
 	struct key_binding *next_action;    // For assinging multiple actions to one key
-	GHashTable *next_key_bindings; // For key sequences
+	GHashTable *next_key_bindings;      // For key sequences
 };
-GHashTable *key_bindings;
+GHashTable *key_bindings[KEY_BINDING_CONTEXTS_COUNT];
 struct {
 	key_binding_t *key_binding;
 	BOSNode *associated_image;
 	gint timeout_id;
 } active_key_binding = { NULL, NULL, -1 };
+
+#ifndef CONFIGURED_WITHOUT_MONTAGE_MODE
+key_binding_t follow_mode_key_binding = { ACTION_MONTAGE_MODE_FOLLOW_PROCEED, { .p2short = { -1, -1 } }, NULL, NULL };
+#endif
+
 #endif
 
 const struct pqiv_action_descriptor {
@@ -610,6 +612,21 @@ const struct pqiv_action_descriptor {
 	{ "goto_earlier_file", PARAMETER_NONE },
 	{ "set_cursor_auto_hide", PARAMETER_INT },
 	{ "set_fade_duration", PARAMETER_DOUBLE },
+	{ "set_keyboard_timeout", PARAMETER_DOUBLE },
+	{ "set_thumbnail_size", PARAMETER_2SHORT },
+	{ "set_thumbnail_preload", PARAMETER_INT },
+	{ "montage_mode_enter", PARAMETER_NONE },
+	{ "montage_mode_shift_x", PARAMETER_INT },
+	{ "montage_mode_shift_y", PARAMETER_INT },
+	{ "montage_mode_set_shift_x", PARAMETER_INT },
+	{ "montage_mode_set_shift_y", PARAMETER_INT },
+	{ "montage_mode_set_wrap_mode", PARAMETER_INT },
+	{ "montage_mode_shift_y_pg", PARAMETER_INT },
+	{ "montage_mode_show_binding_overlays", PARAMETER_INT },
+	{ "montage_mode_follow", PARAMETER_CHARPTR },
+	{ "montage_mode_follow_proceed", PARAMETER_2SHORT },
+	{ "montage_mode_return_proceed", PARAMETER_NONE },
+	{ "montage_mode_return_cancel", PARAMETER_NONE },
 	{ NULL, 0 }
 };
 /* }}} */
@@ -640,15 +657,21 @@ void update_info_text(const char *);
 void queue_draw();
 gboolean main_window_center();
 void window_screen_changed_callback(GtkWidget *widget, GdkScreen *previous_screen, gpointer user_data);
+typedef int image_loader_purpose_t;
+gboolean test_and_invalidate_thumbnail(file_t *file);
 gboolean image_loader_load_single(BOSNode *node, gboolean called_from_main);
 gboolean fading_timeout_callback(gpointer user_data);
 void queue_image_load(BOSNode *);
+#ifndef CONFIGURED_WITHOUT_MONTAGE_MODE
+void queue_thumbnail_load(BOSNode *);
+#endif
 void unload_image(BOSNode *);
 void remove_image(BOSNode *);
 gboolean initialize_gui_callback(gpointer);
 gboolean initialize_image_loader();
 void window_hide_cursor();
 void window_show_cursor();
+void preload_adjacent_images();
 void window_center_mouse();
 void calculate_current_image_transformed_size(int *image_width, int *image_height);
 cairo_surface_t *get_scaled_image_surface_for_current_image();
@@ -671,8 +694,14 @@ void handle_input_event(guint key_binding_value);
 static void continue_active_input_event_action_chain();
 static void UNUSED_FUNCTION block_active_input_event_action_chain();
 static void UNUSED_FUNCTION unblock_active_input_event_action_chain();
+void draw_current_image_to_context(cairo_t *cr);
 #ifndef CONFIGURED_WITHOUT_ACTIONS
 gboolean window_auto_hide_cursor_callback(gpointer user_data);
+gboolean handle_input_event_timeout_callback(gpointer user_data);
+#endif
+#ifndef CONFIGURED_WITHOUT_MONTAGE_MODE
+gboolean montage_window_get_move_cursor_target(int, int, int, int*, int*, int*, BOSNode **);
+void montage_window_move_cursor(int, int, int);
 #endif
 // }}}
 /* Helper functions {{{ */
@@ -703,6 +732,54 @@ gboolean options_bind_key_callback(const gchar *option_name, const gchar *value,
 	//
 	parse_key_bindings(value);
 
+	return TRUE;
+}/*}}}*/
+#endif
+#ifndef CONFIGURED_WITHOUT_MONTAGE_MODE
+gboolean option_thumbnail_size_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error) {/*{{{*/
+	gchar *second;
+	option_thumbnails.width = g_ascii_strtoll(value, &second, 10);
+	if(second != value && (*second == 'x' || *second == ',')) {
+		option_thumbnails.height = g_ascii_strtoll(second + 1, &second, 10);
+		if(*second == 0) {
+			return TRUE;
+		}
+	}
+
+	g_set_error(error, G_OPTION_ERROR, G_OPTION_ERROR_FAILED, "Unexpected argument value for the --thumbnail-size option. Format must be e.g. `320x240'.");
+	return FALSE;
+}/*}}}*/
+gboolean option_thumbnail_preload_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error) {/*{{{*/
+	option_thumbnails.enabled = 1;
+	option_thumbnails.auto_generate_for_adjacents = g_ascii_strtoll(value, NULL, 10);
+
+	if(errno == EINVAL || errno == ERANGE) {
+		g_set_error(error, G_OPTION_ERROR, G_OPTION_ERROR_FAILED, "Unexpected argument value for the --thumbnail-preload option.");
+		return FALSE;
+	}
+	return TRUE;
+}/*}}}*/
+gboolean option_thumbnail_persistence_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error) {/*{{{*/
+	if(value == NULL || !*value || strcasecmp(value, "yes") == 0 || strcasecmp(value, "true") == 0 || strcasecmp(value, "1") == 0 || strcasecmp(value, "on") == 0) {
+		option_thumbnails.persist = TRUE;
+	}
+	else if(strcasecmp(value, "no") == 0 || strcasecmp(value, "false") == 0 || strcasecmp(value, "1") == 0 || strcasecmp(value, "off") == 0) {
+		option_thumbnails.persist = FALSE;
+	}
+	else if(strcasecmp(value, "local") == 0) {
+		option_thumbnails.persist = TRUE;
+		if(option_thumbnails.special_thumbnail_directory != NULL && option_thumbnails.special_thumbnail_directory != SPECIAL_THUMBNAIL_DIRECTORY_LOCAL) {
+			g_free(option_thumbnails.special_thumbnail_directory);
+		}
+		option_thumbnails.special_thumbnail_directory = SPECIAL_THUMBNAIL_DIRECTORY_LOCAL;
+	}
+	else {
+		option_thumbnails.persist = TRUE;
+		if(option_thumbnails.special_thumbnail_directory != NULL && option_thumbnails.special_thumbnail_directory != SPECIAL_THUMBNAIL_DIRECTORY_LOCAL) {
+			g_free(option_thumbnails.special_thumbnail_directory);
+		}
+		option_thumbnails.special_thumbnail_directory = g_strdup(value);
+	}
 	return TRUE;
 }/*}}}*/
 #endif
@@ -1021,6 +1098,12 @@ void load_images_directory_watch_callback(GFileMonitor *monitor, GFile *file, GF
 		}
 	}
 
+	// Skip .sh_thumbnails directories
+	if(name && strstr(name, G_DIR_SEPARATOR_S ".sh_thumbnails" G_DIR_SEPARATOR_S) != NULL) {
+		g_free(name);
+		return;
+	}
+
 	if(event_type == G_FILE_MONITOR_EVENT_CREATED && name != NULL) {
 		// In theory, handling regular files here should suffice. But files in subdirectories
 		// seem not always to be recognized correctly by file monitors, so we have to install
@@ -1121,6 +1204,14 @@ BOSNode *load_images_handle_parameter_add_file(load_images_state_t state, file_t
 		// development machine.
 		update_info_text(NULL);
 		info_text_queue_redraw();
+		#ifndef CONFIGURED_WITHOUT_MONTAGE_MODE
+		if(application_mode == MONTAGE) {
+			D_LOCK(file_tree);
+			montage_window_move_cursor(0, 0,  0);
+			D_UNLOCK(file_tree);
+			gtk_widget_queue_draw(GTK_WIDGET(main_window));
+		}
+		#endif
 	}
 	return new_node;
 }/*}}}*/
@@ -1273,6 +1364,9 @@ void load_images_handle_parameter(char *param, load_images_state_t state, gint d
 		if(g_file_test(param, G_FILE_TEST_IS_DIR) == TRUE) {
 			if(option_max_depth >= 0 && option_max_depth <= depth) {
 				// Maximum depth exceeded, abort.
+				if(original_parameter != NULL) {
+					g_free(param);
+				}
 				return;
 			}
 
@@ -1333,6 +1427,11 @@ void load_images_handle_parameter(char *param, load_images_state_t state, gint d
 				if(dir_entry == NULL) {
 					break;
 				}
+				if(strcmp(dir_entry, ".sh_thumbnails") == 0) {
+					// Do not traverse into local thumbnail directories
+					continue;;
+				}
+
 				gchar *dir_entry_full = g_strdup_printf("%s%s%s", param, g_str_has_suffix(param, G_DIR_SEPARATOR_S) ? "" : G_DIR_SEPARATOR_S, dir_entry);
 				if(!(original_parameter != NULL && g_strcmp0(dir_entry_full, original_parameter) == 0)) {
 					// Skip if we are in --browse mode and this is the file which we have already added above.
@@ -1506,6 +1605,12 @@ void file_free(file_t *file) {/*{{{*/
 		g_bytes_unref(file->file_data);
 		file->file_data = NULL;
 	}
+#ifndef CONFIGURED_WITHOUT_MONTAGE_MODE
+	if(file->thumbnail) {
+		cairo_surface_destroy(file->thumbnail);
+		file->thumbnail = NULL;
+	}
+#endif
 	g_slice_free(file_t, file);
 }/*}}}*/
 void file_tree_free_helper(BOSNode *node) {
@@ -1588,6 +1693,22 @@ void load_images() {/*{{{*/
 }/*}}}*/
 // }}}
 /* (A-)synchronous image loading and image operations {{{ */
+#ifndef CONFIGURED_WITHOUT_MONTAGE_MODE
+gboolean test_and_invalidate_thumbnail(file_t *file) {/*{{{*/
+	// Must be called with an active lock!
+	if(file->thumbnail) {
+		const int thumb_width = cairo_image_surface_get_width(file->thumbnail);
+		const int thumb_height = cairo_image_surface_get_height(file->thumbnail);
+		if(!((thumb_width == option_thumbnails.width && thumb_height <= option_thumbnails.height) ||
+			  (thumb_width <= option_thumbnails.width && thumb_height == option_thumbnails.height) ||
+			  (thumb_width == (int)file->width && thumb_height == (int)file->height))) {
+			cairo_surface_destroy(file->thumbnail);
+			file->thumbnail = NULL;
+		}
+	}
+	return !!file->thumbnail;
+}/*}}}*/
+#endif
 void invalidate_current_scaled_image_surface() {/*{{{*/
 	if(current_scaled_image_surface != NULL) {
 		cairo_surface_destroy(current_scaled_image_surface);
@@ -1635,7 +1756,7 @@ void image_file_updated_callback(GFileMonitor *monitor, GFile *file, GFile *othe
 	D_LOCK(file_tree);
 	if(event_type == G_FILE_MONITOR_EVENT_CHANGES_DONE_HINT) {
 		FILE(node)->force_reload = TRUE;
-		queue_image_load(node);
+		queue_image_load(bostree_node_weak_ref(node));
 	}
 	if(event_type == G_FILE_MONITOR_EVENT_DELETED) {
 		// It is a difficult decision what to do here. We could either unload the deleted
@@ -1659,7 +1780,7 @@ void image_file_updated_callback(GFileMonitor *monitor, GFile *file, GFile *othe
 		if(option_watch_files == ON) {
 			FILE(node)->force_reload = TRUE;
 			if(bostree_node_count(file_tree) > 1 || option_allow_empty_window) {
-				queue_image_load(node);
+				queue_image_load(bostree_node_weak_ref(node));
 			}
 		}
 	}
@@ -1709,12 +1830,27 @@ void main_window_adjust_for_image() {/*{{{*/
 		return;
 	}
 
-	int image_width, image_height;
-	calculate_current_image_transformed_size(&image_width, &image_height);
+	int new_window_width, new_window_height;
 
-	// Resize the window and update geometry hints (we enforce them below)
-	int new_window_width = current_scale_level * image_width;
-	int new_window_height = current_scale_level * image_height;
+	if(application_mode == DEFAULT) {
+		int image_width, image_height;
+		calculate_current_image_transformed_size(&image_width, &image_height);
+
+		new_window_width = current_scale_level * image_width;
+		new_window_height = current_scale_level * image_height;
+	}
+	#ifndef CONFIGURED_WITHOUT_MONTAGE_MODE
+	else if(application_mode == MONTAGE) {
+		const int screen_width = screen_geometry.width;
+		const int screen_height = screen_geometry.height;
+
+		new_window_width = screen_width * .8;
+		new_window_height = screen_height * .8;
+	}
+	#endif
+	else {
+		new_window_width = new_window_height = 0;
+	}
 
 	if(new_window_height <= 0) {
 		new_window_height = 1;
@@ -1774,6 +1910,8 @@ void main_window_adjust_for_image() {/*{{{*/
 			gtk_window_resize(main_window, new_window_width / screen_scale_factor, new_window_height / screen_scale_factor);
 #if GTK_MAJOR_VERSION < 3
 			if(option_enforce_window_aspect_ratio) {
+				int image_width, image_height;
+				calculate_current_image_transformed_size(&image_width, &image_height);
 				hints.min_aspect = hints.max_aspect = image_width * 1.0 / image_height;
 				gtk_window_set_geometry_hints(main_window, NULL, &hints, GDK_HINT_ASPECT);
 			}
@@ -1794,6 +1932,19 @@ void main_window_adjust_for_image() {/*{{{*/
 	}
 }/*}}}*/
 gboolean image_loaded_handler(gconstpointer node) {/*{{{*/
+	// Execute logic below only if the loaded image is the current one
+	if(node != NULL && node != current_file_node) {
+#ifndef CONFIGURED_WITHOUT_MONTAGE_MODE
+		if(application_mode == MONTAGE) {
+			gtk_widget_queue_draw(GTK_WIDGET(main_window));
+		}
+#endif
+		return FALSE;
+	}
+
+	// Note: This might mean as well that the *thumbnail* has been loaded,
+	// but not the image itself. So check ->is_loaded in any case!
+
 	D_LOCK(file_tree);
 
 	// Remove any old timeouts etc.
@@ -2015,7 +2166,7 @@ gboolean image_loader_load_single(BOSNode *node, gboolean called_from_main) {/*{
 					// a shuffle cycle is reached, such that next_file() starts a new one. Fall
 					// back to display the first image. See bug #35 in github.
 					current_file_node = bostree_node_weak_ref(bostree_select(file_tree, 0));
-					queue_image_load(current_file_node);
+					queue_image_load(bostree_node_weak_ref(current_file_node));
 				}
 				else {
 					current_file_node = NULL;
@@ -2023,7 +2174,7 @@ gboolean image_loader_load_single(BOSNode *node, gboolean called_from_main) {/*{
 			}
 			else {
 				current_file_node = bostree_node_weak_ref(current_file_node);
-				queue_image_load(current_file_node);
+				queue_image_load(bostree_node_weak_ref(current_file_node));
 			}
 			bostree_remove(file_tree, node);
 			bostree_node_weak_unref(file_tree, node);
@@ -2059,17 +2210,100 @@ gboolean image_loader_load_single(BOSNode *node, gboolean called_from_main) {/*{
 
 	return FALSE;
 }/*}}}*/
+#ifndef CONFIGURED_WITHOUT_MONTAGE_MODE
+void image_loader_create_thumbnail(file_t *file) {/*{{{*/
+	const double scale_level_w = option_thumbnails.width * 1.0 / file->width;
+	const double scale_level_h = option_thumbnails.height * 1.0 / file->height;
+	double scale_level = scale_level_w > scale_level_h ? scale_level_h : scale_level_w;
+	if(scale_level > 1.) {
+		scale_level = 1.;
+	}
+
+	cairo_surface_t *surf = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, scale_level * file->width + .5, scale_level * file->height + .5);
+	if(cairo_surface_status(surf) != CAIRO_STATUS_SUCCESS) {
+		cairo_surface_destroy(surf);
+		return;
+	}
+
+	cairo_t *cr = cairo_create(surf);
+
+	// Draw black background
+	cairo_save(cr);
+	cairo_set_source_rgba(cr, 0., 0., 0., option_transparent_background ? 0. : 1.);
+	cairo_set_operator(cr, CAIRO_OPERATOR_SOURCE);
+	cairo_paint(cr);
+	cairo_restore(cr);
+
+	// From here on, draw centered
+	cairo_translate(cr, (cairo_image_surface_get_width(surf) - scale_level * file->width) / 2, (cairo_image_surface_get_height(surf) - scale_level * file->height) / 2);
+	cairo_scale(cr, scale_level, scale_level);
+
+	// Draw background pattern
+	if(background_checkerboard_pattern != NULL && !option_transparent_background) {
+		cairo_save(cr);
+		cairo_new_path(cr);
+		unsigned skip_px = (unsigned)(1./scale_level);
+		if(skip_px == 0) {
+			skip_px = 1;
+		}
+		cairo_rectangle(cr, skip_px, skip_px, file->width - 2*skip_px, file->height - 2*skip_px);
+		cairo_close_path(cr);
+		cairo_clip(cr);
+		cairo_set_source(cr, background_checkerboard_pattern);
+		cairo_paint(cr);
+		cairo_restore(cr);
+	}
+
+	cairo_rectangle(cr, 0, 0, file->width, file->height);
+	cairo_clip(cr);
+	if(file->file_type->draw_fn != NULL) {
+		file->file_type->draw_fn(file, cr);
+	}
+
+	cairo_destroy(cr);
+	file->thumbnail = surf;
+}/*}}}*/
+#endif
 gpointer image_loader_thread(gpointer user_data) {/*{{{*/
 	while(TRUE) {
 		// Handle new queued image load
-		BOSNode *node = g_async_queue_pop(image_loader_queue);
-		D_LOCK(file_tree);
-		if(bostree_node_weak_unref(file_tree, bostree_node_weak_ref(node)) == NULL) {
+		struct image_loader_queue_item *it = g_async_queue_pop(image_loader_queue);
+		BOSNode *node = it->node_ref;
+		#ifndef CONFIGURED_WITHOUT_MONTAGE_MODE
+		image_loader_purpose_t purpose = it->purpose;
+		#endif
+		g_slice_free(struct image_loader_queue_item, it);
+
+		// The image might still be in the loader queue though it has already
+		// been invalidated. In this case, skip it.
+		if(!bostree_node_weak_unref(file_tree, bostree_node_weak_ref(node))) {
+			D_LOCK(file_tree);
 			bostree_node_weak_unref(file_tree, node);
 			D_UNLOCK(file_tree);
 			continue;
 		}
-		D_UNLOCK(file_tree);
+
+		// Short-circuit: If we want to load this image for its thumbnail, check the cache first.
+		// We might not have to load it at all.
+		#ifndef CONFIGURED_WITHOUT_MONTAGE_MODE
+		if(purpose == MONTAGE) {
+			// Unload an old thumbnail if it does not have the correct size
+			D_LOCK(file_tree);
+			test_and_invalidate_thumbnail(FILE(node));
+			if(!FILE(node)->thumbnail && (option_thumbnails.enabled || application_mode == MONTAGE) && option_thumbnails.persist) {
+				if(load_thumbnail_from_cache(FILE(node), option_thumbnails.width, option_thumbnails.height, option_thumbnails.special_thumbnail_directory) == TRUE) {
+					// Loading the thumbnail succeeded. We may break here.
+					bostree_node_weak_unref(file_tree, node);
+					D_UNLOCK(file_tree);
+
+					// Notify the main thread about this.
+					gdk_threads_add_idle((GSourceFunc)image_loaded_handler, node);
+					continue;
+				}
+			}
+			D_UNLOCK(file_tree);
+		}
+		#endif
 
 		// It is a hard decision whether to first load the new image or whether
 		// to GC the old ones first: The former minimizes I/O for multi-page
@@ -2111,7 +2345,7 @@ gpointer image_loader_thread(gpointer user_data) {/*{{{*/
 				) {
 					// If this node had force_reload set, we must reload it to populate the cache
 					if(FILE(loaded_node)->force_reload && loaded_node == node) {
-						queue_image_load(node);
+						queue_image_load(bostree_node_weak_ref(node));
 					}
 
 					unload_image(loaded_node);
@@ -2133,8 +2367,25 @@ gpointer image_loader_thread(gpointer user_data) {/*{{{*/
 			image_loader_load_single(node, FALSE);
 			image_loader_thread_currently_loading = NULL;
 		}
-		if(node == current_file_node && FILE(node)->is_loaded) {
-			current_image_drawn = FALSE;
+		if(FILE(node)->is_loaded) {
+#ifndef CONFIGURED_WITHOUT_MONTAGE_MODE
+			D_LOCK(file_tree);
+			test_and_invalidate_thumbnail(FILE(node));
+			if(!FILE(node)->thumbnail && (option_thumbnails.enabled || application_mode == MONTAGE)) {
+				if(!option_thumbnails.persist || load_thumbnail_from_cache(FILE(node), option_thumbnails.width, option_thumbnails.height, option_thumbnails.special_thumbnail_directory) == FALSE) {
+					D_UNLOCK(file_tree);
+					image_loader_create_thumbnail(FILE(node));
+					D_LOCK(file_tree);
+					if(FILE(node)->thumbnail && option_thumbnails.persist) {
+						store_thumbnail_to_cache(FILE(node), option_thumbnails.width, option_thumbnails.height, option_thumbnails.special_thumbnail_directory);
+					}
+				}
+			}
+			D_UNLOCK(file_tree);
+#endif
+			if(node == current_file_node) {
+				current_image_drawn = FALSE;
+			}
 			gdk_threads_add_idle((GSourceFunc)image_loaded_handler, node);
 		}
 
@@ -2143,12 +2394,16 @@ gpointer image_loader_thread(gpointer user_data) {/*{{{*/
 		D_UNLOCK(file_tree);
 	}
 }/*}}}*/
+void image_loader_queue_destroy(gpointer data) {/*{{{*/
+	bostree_node_weak_unref(file_tree, ((struct image_loader_queue_item *)data)->node_ref);
+	g_slice_free(struct image_loader_queue_item, data);
+}/*}}}*/
 gboolean initialize_image_loader() {/*{{{*/
 	if(image_loader_initialization_succeeded) {
 		return TRUE;
 	}
 	if(image_loader_queue == NULL) {
-		image_loader_queue = g_async_queue_new();
+		image_loader_queue = g_async_queue_new_full(image_loader_queue_destroy);
 		image_loader_cancellable = g_cancellable_new();
 	}
 	D_LOCK(file_tree);
@@ -2178,35 +2433,39 @@ gboolean initialize_image_loader() {/*{{{*/
 	}
 	g_thread_new("image-loader", image_loader_thread, NULL);
 
-	if(!option_lowmem) {
-		D_LOCK(file_tree);
-		BOSNode *next = next_file();
-		if(!FILE(next)->is_loaded) {
-			queue_image_load(next);
-		}
-		BOSNode *previous = previous_file();
-		if(!FILE(previous)->is_loaded) {
-			queue_image_load(previous);
-		}
-		D_UNLOCK(file_tree);
-	}
+	preload_adjacent_images();
 
 	image_loader_initialization_succeeded = TRUE;
 	return TRUE;
 }/*}}}*/
 void abort_pending_image_loads(BOSNode *new_pos) {/*{{{*/
-	BOSNode *ref;
+	struct image_loader_queue_item *ref;
 	if(image_loader_queue == NULL) {
 		return;
 	}
-	while((ref = g_async_queue_try_pop(image_loader_queue)) != NULL) bostree_node_weak_unref(file_tree, ref);
+
+	while((ref = g_async_queue_try_pop(image_loader_queue)) != NULL) {
+		bostree_node_weak_unref(file_tree, ref->node_ref);
+		g_slice_free(struct image_loader_queue_item, ref);
+	}
 	if(image_loader_thread_currently_loading != NULL && image_loader_thread_currently_loading != new_pos) {
 		g_cancellable_cancel(image_loader_cancellable);
 	}
 }/*}}}*/
 void queue_image_load(BOSNode *node) {/*{{{*/
-	g_async_queue_push(image_loader_queue, bostree_node_weak_ref(node));
+	struct image_loader_queue_item *it = g_slice_new(struct image_loader_queue_item);
+	it->node_ref = node; // Must be weak_ref'ed by caller. (Simplifies thread safety.)
+	it->purpose = DEFAULT;
+	g_async_queue_push(image_loader_queue, it);
 }/*}}}*/
+#ifndef CONFIGURED_WITHOUT_MONTAGE_MODE
+void queue_thumbnail_load(BOSNode *node) {/*{{{*/
+	struct image_loader_queue_item *it = g_slice_new(struct image_loader_queue_item);
+	it->node_ref = node; // Must be weak_ref'ed by caller.
+	it->purpose = MONTAGE;
+	g_async_queue_push(image_loader_queue, it);
+}/*}}}*/
+#endif
 void unload_image(BOSNode *node) {/*{{{*/
 	if(!node) {
 		return;
@@ -2246,7 +2505,7 @@ void remove_image(BOSNode *node) {/*{{{*/
 			g_bytes_unref(CURRENT_FILE->file_data);
 			CURRENT_FILE->file_data = NULL;
 		}
-		queue_image_load(current_file_node);
+		queue_image_load(bostree_node_weak_ref(current_file_node));
 	}
 	else {
 		unload_image(node);
@@ -2262,13 +2521,37 @@ void preload_adjacent_images() {/*{{{*/
 		BOSNode *new_next = next_file();
 
 		if(!FILE(new_next)->is_loaded) {
-			queue_image_load(new_next);
+			queue_image_load(bostree_node_weak_ref(new_next));
 		}
 		if(!FILE(new_prev)->is_loaded) {
-			queue_image_load(new_prev);
+			queue_image_load(bostree_node_weak_ref(new_prev));
 		}
 		D_UNLOCK(file_tree);
 	}
+
+#ifndef CONFIGURED_WITHOUT_MONTAGE_MODE
+	if(option_thumbnails.enabled && option_thumbnails.auto_generate_for_adjacents > 0) {
+		D_LOCK(file_tree);
+		size_t thumbnail_rank = bostree_rank(current_file_node);
+		size_t count;
+		if(thumbnail_rank > (unsigned)option_thumbnails.auto_generate_for_adjacents) {
+			count = 2 * option_thumbnails.auto_generate_for_adjacents + 2;
+			thumbnail_rank -= option_thumbnails.auto_generate_for_adjacents;
+		}
+		else {
+			count = thumbnail_rank + option_thumbnails.auto_generate_for_adjacents + 1;
+			thumbnail_rank = 0;
+		}
+		BOSNode *thumbnail_node = bostree_select(file_tree, thumbnail_rank);
+		for(; thumbnail_node && count > 0; thumbnail_node = bostree_next_node(thumbnail_node), count--) {
+			if(!test_and_invalidate_thumbnail(FILE(thumbnail_node))) {
+				queue_thumbnail_load(bostree_node_weak_ref(thumbnail_node));
+			}
+		}
+		D_UNLOCK(file_tree);
+	}
+#endif
+
 }/*}}}*/
 gboolean absolute_image_movement_still_unloaded_timer_callback(gpointer user_data) {/*{{{*/
 	if(user_data == (void *)current_file_node && !CURRENT_FILE->is_loaded) {
@@ -2295,7 +2578,6 @@ gboolean absolute_image_movement(BOSNode *ref) {/*{{{*/
 	}
 	earlier_file_node = current_file_node;
 	current_file_node = bostree_node_weak_ref(node);
-	D_UNLOCK(file_tree);
 
 	// Update the active key binding such that redraws of the old image do not
 	// continue an active action chain anymore
@@ -2305,7 +2587,6 @@ gboolean absolute_image_movement(BOSNode *ref) {/*{{{*/
 		bostree_node_weak_unref(file_tree, current_file_node);
 	}
 	current_file_node = bostree_node_weak_ref(node);
-	D_UNLOCK(file_tree);
 #endif
 
 #ifndef CONFIGURED_WITHOUT_INFO_TEXT
@@ -2317,7 +2598,9 @@ gboolean absolute_image_movement(BOSNode *ref) {/*{{{*/
 #endif
 
 	// Load it
-	queue_image_load(current_file_node);
+	queue_image_load(bostree_node_weak_ref(current_file_node));
+
+	D_UNLOCK(file_tree);
 
 	// Preload the adjacent images
 	preload_adjacent_images();
@@ -2595,6 +2878,20 @@ void relative_image_movement(ptrdiff_t movement) {/*{{{*/
 		}
 	}
 
+	#ifndef CONFIGURED_WITHOUT_MONTAGE_MODE
+	if(application_mode == MONTAGE) {
+		D_LOCK(file_tree);
+		if(montage_window_control.selected_node != NULL) {
+			bostree_node_weak_unref(file_tree, montage_window_control.selected_node);
+		}
+		montage_window_control.selected_node = target;
+		montage_window_move_cursor(0, 0,  0);
+		D_UNLOCK(file_tree);
+		gtk_widget_queue_draw(GTK_WIDGET(main_window));
+		return;
+	}
+	#endif
+
 	// Only perform the movement if the file actually changed.
 	// Important for slideshows if only one file was available and said file has been deleted.
 	if(movement == 0 || target != current_file_node) {
@@ -2675,14 +2972,13 @@ BOSNode *directory_image_movement_find_different_directory(BOSNode *current, int
 
 	return target;
 }/*}}}*/
-void directory_image_movement(int direction) {/*{{{*/
+BOSNode *relative_image_pointer_directory(int direction) {/*{{{*/
 	// Directory movement
 	//
 	// This should be consistent, i.e. movements in different directions should
 	// be inverse operations of each other. This makes this function slightly
 	// complex.
-
-	D_LOCK(file_tree);
+	//
 	BOSNode *target;
 	BOSNode *current = current_file_node;
 
@@ -2705,9 +3001,33 @@ void directory_image_movement(int direction) {/*{{{*/
 		}
 	}
 
-	target = bostree_node_weak_ref(target);
+	return target;
+}/*}}}*/
+void directory_image_movement(int direction) {/*{{{*/
+	// Directory movement
+	//
+	// This should be consistent, i.e. movements in different directions should
+	// be inverse operations of each other. This makes this function slightly
+	// complex.
+
+	D_LOCK(file_tree);
+	BOSNode *target = bostree_node_weak_ref(relative_image_pointer_directory(direction));
 	D_UNLOCK(file_tree);
-	absolute_image_movement(target);
+
+	if(application_mode == DEFAULT) {
+		absolute_image_movement(target);
+	}
+	#ifndef CONFIGURED_WITHOUT_MONTAGE_MODE
+	else if(application_mode == MONTAGE) {
+		D_LOCK(file_tree);
+		if(montage_window_control.selected_node != NULL) {
+			bostree_node_weak_unref(file_tree, montage_window_control.selected_node);
+		}
+		montage_window_control.selected_node = target;
+		montage_window_move_cursor(0, 0,  0);
+		D_UNLOCK(file_tree);
+	}
+	#endif
 }/*}}}*/
 void transform_current_image(cairo_matrix_t *transformation) {/*{{{*/
 	// Apply the transformation to the transformation matrix
@@ -3382,17 +3702,34 @@ void update_info_text(const gchar *action) {/*{{{*/
 	D_LOCK(file_tree);
 	current_info_text_cached_font_size = -1;
 
+	#ifndef CONFIGURED_WITHOUT_MONTAGE_MODE
+	if(application_mode == MONTAGE) {
+		if(!option_hide_info_box) {
+			if(current_info_text != NULL) {
+				g_free(current_info_text);
+			}
+			current_info_text = g_strdup("Montage mode");
+		}
+		gtk_window_set_title(GTK_WINDOW(main_window), "pqiv: Montage mode");
+		D_UNLOCK(file_tree);
+		return;
+	}
+	#endif
+
 	if(!current_file_node) {
-		if(current_info_text != NULL) {
-			g_free(current_info_text);
-		}
 		const char *none_loaded = "No image loaded";
-		if(action) {
-			current_info_text = g_strdup_printf("%s - %s", action, none_loaded);
+		if(!option_hide_info_box) {
+			if(current_info_text != NULL) {
+				g_free(current_info_text);
+			}
+			if(action) {
+				current_info_text = g_strdup_printf("%s - %s", action, none_loaded);
+			}
+			else {
+				current_info_text = g_strdup(none_loaded);
+			}
 		}
-		else {
-			current_info_text = g_strdup(none_loaded);
-		}
+		gtk_window_set_title(GTK_WINDOW(main_window), "pqiv: No image loaded");
 		D_UNLOCK(file_tree);
 		return;
 	}
@@ -3414,7 +3751,10 @@ void update_info_text(const gchar *action) {/*{{{*/
 
 	if(!CURRENT_FILE->is_loaded) {
 		// Image not loaded yet. Use loading information and abort.
-		current_info_text = g_strdup_printf("%s (Image is still loading...)", display_name);
+		if(!option_hide_info_box) {
+			current_info_text = g_strdup_printf("%s (Image is still loading...)", display_name);
+		}
+		gtk_window_set_title(GTK_WINDOW(main_window), "pqiv");
 
 		g_free(file_name);
 		D_UNLOCK(file_tree);
@@ -3507,6 +3847,478 @@ void calculate_base_draw_pos_and_size(int *image_transform_width, int *image_tra
 		*x = *y = 0;
 	}
 }/*}}}*/
+#ifndef CONFIGURED_WITHOUT_MONTAGE_MODE
+void montage_window_set_cursor(int pos_x, int pos_y) {/*{{{*/
+	const unsigned n_thumbs_x = main_window_width / (option_thumbnails.width + 10);
+	const unsigned n_thumbs_y = main_window_height / (option_thumbnails.height + 10);
+	const size_t number_of_images = (ptrdiff_t)bostree_node_count(file_tree);
+
+	BOSNode *selected_node = bostree_node_weak_unref(file_tree, montage_window_control.selected_node);
+	if(!selected_node) {
+		selected_node = bostree_select(file_tree, montage_window_control.scroll_y * n_thumbs_x);
+		if(!selected_node) {
+			selected_node = bostree_select(file_tree, 0);
+		}
+		if(!selected_node) {
+			montage_window_control.selected_node = NULL;
+			return;
+		}
+	}
+	size_t old_selection = bostree_rank(selected_node);
+
+	if(pos_x < 0) {
+		pos_x = old_selection % n_thumbs_x;
+	}
+	if(pos_y < 0) {
+		pos_y = old_selection / n_thumbs_x;
+	}
+	if((unsigned)pos_y >= n_thumbs_y) {
+		pos_y = n_thumbs_y - 1;
+	}
+
+	size_t new_selection = montage_window_control.scroll_y * n_thumbs_x + pos_x + pos_y * n_thumbs_x;
+
+	if(new_selection > number_of_images) {
+		new_selection = number_of_images - 1;
+	}
+
+	BOSNode *new_selected_node = bostree_select(file_tree, new_selection);
+	if(!new_selected_node) {
+		new_selected_node = selected_node;
+	}
+	montage_window_control.selected_node = bostree_node_weak_ref(new_selected_node);
+}/*}}}*/
+gboolean montage_window_get_move_cursor_target(int pos_x, int pos_y, int move_y_pages, int *target_x, int *target_y, int *target_scroll_y, BOSNode **target_node) {/*{{{*/
+	/* The idea to call this function with a possibly invalid pair of on-screen coordinates
+	   (pos_x, pos_y) and an amount of pages to scroll move_y_pages. The function will
+	   calculate a valid set of coordinates based on the wrapping rules and store them in
+	   the output pointers. It returns whether the target is visible on the screen without
+	   scrolling
+	 */
+
+	const int n_thumbs_x = main_window_width / (option_thumbnails.width + 10);
+	const int n_thumbs_y = main_window_height / (option_thumbnails.height + 10);
+	const ptrdiff_t number_of_images = (ptrdiff_t)bostree_node_count(file_tree);
+	const int n_rows_total       = (number_of_images + n_thumbs_x - 1) / n_thumbs_x;
+	const int last_row_n_thumbs  = (number_of_images % n_thumbs_x == 0) ? n_thumbs_x : number_of_images % n_thumbs_x;
+
+	int scroll_y = montage_window_control.scroll_y;
+	int original_scroll_y = scroll_y;
+
+	// Use absolute pos_y coordinates
+	pos_y += scroll_y;
+
+	// Adjust x position to fit, ignoring the end of the file list for now
+	if(option_montage_mode_wrap_mode == MONTAGE_MODE_WRAP_OFF) {
+		if(pos_x < 0) pos_x = 0;
+		if(pos_x >= n_thumbs_x) pos_x = n_thumbs_x - 1;
+	}
+	else {
+		if(pos_x <= -n_thumbs_x || pos_x >= n_thumbs_x) {
+			pos_y += pos_x / n_thumbs_x;
+			pos_x %= n_thumbs_x;
+		}
+		if(pos_x < 0) {
+			pos_y--;
+			pos_x += n_thumbs_x;
+		}
+	}
+
+	// Scroll pages
+	if(move_y_pages) {
+		pos_y += move_y_pages * n_thumbs_y;
+		scroll_y += move_y_pages * n_thumbs_y;
+	}
+
+	// Adjust y position to fit
+	int wrap = 0;
+	if(pos_y < 0) {
+		if(option_montage_mode_wrap_mode != MONTAGE_MODE_WRAP_FULL) {
+			pos_y = 0;
+			pos_x = 0;
+		}
+		else {
+			while(pos_y < 0) {
+				pos_y += n_rows_total;
+			}
+			wrap = 1;
+		}
+	}
+	if(pos_y >= n_rows_total) {
+		if(option_montage_mode_wrap_mode != MONTAGE_MODE_WRAP_FULL) {
+			pos_y = n_rows_total - 1;
+			pos_x = last_row_n_thumbs - 1;
+		}
+		else {
+			while(pos_y >= n_rows_total) {
+				pos_y -= n_rows_total;
+			}
+			wrap = -1;
+		}
+	}
+	if(pos_y == n_rows_total - 1) {
+		if(pos_x >= last_row_n_thumbs) {
+			if(option_montage_mode_wrap_mode != MONTAGE_MODE_WRAP_FULL) {
+				pos_x = last_row_n_thumbs - 1;
+			}
+			else {
+				if(wrap == 1) {
+					pos_x -= (n_thumbs_x - last_row_n_thumbs);
+				}
+				else {
+					pos_y = 0;
+					pos_x -= last_row_n_thumbs;
+				}
+			}
+		}
+	}
+
+	// Fixup scroll position if necessary
+	if(scroll_y < 0) {
+		scroll_y = 0;
+	}
+	int upper_bound = n_rows_total > n_thumbs_y ? n_rows_total - n_thumbs_y : n_rows_total;
+	if(scroll_y > upper_bound) {
+		scroll_y = upper_bound;
+	}
+	if(scroll_y > pos_y) {
+		scroll_y = pos_y;
+	}
+	if(scroll_y + n_thumbs_y <= pos_y) {
+		scroll_y = pos_y - n_thumbs_y + 1;
+	}
+
+	// Return to page coordinates
+	pos_y -= scroll_y;
+
+	if(target_x) {
+		*target_x = pos_x;
+	}
+	if(target_y) {
+		*target_y = pos_y;
+	}
+	if(target_scroll_y) {
+		*target_scroll_y = scroll_y;
+	}
+	if(target_node) {
+		*target_node = bostree_select(file_tree, (scroll_y + pos_y) * n_thumbs_x + pos_x);
+	}
+
+	return scroll_y == original_scroll_y;
+}/*}}}*/
+void montage_window_move_cursor(int move_x, int move_y, int move_y_pages) {/*{{{*/
+	// Must be called with an active lock.
+	const int n_thumbs_x = main_window_width / (option_thumbnails.width + 10);
+	const int n_thumbs_y = main_window_height / (option_thumbnails.height + 10);
+
+	if(n_thumbs_x == 0 || n_thumbs_y == 0) {
+		return;
+	}
+
+	BOSNode *selected_node = bostree_node_weak_unref(file_tree, montage_window_control.selected_node);
+	if(!selected_node) {
+		selected_node = bostree_select(file_tree, montage_window_control.scroll_y * n_thumbs_x);
+		if(!selected_node) {
+			selected_node = bostree_select(file_tree, 0);
+		}
+		if(!selected_node) {
+			montage_window_control.selected_node = NULL;
+			return;
+		}
+	}
+
+	size_t old_selection = bostree_rank(selected_node);
+	int pos_x = old_selection % n_thumbs_x;
+	int pos_y = old_selection / n_thumbs_x;
+	if(montage_window_control.scroll_y + n_thumbs_y <= pos_y) {
+		montage_window_control.scroll_y = pos_y - n_thumbs_y + 1;
+	}
+	else if(montage_window_control.scroll_y > pos_y) {
+		montage_window_control.scroll_y = pos_y;
+	}
+	pos_y -= montage_window_control.scroll_y;
+
+	if(move_x != 0 || move_y != 0 || move_y_pages != 0) {
+		selected_node = NULL;
+		montage_window_get_move_cursor_target(pos_x + move_x, pos_y + move_y, move_y_pages, &pos_x, &pos_y, &montage_window_control.scroll_y, &selected_node);
+	}
+
+	montage_window_control.selected_node = bostree_node_weak_ref(selected_node);
+
+	// Queue loading of thumbnails
+	abort_pending_image_loads(selected_node);
+
+	int thumb_node_fwd_ctr = (n_thumbs_y - pos_y - 1) * n_thumbs_x + (n_thumbs_x - pos_x - 1) + (option_thumbnails.auto_generate_for_adjacents > 0 ? option_thumbnails.auto_generate_for_adjacents : 0) + 1;
+	BOSNode *thumb_node_fwd = selected_node;
+
+	int thumb_node_bwd_ctr = pos_y  * n_thumbs_x + pos_x + (option_thumbnails.auto_generate_for_adjacents > 0 ? option_thumbnails.auto_generate_for_adjacents : 0);
+	BOSNode *thumb_node_bwd = bostree_previous_node(selected_node);
+
+	while(TRUE) {
+		gboolean did_something = FALSE;
+		if(thumb_node_fwd && thumb_node_fwd_ctr) {
+			if(!test_and_invalidate_thumbnail(FILE(thumb_node_fwd))) {
+				queue_thumbnail_load(bostree_node_weak_ref(thumb_node_fwd));
+			}
+			thumb_node_fwd = bostree_next_node(thumb_node_fwd);
+			thumb_node_fwd_ctr--;
+			did_something = TRUE;
+		}
+		if(thumb_node_bwd && thumb_node_bwd_ctr) {
+			if(!test_and_invalidate_thumbnail(FILE(thumb_node_bwd))) {
+				queue_thumbnail_load(bostree_node_weak_ref(thumb_node_bwd));
+			}
+			thumb_node_bwd = bostree_previous_node(thumb_node_bwd);
+			thumb_node_bwd_ctr--;
+			did_something = TRUE;
+		}
+		if(!did_something) {
+			break;
+		}
+	}
+}/*}}}*/
+#ifndef CONFIGURED_WITHOUT_ACTIONS
+struct window_draw_thumbnail_montage_show_binding_overlays_data {
+	cairo_t *cr;
+	int current_x;
+	int current_y;
+	char *active_prefix;
+};
+void window_draw_thumbnail_montage_show_binding_overlays_looper(gpointer key, gpointer value, gpointer user_data) {/*{{{*/
+	const int n_thumbs_x = main_window_width / (option_thumbnails.width + 10);
+	const int n_thumbs_y = main_window_height / (option_thumbnails.height + 10);
+	const ptrdiff_t number_of_images = (ptrdiff_t)bostree_node_count(file_tree);
+	const int n_rows_total       = (number_of_images + n_thumbs_x - 1) / n_thumbs_x;
+	const int last_row_n_thumbs  = (number_of_images % n_thumbs_x == 0) ? n_thumbs_x : number_of_images % n_thumbs_x;
+
+	struct window_draw_thumbnail_montage_show_binding_overlays_data data = *(struct window_draw_thumbnail_montage_show_binding_overlays_data *)user_data;
+	guint key_binding_value = GPOINTER_TO_UINT(key);
+	key_binding_t *binding = value;
+	data.active_prefix = key_binding_sequence_to_string(key_binding_value, data.active_prefix);
+
+	if(binding->next_key_bindings) {
+		g_hash_table_foreach(binding->next_key_bindings, window_draw_thumbnail_montage_show_binding_overlays_looper, &data);
+	}
+
+	ptrdiff_t target_index;
+	BOSNode *target_node;
+	for(; binding; binding = binding->next_action) {
+		switch(binding->action) {
+			case ACTION_MONTAGE_MODE_SET_SHIFT_X:
+				data.current_x = binding->parameter.pint;
+				break;
+			case ACTION_MONTAGE_MODE_SET_SHIFT_Y:
+				data.current_y = binding->parameter.pint;
+				break;
+			case ACTION_MONTAGE_MODE_FOLLOW_PROCEED:
+				if(binding->parameter.p2short.p1 >= 0) {
+					data.current_x = binding->parameter.p2short.p1;
+				}
+				if(binding->parameter.p2short.p2 >= 0) {
+					data.current_y = binding->parameter.p2short.p2;
+				}
+				break;
+			case ACTION_MONTAGE_MODE_SHIFT_X:
+				if(!montage_window_get_move_cursor_target(data.current_x + binding->parameter.pint, data.current_y, 0, &data.current_x, &data.current_y, NULL, NULL)) {
+					data.current_y = -1;
+					while(binding->next_action) binding = binding->next_action;
+					break;
+				}
+				break;
+			case ACTION_MONTAGE_MODE_SHIFT_Y:
+				if(!montage_window_get_move_cursor_target(data.current_x, data.current_y + binding->parameter.pint, 0, &data.current_x, &data.current_y, NULL, NULL)) {
+					data.current_y = -1;
+					while(binding->next_action) binding = binding->next_action;
+					break;
+				}
+				break;
+			case ACTION_MONTAGE_MODE_SHIFT_Y_PG:
+				if(!montage_window_get_move_cursor_target(data.current_x, data.current_y, binding->parameter.pint, &data.current_x, &data.current_y, NULL, NULL)) {
+					data.current_y = -1;
+					while(binding->next_action) binding = binding->next_action;
+					break;
+				}
+				break;
+			case ACTION_GOTO_FILE_RELATIVE:
+				target_index = bostree_rank(relative_image_pointer(binding->parameter.pint));
+				data.current_y = target_index / n_thumbs_x - montage_window_control.scroll_y;
+				data.current_x = target_index % n_thumbs_x;
+				break;
+			case ACTION_GOTO_FILE_BYINDEX:
+				target_index = binding->parameter.pint;
+				if(target_index < 0 || target_index > (int)bostree_node_count(file_tree) - 1) {
+					target_index = bostree_node_count(file_tree) - 1;
+				}
+				data.current_y = target_index / n_thumbs_x - montage_window_control.scroll_y;
+				data.current_x = target_index % n_thumbs_x;
+				break;
+			case ACTION_GOTO_FILE_BYNAME:
+				target_node = image_pointer_by_name(binding->parameter.pcharptr);
+				if(target_node) {
+					target_index = bostree_rank(target_node);
+					data.current_y = target_index / n_thumbs_x - montage_window_control.scroll_y;
+					data.current_x = target_index % n_thumbs_x;
+				}
+				break;
+			case ACTION_GOTO_DIRECTORY_RELATIVE:
+				target_node = relative_image_pointer_directory(binding->parameter.pint);
+				if(target_node) {
+					target_index = bostree_rank(target_node);
+					data.current_y = target_index / n_thumbs_x - montage_window_control.scroll_y;
+					data.current_x = target_index % n_thumbs_x;
+				}
+				break;
+			default:
+				break;
+		}
+	}
+
+	if(data.current_x >= 0 && data.current_x < n_thumbs_x && data.current_y >= 0 && data.current_y < n_thumbs_y &&
+			(data.current_y + montage_window_control.scroll_y != n_rows_total - 1 || data.current_x < last_row_n_thumbs) &&
+			((data.current_x != ((struct window_draw_thumbnail_montage_show_binding_overlays_data *)user_data)->current_x ||
+			  data.current_y != ((struct window_draw_thumbnail_montage_show_binding_overlays_data *)user_data)->current_y))) {
+
+		cairo_t *cr_arg = data.cr;
+
+		cairo_save(cr_arg);
+
+		cairo_translate(cr_arg,
+			(main_window_width  - n_thumbs_x * (option_thumbnails.width + 10)) / 2  + data.current_x * (option_thumbnails.width + 10),
+			(main_window_height - n_thumbs_y * (option_thumbnails.height + 10)) / 2 + data.current_y * (option_thumbnails.height + 10)
+		);
+
+		BOSNode *node = bostree_select(file_tree, (montage_window_control.scroll_y + data.current_y) * n_thumbs_x + data.current_x);
+		if(node && FILE(node)->thumbnail) {
+			cairo_translate(cr_arg,
+					(option_thumbnails.width  - cairo_image_surface_get_width(FILE(node)->thumbnail)) / 2 + 5,
+					(option_thumbnails.height - cairo_image_surface_get_height(FILE(node)->thumbnail)) / 2 + 5
+			);
+		}
+
+		double x1, y1, x2, y2;
+		cairo_set_font_size(cr_arg, 12);
+		cairo_text_path(cr_arg, data.active_prefix);
+		cairo_path_extents(cr_arg, &x1, &y1, &x2, &y2);
+		cairo_path_t *text_path = cairo_copy_path(cr_arg);
+		cairo_new_path(cr_arg);
+		cairo_rectangle(cr_arg, -5, -(y2 - y1) - 2, x2 - x1 + 10, y2 - y1 + 8);
+		cairo_close_path(cr_arg);
+		cairo_set_source_rgb(cr_arg, 1., 1., 0.);
+		cairo_fill(cr_arg);
+
+		cairo_new_path(cr_arg);
+		cairo_append_path(cr_arg, text_path);
+		cairo_set_source_rgb(cr_arg, 0., 0., 0.);
+		cairo_fill(cr_arg);
+		cairo_path_destroy(text_path);
+
+		cairo_restore(cr_arg);
+	}
+
+	free(data.active_prefix);
+}/*}}}*/
+#endif
+gboolean window_draw_thumbnail_montage(cairo_t *cr_arg) {/*{{{*/
+	D_LOCK(file_tree);
+
+	// Draw black background
+	cairo_save(cr_arg);
+	cairo_set_source_rgba(cr_arg, 0., 0., 0., option_transparent_background ? 0. : 1.);
+	cairo_set_operator(cr_arg, CAIRO_OPERATOR_SOURCE);
+	cairo_paint(cr_arg);
+	cairo_restore(cr_arg);
+
+	// Calculate how many thumbnails to draw
+	const unsigned n_thumbs_x = main_window_width / (option_thumbnails.width + 10);
+	const unsigned n_thumbs_y = main_window_height / (option_thumbnails.height + 10);
+	size_t top_left_id = montage_window_control.scroll_y * n_thumbs_x;
+
+	BOSNode *selected_node = bostree_node_weak_unref(file_tree, bostree_node_weak_ref(montage_window_control.selected_node));
+	size_t selection_rank;
+	if(!selected_node) {
+		selected_node = NULL;
+		selection_rank = (size_t)-1;
+	}
+	else {
+		selection_rank = bostree_rank(selected_node);
+	}
+
+	// Do a check if the selected image is out of bounds. Fix if it is.
+	if(top_left_id > selection_rank || top_left_id + n_thumbs_x * n_thumbs_y < selection_rank) {
+		montage_window_move_cursor(0, 0,  0);
+		top_left_id = montage_window_control.scroll_y * n_thumbs_x;
+	}
+
+	if(!file_tree_valid) {
+		D_UNLOCK(file_tree);
+		return FALSE;
+	}
+	BOSNode *thumb_node = bostree_select(file_tree, top_left_id);
+	for(size_t draw_now = 0; draw_now < n_thumbs_x * n_thumbs_y && thumb_node; draw_now++, thumb_node = bostree_next_node(thumb_node)) {
+		if(!file_tree_valid || !thumb_node) {
+			break;
+		}
+		file_t *thumb_file = FILE(thumb_node);
+
+		if(thumb_file->thumbnail) {
+			cairo_save(cr_arg);
+			cairo_translate(cr_arg,
+				(main_window_width - n_thumbs_x * (option_thumbnails.width + 10)) / 2   + (draw_now % n_thumbs_x) * (option_thumbnails.width + 10)  + (option_thumbnails.width - cairo_image_surface_get_width(thumb_file->thumbnail))/2,
+				(main_window_height - n_thumbs_y * (option_thumbnails.height + 10)) / 2 + (draw_now / n_thumbs_x) * (option_thumbnails.height + 10) + (option_thumbnails.height - cairo_image_surface_get_height(thumb_file->thumbnail))/2
+			);
+			cairo_set_source_surface(cr_arg, thumb_file->thumbnail, 0, 0);
+			cairo_new_path(cr_arg);
+			cairo_rectangle(cr_arg, 0, 0, cairo_image_surface_get_width(thumb_file->thumbnail), cairo_image_surface_get_height(thumb_file->thumbnail));
+			cairo_close_path(cr_arg);
+			cairo_clip(cr_arg);
+			cairo_paint(cr_arg);
+
+			if(top_left_id + draw_now == selection_rank) {
+				cairo_rectangle(cr_arg, 0, 0, cairo_image_surface_get_width(thumb_file->thumbnail), cairo_image_surface_get_height(thumb_file->thumbnail));
+				cairo_set_source_rgb(cr_arg, 1., 1., 0.);
+				cairo_set_line_width(cr_arg, 8.);
+				cairo_stroke(cr_arg);
+			}
+
+			cairo_restore(cr_arg);
+		}
+		else if(top_left_id + draw_now == selection_rank) {
+			cairo_save(cr_arg);
+			cairo_translate(cr_arg,
+				(main_window_width - n_thumbs_x * (option_thumbnails.width + 10)) / 2   + (draw_now % n_thumbs_x) * (option_thumbnails.width + 10) + (option_thumbnails.width - 5)/2,
+				(main_window_height - n_thumbs_y * (option_thumbnails.height + 10)) / 2 + (draw_now / n_thumbs_x) * (option_thumbnails.height + 10) + (option_thumbnails.height - 5)/2
+			);
+			cairo_rectangle(cr_arg, 0, 0, 5, 5);
+			cairo_set_source_rgb(cr_arg, 1., 1., 0.);
+			cairo_set_line_width(cr_arg, 8.);
+			cairo_stroke(cr_arg);
+			cairo_restore(cr_arg);
+		}
+	}
+
+#ifndef CONFIGURED_WITHOUT_ACTIONS
+	// In follow mode, draw the key mappings on top of the images
+	if(montage_window_control.show_binding_overlays) {
+		const int selected_x = selection_rank % n_thumbs_x;
+		const int selected_y = selection_rank / n_thumbs_x - montage_window_control.scroll_y;
+
+		struct window_draw_thumbnail_montage_show_binding_overlays_data data = {
+			cr_arg, selected_x, selected_y, (char*)""
+		};
+
+		g_hash_table_foreach(
+				active_key_binding.key_binding && active_key_binding.key_binding->next_key_bindings ?
+					active_key_binding.key_binding->next_key_bindings :
+					key_bindings[active_key_binding_context],
+				window_draw_thumbnail_montage_show_binding_overlays_looper,
+				&data);
+	}
+#endif
+
+	D_UNLOCK(file_tree);
+	return TRUE;
+}/*}}}*/
+#endif
 gboolean window_draw_callback(GtkWidget *widget, cairo_t *cr_arg, gpointer user_data) {/*{{{*/
 	// Continue an action chain, if one exists The placement of this is a
 	// compromise: What we really want is to perform actions that follow an
@@ -3522,6 +4334,14 @@ gboolean window_draw_callback(GtkWidget *widget, cairo_t *cr_arg, gpointer user_
 	if(is_current_file_loaded()) {
 		continue_active_input_event_action_chain();
 	}
+
+	// We have different drawing modes. The default, below, is to draw a single
+	// image.
+#ifndef CONFIGURED_WITHOUT_MONTAGE_MODE
+	if(application_mode == MONTAGE) {
+		return window_draw_thumbnail_montage(cr_arg);
+	}
+#endif
 
 	// Draw image
 	int x = 0;
@@ -3688,9 +4508,29 @@ gboolean window_draw_callback(GtkWidget *widget, cairo_t *cr_arg, gpointer user_
 		// The image has not yet been loaded. If available, draw from the
 		// temporary image surface from the last call
 		if(last_visible_image_surface != NULL) {
-			cairo_set_source_surface(cr_arg, last_visible_image_surface, 0, 0);
+			// But only do it if the window size hasn't changed. It looks weird
+			// to have an image drawn somewhere into the window.
+			// TODO An overall neater solution would be to have
+			// last_visible_image_surface store only the image part, and do the
+			// centering here.
+			if(cairo_image_surface_get_width(last_visible_image_surface) != main_window_width || cairo_image_surface_get_height(last_visible_image_surface) != main_window_height) {
+				cairo_surface_destroy(last_visible_image_surface);
+				last_visible_image_surface = NULL;
+			}
+			else {
+				cairo_set_source_surface(cr_arg, last_visible_image_surface, 0, 0);
+				cairo_set_operator(cr_arg, CAIRO_OPERATOR_SOURCE);
+				cairo_paint(cr_arg);
+			}
+		}
+		else {
+			// Draw black background
+			// This must be done explicitly in GTK2, otherwise the background will be white.
+			cairo_save(cr_arg);
+			cairo_set_source_rgba(cr_arg, 0., 0., 0., option_transparent_background ? 0. : 1.);
 			cairo_set_operator(cr_arg, CAIRO_OPERATOR_SOURCE);
 			cairo_paint(cr_arg);
+			cairo_restore(cr_arg);
 		}
 	}
 	D_UNLOCK(file_tree);
@@ -3871,6 +4711,33 @@ gboolean set_scale_level_to_fit_callback(gpointer user_data) {
 	return FALSE;
 }
 /*}}}*/
+#ifndef CONFIGURED_WITHOUT_ACTIONS
+key_binding_t *key_binding_t_duplicate(key_binding_t *binding) {/*{{{*/
+	key_binding_t *retval = g_slice_new(key_binding_t);
+	retval->action = binding->action;
+	retval->parameter = retval->parameter;
+	if(pqiv_action_descriptors[binding->action].parameter_type == PARAMETER_CHARPTR) {
+		retval->parameter.pcharptr = g_strdup(retval->parameter.pcharptr);
+	}
+	retval->next_action = binding->next_action ? key_binding_t_duplicate(binding->next_action) : NULL;
+	retval->next_key_bindings = binding->next_key_bindings ? g_hash_table_ref(binding->next_key_bindings) : NULL;
+
+	return retval;
+}/*}}}*/
+void key_binding_t_destroy_callback(gpointer data) {/*{{{*/
+	key_binding_t *binding = (key_binding_t *)data;
+	if(binding->next_action) {
+		key_binding_t_destroy_callback(binding->next_action);
+	}
+	if(pqiv_action_descriptors[binding->action].parameter_type == PARAMETER_CHARPTR) {
+		g_free(binding->parameter.pcharptr);
+	}
+	if(binding->next_key_bindings) {
+		g_hash_table_unref(binding->next_key_bindings);
+	}
+	g_slice_free(key_binding_t, binding);
+}/*}}}*/
+#endif
 void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 	switch(action_id) {
 		case ACTION_NOP:
@@ -3981,7 +4848,9 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 			if(!is_current_file_loaded()) return;
 			CURRENT_FILE->force_reload = TRUE;
 			update_info_text("Reloading image..");
-			queue_image_load(relative_image_pointer(0));
+			D_LOCK(file_tree);
+			queue_image_load(bostree_node_weak_ref(relative_image_pointer(0)));
+			D_UNLOCK(file_tree);
 			return;
 			break;
 
@@ -4171,7 +5040,21 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 				}
 				else {
 					if(action_id == ACTION_GOTO_FILE_BYINDEX) {
-						absolute_image_movement(node);
+						if(application_mode == DEFAULT) {
+							absolute_image_movement(node);
+						}
+						#ifndef CONFIGURED_WITHOUT_MONTAGE_MODE
+						else if(application_mode == MONTAGE) {
+							D_LOCK(file_tree);
+							if(montage_window_control.selected_node != NULL) {
+								bostree_node_weak_unref(file_tree, montage_window_control.selected_node);
+							}
+							montage_window_control.selected_node = node;
+							montage_window_move_cursor(0, 0,  0);
+							D_UNLOCK(file_tree);
+							gtk_widget_queue_draw(GTK_WIDGET(main_window));
+						}
+						#endif
 					}
 					else {
 						remove_image(node);
@@ -4198,7 +5081,21 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 				}
 				else {
 					if(action_id == ACTION_GOTO_FILE_BYNAME) {
-						absolute_image_movement(node);
+						if(application_mode == DEFAULT) {
+							absolute_image_movement(node);
+						}
+						#ifndef CONFIGURED_WITHOUT_MONTAGE_MODE
+						else if(application_mode == MONTAGE) {
+							D_LOCK(file_tree);
+							if(montage_window_control.selected_node != NULL) {
+								bostree_node_weak_unref(file_tree, montage_window_control.selected_node);
+							}
+							montage_window_control.selected_node = node;
+							montage_window_move_cursor(0, 0, 0);
+							D_UNLOCK(file_tree);
+							gtk_widget_queue_draw(GTK_WIDGET(main_window));
+						}
+						#endif
 					}
 					else {
 						remove_image(node);
@@ -4447,7 +5344,368 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 			option_fading = fabs(option_fading_duration) <= 0;
 			break;
 
+		case ACTION_SET_KEYBOARD_TIMEOUT:
+			option_keyboard_timeout = parameter.pdouble;
+			break;
 #endif
+
+#ifndef CONFIGURED_WITHOUT_MONTAGE_MODE
+		case ACTION_SET_THUMBNAIL_SIZE:
+			option_thumbnails.width = parameter.p2short.p1;
+			option_thumbnails.height = parameter.p2short.p2;
+
+			if(application_mode == MONTAGE) {
+				abort_pending_image_loads(NULL);
+			}
+
+			D_LOCK(file_tree);
+			for(BOSNode *node = bostree_select(file_tree, 0); node; node = bostree_next_node(node)) {
+				if(FILE(node)->thumbnail) {
+					cairo_surface_destroy(FILE(node)->thumbnail);
+					FILE(node)->thumbnail = NULL;
+				}
+			}
+			D_UNLOCK(file_tree);
+
+			if(application_mode == MONTAGE) {
+				D_LOCK(file_tree);
+				montage_window_move_cursor(0, 0, 0);
+				D_UNLOCK(file_tree);
+				gtk_widget_queue_draw(GTK_WIDGET(main_window));
+			}
+			break;
+
+		case ACTION_SET_THUMBNAIL_PRELOAD:
+			option_thumbnails.enabled = parameter.pint > 0;
+			option_thumbnails.auto_generate_for_adjacents = parameter.pint;
+			if(parameter.pint > 0) {
+				preload_adjacent_images();
+				UPDATE_INFO_TEXT("Thumbnail generation enabled for %d adjacent images", parameter.pint);
+			}
+			else {
+				update_info_text("Thumbnail generation disabled");
+			}
+			break;
+
+		case ACTION_MONTAGE_MODE_ENTER:
+			if(slideshow_timeout_id > 0) {
+				g_source_remove(slideshow_timeout_id);
+				slideshow_timeout_id = 0;
+			}
+			if(current_image_animation_timeout_id > 0) {
+				g_source_remove(current_image_animation_timeout_id);
+				current_image_animation_timeout_id = 0;
+			}
+			if(last_visible_image_surface) {
+				cairo_surface_destroy(last_visible_image_surface);
+				last_visible_image_surface = NULL;
+			}
+			invalidate_current_scaled_image_surface();
+
+			application_mode = MONTAGE;
+			active_key_binding_context = MONTAGE;
+			D_LOCK(file_tree);
+			if(montage_window_control.selected_node) {
+				bostree_node_weak_unref(file_tree, montage_window_control.selected_node);
+			}
+			montage_window_control.selected_node = bostree_node_weak_ref(current_file_node);
+			montage_window_move_cursor(0, 0, 0);
+			D_UNLOCK(file_tree);
+			update_info_text(NULL);
+			main_window_adjust_for_image();
+
+			gtk_widget_queue_draw(GTK_WIDGET(main_window));
+			break;
+
+		case ACTION_MONTAGE_MODE_SHIFT_X:
+			if(application_mode != MONTAGE) {
+				break;
+			}
+			D_LOCK(file_tree);
+			montage_window_move_cursor(parameter.pint, 0, 0);
+			D_UNLOCK(file_tree);
+			gtk_widget_queue_draw(GTK_WIDGET(main_window));
+			break;
+
+		case ACTION_MONTAGE_MODE_SHIFT_Y:
+			if(application_mode != MONTAGE) {
+				break;
+			}
+			D_LOCK(file_tree);
+			montage_window_move_cursor(0, parameter.pint, 0);
+			D_UNLOCK(file_tree);
+			gtk_widget_queue_draw(GTK_WIDGET(main_window));
+			break;
+
+		case ACTION_MONTAGE_MODE_SET_WRAP_MODE:
+			if(parameter.pint < 0 || parameter.pint >= _MONTAGE_MODE_WRAP_SENTINEL) {
+				g_printerr("Invalid parameter for montage_mode_set_wrap_mode()\n");
+				break;
+			}
+			option_montage_mode_wrap_mode = parameter.pint;
+			break;
+
+		case ACTION_MONTAGE_MODE_SET_SHIFT_X:
+			if(application_mode != MONTAGE) {
+				break;
+			}
+			montage_window_set_cursor(parameter.pint, -1);
+			gtk_widget_queue_draw(GTK_WIDGET(main_window));
+			break;
+
+		case ACTION_MONTAGE_MODE_SET_SHIFT_Y:
+			if(application_mode != MONTAGE) {
+				break;
+			}
+			montage_window_set_cursor(-1, parameter.pint);
+			gtk_widget_queue_draw(GTK_WIDGET(main_window));
+			break;
+
+		case ACTION_MONTAGE_MODE_SHIFT_Y_PG:
+			if(application_mode != MONTAGE) {
+				break;
+			}
+			D_LOCK(file_tree);
+			montage_window_move_cursor(0, 0, parameter.pint);
+			D_UNLOCK(file_tree);
+			gtk_widget_queue_draw(GTK_WIDGET(main_window));
+			break;
+
+		case ACTION_MONTAGE_MODE_SHOW_BINDING_OVERLAYS:
+			montage_window_control.show_binding_overlays = !!parameter.pint;
+			gtk_widget_queue_draw(GTK_WIDGET(main_window));
+			break;
+
+#ifndef CONFIGURED_WITHOUT_ACTIONS
+		case ACTION_MONTAGE_MODE_FOLLOW:
+			if(parameter.pcharptr[0] == 0 || parameter.pcharptr[1] == 0) {
+				g_printerr("Error: montage_mode_follow requires at least two characters to work with.\n");
+				break;
+			}
+
+			montage_window_control.show_binding_overlays = 1;
+			option_keyboard_timeout = 5;
+
+			if(follow_mode_key_binding.next_key_bindings) {
+				g_hash_table_unref(follow_mode_key_binding.next_key_bindings);
+				follow_mode_key_binding.next_key_bindings = NULL;
+			}
+			follow_mode_key_binding.next_key_bindings = g_hash_table_new_full((GHashFunc)g_direct_hash, (GEqualFunc)g_direct_equal, NULL, key_binding_t_destroy_callback);
+
+			{
+				const int n_thumbs_x = main_window_width / (option_thumbnails.width + 10);
+				const int n_thumbs_y = main_window_height / (option_thumbnails.height + 10);
+				const ptrdiff_t number_of_images = (ptrdiff_t)bostree_node_count(file_tree);
+				const ptrdiff_t visible_thumbnails = ((montage_window_control.scroll_y + n_thumbs_y) * n_thumbs_x > number_of_images ? number_of_images - montage_window_control.scroll_y * n_thumbs_x : n_thumbs_x * n_thumbs_y);
+				const int number_of_characters = strlen(parameter.pcharptr);
+
+				/*
+					On the algorithm used for generating follow mode key bindings:
+
+					The problem of finding a prefix code in base m (I have m keys) for integers up to n (I have n integers) such that the total length
+					of the encoding of the entire alphabet is minimized can be solved easily by looking at the base m representation of a number.
+
+					Let l = log(n) / log(m). Observe how the problem is trivial if l is integer: Represent all images by their index in base m with
+					leading "zeros" (that is, the first key). And you're done, there can't be a better representation. The nontrivial case is if we
+					are between two powers of the basis. Let's look in detail at that case:
+
+					Let k = m^(floor(l))-1; k is the largest number which can be represented using l-1 symbols, and the largest one that has a leading
+					zero which could be omitted. The issue obviously is that this would destroy the prefix property. But note the following: If the
+					leading digit of n in base m is d<m-1, then for all digits between d+1 and m-1, there actually isn't any ambiguity. This property
+					is what the following code exploits to form short prefixes: It determines how many digits exactly have to be reserved in the leading
+					position to represent all numbers larger than k, uses up all other ones (by iterating over numbers of length l-1) and then proceeds
+					to count with length l.
+
+					As an example, if m = 4 and n = 12, then l = 1.79, k = 03. We can index images starting at 0, so the largest one is going to be
+					represented by 11b10 = 23b4. Hence, we will never see numbers in base 4 that start with 3, so we can use one symbol as a single digit
+					without ambiguity. We start counting with a single digit instead of two, count only to one (since we are only allowed to use one
+					symbol), and then continue with two digits. We end up with the numbers:
+
+					0, 10, 11, 12, 13, 20, 21, 22, 23, 30, 31, 32
+				*/
+
+				const int binding_length = (int)ceil(log(visible_thumbnails) / log(number_of_characters));
+				const int most_significant_power = (int)pow(number_of_characters, binding_length - 1);
+				int high_image_digit = number_of_characters - (visible_thumbnails / most_significant_power);
+
+				// We have one special case:
+				// Due to the integer arithmetic in the formulation above we
+				// can be off by one. An easy alternative to working in double
+				// precision floats entirely is to check whether this is the
+				// case and decrease high_image_digit if so.
+				//
+				// The following statement is mathematically equivalent to
+				// "most_significant_power < visible_thumbnails/number_of_characters"
+				// which is never true.
+				if(high_image_digit * (most_significant_power / number_of_characters) + (number_of_characters - high_image_digit) * most_significant_power < visible_thumbnails) {
+					high_image_digit--;
+				}
+
+				// 0 means "end of string", any other number is an index (starting from 1) into parameter.pcharptr
+				unsigned char key_sequence[binding_length+1];
+				if(binding_length > 1) {
+					memset(key_sequence, 1, binding_length);
+					if(high_image_digit > 0) {
+						key_sequence[binding_length-1] = 0;
+					}
+				}
+				else {
+					key_sequence[0] = 1;
+				}
+				key_sequence[binding_length] = 0;
+
+				// Walk through the grid
+				for(short y=0; y<n_thumbs_y; y++) {
+					for(short x=0; x<n_thumbs_x; x++) {
+						// Maintain a running counter
+						const int image_id = n_thumbs_x * y + x;
+						if(image_id >= visible_thumbnails) {
+							break;
+						}
+
+						// Now just bind the goto (x,y) command to the sequence in key_sequence
+						key_binding_t *active_binding = &follow_mode_key_binding;
+
+						int binding_pos;
+						for(binding_pos=0; binding_pos<binding_length-1; binding_pos++) {
+							if(key_sequence[binding_pos+1] == 0) {
+								break;
+							}
+							guint key_binding_value = KEY_BINDING_VALUE(0, 0, parameter.pcharptr[key_sequence[binding_pos] - 1]);
+
+							key_binding_t *binding = g_hash_table_lookup(active_binding->next_key_bindings, GUINT_TO_POINTER(key_binding_value));
+
+							if(!binding) {
+								binding = g_slice_new(key_binding_t);
+								binding->action = ACTION_MONTAGE_MODE_FOLLOW_PROCEED;
+								binding->parameter.p2short.p1 = -1;
+								binding->parameter.p2short.p2 = -1;
+								binding->next_action = NULL;
+								binding->next_key_bindings = g_hash_table_new_full((GHashFunc)g_direct_hash, (GEqualFunc)g_direct_equal, NULL, key_binding_t_destroy_callback);
+								g_hash_table_insert(active_binding->next_key_bindings, GUINT_TO_POINTER(key_binding_value), binding);
+							}
+							else if(!binding->next_key_bindings) {
+								binding->next_key_bindings = g_hash_table_new_full((GHashFunc)g_direct_hash, (GEqualFunc)g_direct_equal, NULL, key_binding_t_destroy_callback);
+							}
+
+							active_binding = binding;
+						}
+
+						key_binding_t *binding = g_slice_new0(key_binding_t);
+						binding->action = ACTION_MONTAGE_MODE_FOLLOW_PROCEED;
+						binding->parameter.p2short.p1 = x;
+						binding->parameter.p2short.p2 = y;
+
+						// We bind the continuation of the current action chain
+						// as the next action.
+						if(active_key_binding.key_binding) {
+							binding->next_action = key_binding_t_duplicate(active_key_binding.key_binding);
+						}
+
+						guint key_binding_value = KEY_BINDING_VALUE(0, 0, parameter.pcharptr[key_sequence[binding_pos] - 1]);
+						g_hash_table_insert(active_binding->next_key_bindings, GUINT_TO_POINTER(key_binding_value), binding);
+
+						// Increase the key_sequence "number"
+						int pos = binding_length;
+						while(key_sequence[pos] == 0) {
+							pos--;
+						}
+						while((++key_sequence[pos]) > number_of_characters) {
+							key_sequence[pos] = 1;
+							pos--;
+						}
+						if(pos == 0 && key_sequence[0] - 1 == high_image_digit) {
+							// We have transitioned into the regime starting
+							// from which we need to add another digit.
+							memset(key_sequence + 1, 1, binding_length - 1);
+						}
+					}
+				}
+			}
+
+			active_key_binding.key_binding = &follow_mode_key_binding;
+			active_key_binding.associated_image = current_file_node;
+			active_key_binding.timeout_id = gdk_threads_add_timeout((size_t)(option_keyboard_timeout * 1000), handle_input_event_timeout_callback, NULL);
+
+			gtk_widget_queue_draw(GTK_WIDGET(main_window));
+
+			return;
+			break;
+
+		case ACTION_MONTAGE_MODE_FOLLOW_PROCEED:
+			option_keyboard_timeout = .5;
+			montage_window_control.show_binding_overlays = 0;
+			if(parameter.p2short.p1 >= 0 || parameter.p2short.p2 >= 0) {
+				montage_window_set_cursor(parameter.p2short.p1, parameter.p2short.p2);
+			}
+			gtk_widget_queue_draw(GTK_WIDGET(main_window));
+			// If we have an action chain to continue, do that *now*, because we will
+			// unreference the pointer in the next line.
+			while(active_key_binding.key_binding) {
+				continue_active_input_event_action_chain();
+			}
+			if(follow_mode_key_binding.next_key_bindings) {
+				g_hash_table_unref(follow_mode_key_binding.next_key_bindings);
+				follow_mode_key_binding.next_key_bindings = NULL;
+			}
+			active_key_binding.key_binding = NULL;
+			return;
+			break;
+
+		case ACTION_MONTAGE_MODE_RETURN_PROCEED:
+		case ACTION_MONTAGE_MODE_RETURN_CANCEL:
+			application_mode = DEFAULT;
+			active_key_binding_context = DEFAULT;
+			main_window_adjust_for_image();
+			gtk_widget_queue_draw(GTK_WIDGET(main_window));
+
+			D_LOCK(file_tree);
+			BOSNode *target;
+			if(action_id == ACTION_MONTAGE_MODE_RETURN_PROCEED) {
+				target = montage_window_control.selected_node;
+				montage_window_control.selected_node = NULL;
+			}
+			else if(current_file_node) {
+				target = bostree_node_weak_ref(current_file_node);
+				bostree_node_weak_unref(file_tree, montage_window_control.selected_node);
+				montage_window_control.selected_node = NULL;
+			}
+			else {
+				bostree_node_weak_unref(file_tree, montage_window_control.selected_node);
+				montage_window_control.selected_node = NULL;
+				if(!file_tree_valid) {
+					break;
+				}
+				target = bostree_select(file_tree, 0);
+				if(!target) {
+					break;
+				}
+				target = bostree_node_weak_ref(target);
+			}
+			D_UNLOCK(file_tree);
+
+			absolute_image_movement(target);
+
+			if(option_lowmem) {
+				D_LOCK(file_tree);
+				// TODO
+				// This currently is a linear search. Given that most users requiring lowmem mode will
+				// probably not have many images loaded, this might suffice. But an asymptotically better
+				// approach would be neat.
+				for(BOSNode *node = bostree_select(file_tree, 0); node; node = bostree_next_node(node)) {
+					if(FILE(node)->thumbnail) {
+						cairo_surface_destroy(FILE(node)->thumbnail);
+						FILE(node)->thumbnail = NULL;
+					}
+				}
+				D_UNLOCK(file_tree);
+			}
+
+			update_info_text(NULL);
+			break;
+#endif // without actions
+#endif // without montage
+
 		default:
 			break;
 	}
@@ -4520,6 +5778,16 @@ gboolean window_configure_callback(GtkWidget *widget, GdkEventConfigure *event, 
 			gtk_widget_queue_draw(GTK_WIDGET(main_window));
 		#endif
 	}
+
+	#ifndef CONFIGURED_WITHOUT_MONTAGE_MODE
+	if(application_mode == MONTAGE) {
+		// Make sure that the currently selected image stays in view & that all
+		// visible thumbnails are loaded
+		D_LOCK(file_tree);
+		montage_window_move_cursor(0, 0,  0);
+		D_UNLOCK(file_tree);
+	}
+	#endif
 
 	return FALSE;
 }/*}}}*/
@@ -4599,11 +5867,11 @@ void handle_input_event(guint key_binding_value) {/*{{{*/
 	}
 
 	if(!binding) {
-			binding = g_hash_table_lookup(key_bindings, GUINT_TO_POINTER(key_binding_value));
+			binding = g_hash_table_lookup(key_bindings[active_key_binding_context], GUINT_TO_POINTER(key_binding_value));
 
 			if(!binding && !is_mouse && gdk_keyval_is_upper(keycode) && !gdk_keyval_is_lower(keycode)) {
 				guint alternate_value = KEY_BINDING_VALUE(is_mouse, state & ~GDK_SHIFT_MASK, gdk_keyval_to_lower(keycode));
-				binding = g_hash_table_lookup(key_bindings, GUINT_TO_POINTER(alternate_value));
+				binding = g_hash_table_lookup(key_bindings[active_key_binding_context], GUINT_TO_POINTER(alternate_value));
 			}
 	}
 
@@ -4611,7 +5879,13 @@ void handle_input_event(guint key_binding_value) {/*{{{*/
 		if(binding->next_key_bindings) {
 			active_key_binding.key_binding = binding;
 			active_key_binding.associated_image = current_file_node;
-			active_key_binding.timeout_id = gdk_threads_add_timeout(400, handle_input_event_timeout_callback, NULL);
+			active_key_binding.timeout_id = gdk_threads_add_timeout((size_t)(option_keyboard_timeout * 1000), handle_input_event_timeout_callback, NULL);
+
+			#ifndef CONFIGURED_WITHOUT_MONTAGE_MODE
+			if(application_mode == MONTAGE && montage_window_control.show_binding_overlays) {
+				gtk_widget_queue_draw(GTK_WIDGET(main_window));
+			}
+			#endif
 		}
 		else {
 			active_key_binding.key_binding = binding->next_action;
@@ -4622,7 +5896,7 @@ void handle_input_event(guint key_binding_value) {/*{{{*/
 
 #else
 	for(const struct default_key_bindings_struct *kb = default_key_bindings; kb->key_binding_value; kb++) {
-		if(kb->key_binding_value == key_binding_value) {
+		if(kb->context == active_key_binding_context && kb->key_binding_value == key_binding_value) {
 			action(kb->action, kb->parameter);
 			break;
 		}
@@ -4686,8 +5960,10 @@ gboolean window_motion_notify_callback(GtkWidget *widget, GdkEventMotion *event,
 		}
 
 		if(event->state & GDK_BUTTON1_MASK) {
-			current_shift_x += dev_x;
-			current_shift_y += dev_y;
+			if(application_mode == DEFAULT) {
+				current_shift_x += dev_x;
+				current_shift_y += dev_y;
+			}
 		}
 		else if(event->state & GDK_BUTTON3_MASK) {
 			current_scale_level += dev_y / 1000.;
@@ -5073,7 +6349,7 @@ char *key_binding_sequence_to_string(guint key_binding_value, gchar *prefix) {/*
 	}
 	else {
 		char *keyval_name = gdk_keyval_name(keycode);
-		str_key = g_strdup_printf("%s%s%s%s%s ", prefix ? prefix : "", modifier, keyval_name[1] == 0 ? "" : "<", keyval_name, keyval_name[1] == 0 ? "" : ">");
+		str_key = g_strdup_printf("%s%s%s%s%s ", prefix ? prefix : "", modifier, keyval_name && keyval_name[0] && !keyval_name[1] ? "" : "<", keyval_name, keyval_name && keyval_name[0] && !keyval_name[1] ? "" : ">");
 	}
 
 	return str_key;
@@ -5122,7 +6398,17 @@ gboolean help_show_key_bindings(const gchar *option_name, const gchar *value, gp
 	gchar *old_locale = g_strdup(setlocale(LC_NUMERIC, NULL));
 	setlocale(LC_NUMERIC, "C");
 
-	g_hash_table_foreach(key_bindings, help_show_key_bindings_helper, (gpointer)"");
+	g_hash_table_foreach(key_bindings[0], help_show_key_bindings_helper, (gpointer)"");
+	for(int i=1; i<KEY_BINDING_CONTEXTS_COUNT; i++) {
+		if(!*key_binding_context_names[i]) {
+			// Feature was disabled at compile time
+			continue;
+		}
+
+		g_print("%c%s %c\n", KEY_BINDINGS_CONTEXT_SWITCH_SYMBOL, key_binding_context_names[i], KEY_BINDINGS_COMMANDS_BEGIN_SYMBOL);
+		g_hash_table_foreach(key_bindings[i], help_show_key_bindings_helper, (gpointer)"");
+		g_print("%c\n", KEY_BINDINGS_COMMANDS_END_SYMBOL);
+	}
 
 	setlocale(LC_NUMERIC, old_locale);
 	g_free(old_locale);
@@ -5136,15 +6422,17 @@ void parse_key_bindings(const gchar *bindings) {/*{{{*/
 	 *  shortcut { command(parameter); command(parameter); }
 	 *
 	 * The states are
-	 *  0 initial state, expecting keyboard shortcuts or EOF
+	 *  0 initial state, expecting keyboard shortcuts, context switch or EOF
 	 *  1 keyboard shortcut entering started, expecting more or start of commands
 	 *  2 expecting identifier inside <..>, e.g. <Mouse-1>
 	 *  3 inside command list, e.g. after {. Expecting identifier of command.
 	 *  4 inside command parameters, e.g. after (. Expecting parameter.
 	 *  5 inside command list after state 4, same as 3 except that more commands
 	 *    add to the list instead of overwriting the old binding.
+	 *  6 context switch initialized, expecting identifier & open parenthesis
 	 */
-	GHashTable **active_key_bindings_table = &key_bindings;
+	GHashTable **active_key_bindings_table = &key_bindings[DEFAULT];
+	enum context_t current_context = DEFAULT;
 
 	int state = 0;
 	const gchar *token_start = NULL;
@@ -5168,6 +6456,19 @@ void parse_key_bindings(const gchar *bindings) {/*{{{*/
 		}
 		switch(state) {
 			case 0: // Expecting key description
+				if(current_context == DEFAULT && *scan == KEY_BINDINGS_CONTEXT_SWITCH_SYMBOL /* @ */) {
+					// Expect name of a context
+					token_start = scan+1;
+					state = 6;
+					break;
+				}
+				if(current_context != DEFAULT && *scan == KEY_BINDINGS_COMMANDS_END_SYMBOL /* } */) {
+					current_context = DEFAULT;
+					active_key_bindings_table = &key_bindings[current_context];
+					state = 0;
+					break;
+				}
+
 				current_command_start = scan;
 				// Missing break is intentional, fall through to case 1.
 
@@ -5202,7 +6503,7 @@ void parse_key_bindings(const gchar *bindings) {/*{{{*/
 						#define PARSE_KEY_BINDINGS_BIND(keyboard_key_value) \
 							keyboard_state = 0; \
 							if(!*active_key_bindings_table) { \
-								*active_key_bindings_table = g_hash_table_new((GHashFunc)g_direct_hash, (GEqualFunc)g_direct_equal); \
+								*active_key_bindings_table = g_hash_table_new_full((GHashFunc)g_direct_hash, (GEqualFunc)g_direct_equal, NULL, key_binding_t_destroy_callback); \
 							} \
 							binding = g_hash_table_lookup(*active_key_bindings_table, GUINT_TO_POINTER(keyboard_key_value)); \
 							if(!binding) { \
@@ -5305,7 +6606,7 @@ void parse_key_bindings(const gchar *bindings) {/*{{{*/
 						break;
 
 					case KEY_BINDINGS_COMMANDS_END_SYMBOL: /* } */
-						active_key_bindings_table = &key_bindings;
+						active_key_bindings_table = &key_bindings[current_context];
 						binding = NULL;
 						state = 0;
 						break;
@@ -5376,6 +6677,47 @@ void parse_key_bindings(const gchar *bindings) {/*{{{*/
 					token_start = scan + 1;
 					state = 5;
 				}
+				break;
+
+			case 6: /* Context switch - expect name & opening parenthesis */
+				if(*scan == KEY_BINDINGS_COMMANDS_BEGIN_SYMBOL) {
+					identifier_length = 0;
+					const char *i;
+					for(i=token_start; i<scan; i++) {
+						if(*i == ' ' || *i == '\n' || *i == '\t') {
+							break;
+						}
+						identifier_length++;
+					}
+					for(; i<scan; i++) {
+						if(*i != ' ' && *i != '\n' && *i != '\t') {
+							error_message = g_strdup("Unexpected input after context switch initializer (@..)");
+							state = -1;
+							break;
+						}
+					}
+					if(state == -1) {
+						break;
+					}
+					gboolean context_set = FALSE;
+					for(int j=1; j<KEY_BINDING_CONTEXTS_COUNT; j++) {
+						if(strncasecmp(token_start, key_binding_context_names[j], identifier_length) == 0) {
+							current_context = j;
+							active_key_bindings_table = &key_bindings[current_context];
+							context_set = TRUE;
+							break;
+						}
+					}
+					if(!context_set) {
+						error_message = g_strdup_printf("Invalid context name after context switch initializer: %.*s", (int)identifier_length, token_start);
+						state = -1;
+						break;
+					}
+					token_start = NULL;
+					state = 0;
+					break;
+				}
+				// Do nothing; all the handling is deferred until we find the opening parenthesis
 				break;
 
 			default:
@@ -5559,7 +6901,9 @@ gpointer read_commands_thread(gpointer user_data) {/*{{{*/
 		return NULL;
 }/*}}}*/
 void initialize_key_bindings() {/*{{{*/
-	key_bindings = g_hash_table_new((GHashFunc)g_direct_hash, (GEqualFunc)g_direct_equal);
+	for(int i=0; i<KEY_BINDING_CONTEXTS_COUNT; i++) {
+		key_bindings[i] = g_hash_table_new_full((GHashFunc)g_direct_hash, (GEqualFunc)g_direct_equal, NULL, key_binding_t_destroy_callback);
+	}
 
 	for(const struct default_key_bindings_struct *kb = default_key_bindings; kb->key_binding_value; kb++) {
 		key_binding_t *nkb = g_slice_new(key_binding_t);
@@ -5567,7 +6911,7 @@ void initialize_key_bindings() {/*{{{*/
 		nkb->parameter = (pqiv_action_parameter_t)(kb->parameter);
 		nkb->next_action = NULL;
 		nkb->next_key_bindings = NULL;
-		g_hash_table_insert(key_bindings, GUINT_TO_POINTER(kb->key_binding_value), nkb);
+		g_hash_table_insert(key_bindings[kb->context], GUINT_TO_POINTER(kb->key_binding_value), nkb);
 	}
 }/*}}}*/
 #endif

@@ -162,6 +162,15 @@ preceded by `keysym' and a hexadecimal representation. An alternative is to
 run \fBxmodmap \-pk\fR. The command outputs the symbolic names in parentheses.
 Or use the list at
 \fIhttps://git.gnome.org/browse/gtk+/plain/gdk/gdkkeysyms.h\fR.
+.PP
+\fBpqiv\fR groups key bindings into different contexts. Currently,
+\fImontage\fR mode is the only context other than the default one: In
+\fImontage\fR mode, different key bindings are used. To switch the context
+while binding key sequences, write
+.RS
+@MONTAGE { ... }
+.RE
+and insert the special key bindings within the curly braces.
 .RE
 .\"
 .TP
@@ -231,12 +240,6 @@ level of 0 disables recursion completely, i.e. if you call pqiv with a
 directory as a parameter, it will not search it at all.
 .\"
 .TP
-.BR \-\-recreate\-window
-Workaround for window managers that do not handle resize requests correctly:
-Instead of resizing, recreate the window whenever the image is changed. This
-does not redraw images upon changes in zoom alone.
-.\"
-.TP
 .BR \-\-shuffle
 Display files in random order. This option conflicts with \fB\-\-sort\fR. Files
 are reshuffled after all images have been shown, but within one cycle, the
@@ -262,6 +265,45 @@ but \fIb1\fR after both,
 .IP MTIME
 To sort by file modification date.
 .RE
+.\"
+.TP
+.BR \-\-thumbnail\-size=\fIWIDTHxHEIGHT\fR
+Adjust the size of thumbnails in \fImontage\fR mode. The default is 128x128.
+.\"
+.TP
+.BR \-\-thumbnail\-preload=\fICOUNT\fR
+Preload \fICOUNT\fR thumbnails adjacent to the current image while displaying
+images or having them selected in montage mode. This can be used to speed up
+montage mode, but will lead to high CPU loads.
+.\"
+.TP
+.BR \-\-thumbnail\-persistence=\fIDIRECTORY/STATUS\fR
+Persist thumbnails to disk. The simplest way to use this option is to supply
+a value of \fIyes\fR. Thumbnails are then stored according to the Thumbnail
+Managing Standard, in \fI$XDG_CACHE_HOME/thumbnails/*\fR. The standard allows
+storage of thumbnails in sizes 128x128 and 256x256 exclusively, and does not
+specify how to store thumbnails for files in archives or multi-page documents.
+Thumbnails violating those constraints will be stored in a special \fIx-pqiv\fR
+subfolder. If this option is not used, then thumbnails will
+not be loaded from the cache either \- any thumbnails will be regenerated
+each time \fImontage\fR mode is used.
+.PP
+.RS
+If you supply \fIlocal\fR as the argument value, \fBpqiv\fR will store thumbnails
+in a subfolder named \fI.sh_thumbnails\fR relative to the images as specified
+by the Thumbnail Managing Standard. Your third option is to provide the name of
+a directory. \fBpqiv\fR will then use that directory to store thumbnails to.
+Note that any folder not named \fI.sh_thumbnails\fR will be considered in
+\fB\-\-watch\-directories\fR. Also, note that while \fBpqiv\fR will store
+thumbnails to another folder, it will still attempt to load them from the
+standard folders as well.
+.RE
+.\"
+.TP
+.BR \-\-recreate\-window
+Workaround for window managers that do not handle resize requests correctly:
+Instead of resizing, recreate the window whenever the image is changed. This
+does not redraw images upon changes in zoom alone.
 .\"
 .TP
 .BR \-\-wait\-for\-images\-to\-appear
@@ -364,6 +406,50 @@ is not possible.
 .BR jump_dialog()
 Display the jump dialog.
 .TP
+.BR montage_mode_enter()
+Enter montage mode, a view for interactive selection of images.
+.TP
+.BR montage_mode_follow(KEYS)
+Set up "follow" mode: Bind a sequence composed of the keys in KEYS to each
+visible thumbnail, such that typing that sequence moves the cursor to said
+position. At the same time, turn on binding overlays, increase the keyboard
+timeout, and revert everything after an image has been selected.
+.TP
+.BR montage_mode_return_proceed()
+Leave montage mode, and goto the currently selected image.
+.TP
+.BR montage_mode_return_cancel()
+Leave montage mode, and return to the last image viewed before entering montage
+mode.
+.TP
+.BR montage_mode_set_shift_x(INT)
+Set the horizontal cursor position in montage mode to an absolute value, indexed from 0.
+.TP
+.BR montage_mode_set_shift_y(INT)
+Set the vertical cursor position in montage mode to an absolute value, indexed from 0.
+.TP
+.BR montage_mode_set_wrap_mode(INT)
+Adjust how wrapping around edges works when shifting the cursor position in montage mode:
+The default, \fI1\fR, is to wrap around rows but not around the whole image list. Set
+this to \fI0\fR to disable wrapping entirely. A value of \fI2\fR enables full wrapping.
+.TP
+.BR montage_mode_shift_x(INT)
+Shift the cursor in montage mode in horizontal direction. Shifts wrap around
+edges to the adjacent vertical lines, but not around the end of the list back
+to its beginning.
+.TP
+.BR montage_mode_shift_y(INT)
+Shift the cursor in montage mode in vertical direction.
+.TP
+.BR montage_mode_show_binding_overlays(INT)
+Disable (by using a parameter value of 0) or enable (by using any other value)
+follow mode. In follow mode, \fBpqiv\fR will draw mnemonics on top of each
+thumbnail that is reachable by typing a key (combination). Use this to realize
+keyboard navigation similar to vimperator/pentadactyl/vimium/etc.
+.TP
+.BR montage_mode_shift_y_pg(INT)
+Shift the cursor in montage mode in vertical direction by \fIn\fR pages.
+.TP
 .BR nop()
 Do nothing. Can be used to clear an existing binding.
 .TP
@@ -419,6 +505,12 @@ between the different modes, 1 for an automated choice based on the image size
 (small images use nearest interpolation, large ones Cairo's `good' mode), 2 for
 `fast', 3 for `good' and 4 for `best'.
 .TP
+.BR set_keyboard_timeout(DOUBLE)
+Set the timeout for key sequence input. For example, if you bind something to \fIa\fI
+and another action to \fIab\fR, \fBpqiv\fR will give you by default half a second to
+enter the \fIb\fR before assuming that you intended to type only \fIa\fR. Use this
+action to change this value.
+.TP
 .BR set_scale_level_absolute(DOUBLE)
 Set the scale level to the parameter value. 1.0 is 100%. See also
 \fB\-\-zoom\-level\fR.
@@ -456,6 +548,16 @@ stdout, once upon activation and then whenever the user moves between images.
 The format is compatible with shell variable definitions. Variables currently
 implemented are \fICURRENT_FILE_NAME\fR and \fICURRENT_FILE_INDEX\fR. An
 output sweep always ends with an empty line.
+.TP
+.BR set_thumbnail_preload(INT)
+Change the amount of thumbnails to be preloaded. A value of zero disables
+the feature.
+.TP
+.BR set_thumbnail_size(INT, INT)
+Change the size of thumbnails. The order of the arguments is width, then
+height. Thumbnails are always scaled such that no side is larger than this
+limit. Note that the persistent thumbnail cache only supports 128x128 and
+256x256 thumbnails.
 .TP
 .BR shift_x(INT)
 Shift the current image in x direction.
@@ -498,6 +600,10 @@ Rotate the image right or left.
 Toggle visibility of the info box.
 .IP j
 Show a dialog with a list of all files for quick selection.
+.IP m
+Toggle \fImontage\fR mode, an interactive image selection mode. Use cursor keys
+to select an image and Return to return to single image view. Use \fIg\fR to
+quickly navigate to a thumbnail.
 .IP q
 Quit \fBpqiv\fR
 .IP r
