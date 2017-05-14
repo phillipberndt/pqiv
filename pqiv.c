@@ -4146,7 +4146,7 @@ void window_draw_thumbnail_montage_show_binding_overlays_looper(gpointer key, gp
 				break;
 			case ACTION_GOTO_FILE_BYINDEX:
 				target_index = binding->parameter.pint;
-				if(target_index < 0 || target_index > bostree_node_count(file_tree) - 1) {
+				if(target_index < 0 || target_index > (int)bostree_node_count(file_tree) - 1) {
 					target_index = bostree_node_count(file_tree) - 1;
 				}
 				data.current_y = target_index / n_thumbs_x - montage_window_control.scroll_y;

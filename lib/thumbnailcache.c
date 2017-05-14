@@ -21,7 +21,12 @@
 
 #include "thumbnailcache.h"
 
-#include <arpa/inet.h>
+#ifdef _WIN32
+	#include <winsock2.h>
+#else
+	#include <arpa/inet.h>
+#endif
+#include <stdint.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
@@ -137,7 +142,7 @@ gboolean check_png_attributes(gchar *file_name, gchar *file_uri, time_t file_mti
 	gboolean file_uri_match = FALSE;
 	gboolean file_mtime_match = FALSE;
 
-	int fd = g_open(file_name, O_RDONLY);
+	int fd = g_open(file_name, O_RDONLY, 0);
 	if(fd < 0) {
 		return FALSE;
 	}
@@ -165,7 +170,13 @@ gboolean check_png_attributes(gchar *file_name, gchar *file_uri, time_t file_mti
 			return FALSE;
 		}
 
-		unsigned header_length = ntohl(header.uint32);
+		int header_length = (int)ntohl(header.uint32);
+		if(header_length < 0) {
+			// While technically, this is allowed, no header should ever be
+			// this large.
+			g_close(fd, NULL);
+			return FALSE;
+		}
 
 		if(strncmp(&header.buf[4], "tEXt", 4) == 0) {
 			// This is interesting. Read the whole contents first.
@@ -409,7 +420,8 @@ static cairo_status_t png_writer(struct png_writer_info *info, const unsigned ch
 	}
 
 	if(length > 0) {
-		if(write(info->output_file_fd, data, length) != length) {
+		ssize_t result = write(info->output_file_fd, data, length);
+		if(result < 0 || result != (ssize_t)length) {
 			return CAIRO_STATUS_WRITE_ERROR;
 		}
 		info->bytes_written += length;
