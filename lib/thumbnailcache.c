@@ -35,6 +35,9 @@
 #include <string.h>
 
 #include <glib/gstdio.h>
+#if !GLIB_CHECK_VERSION(2, 36, 0)
+	#define g_close close
+#endif
 #include <gio/gio.h>
 #include <cairo.h>
 
