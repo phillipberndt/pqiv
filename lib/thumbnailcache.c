@@ -384,7 +384,8 @@ static cairo_status_t png_writer(struct png_writer_info *info, const unsigned ch
 	//
 	const unsigned inject_pos = 8 /* header */ + (4 + 4 + 4 + 13) /* IHDR */;
 	if(info->bytes_written < inject_pos && info->bytes_written + length >= inject_pos) {
-		if(write(info->output_file_fd, data, inject_pos - info->bytes_written) != (int)inject_pos - (ptrdiff_t)info->bytes_written) {
+		ssize_t result = write(info->output_file_fd, data, inject_pos - info->bytes_written);
+		if(result < 0 || (size_t)result != inject_pos - info->bytes_written) {
 			return CAIRO_STATUS_WRITE_ERROR;
 		}
 		data += inject_pos - info->bytes_written;
@@ -424,7 +425,7 @@ static cairo_status_t png_writer(struct png_writer_info *info, const unsigned ch
 
 	if(length > 0) {
 		ssize_t result = write(info->output_file_fd, data, length);
-		if(result < 0 || result != (ssize_t)length) {
+		if(result < 0 || (unsigned int)result != length) {
 			return CAIRO_STATUS_WRITE_ERROR;
 		}
 		info->bytes_written += length;

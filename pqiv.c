@@ -1156,6 +1156,15 @@ BOSNode *load_images_handle_parameter_add_file(load_images_state_t state, file_t
 		return NULL;
 	}
 
+	if(bostree_node_count(file_tree) >= INT_MAX) {
+		// This is a safegoard. Most image operations should actually have
+		// ULONG_MAX as a limit, but sometimes, I cast to an integer type.
+		g_printerr("Cannot add image %s: Maximum number of images reached.\n", file->display_name);
+		file_free(file);
+		D_UNLOCK(file_tree);
+		return NULL;
+	}
+
 	BOSNode *new_node = NULL;
 	if(!option_sort) {
 		float *index = g_slice_new0(float);
