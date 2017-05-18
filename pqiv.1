@@ -284,15 +284,18 @@ Managing Standard, in \fI$XDG_CACHE_HOME/thumbnails/*\fR. The standard allows
 storage of thumbnails in sizes 128x128 and 256x256 exclusively, and does not
 specify how to store thumbnails for files in archives or multi-page documents.
 Thumbnails violating those constraints will be stored in a special \fIx-pqiv\fR
-subfolder. If this option is not used, then thumbnails will
-not be loaded from the cache either \- any thumbnails will be regenerated
-each time \fImontage\fR mode is used.
+subfolder. Supply \fIstandard\fR to store standard-complying thumbnails only.
+If this option is not used, then thumbnails will not be loaded from the cache
+either \- any thumbnails will be regenerated each time \fImontage\fR mode is used.
+A value of \fIread-only\fR can be used to load thumbnails, but never store them.
+\fIread-only\fR is the default.
 .PP
 .RS
 If you supply \fIlocal\fR as the argument value, \fBpqiv\fR will store thumbnails
 in a subfolder named \fI.sh_thumbnails\fR relative to the images as specified
 by the Thumbnail Managing Standard. Your third option is to provide the name of
 a directory. \fBpqiv\fR will then use that directory to store thumbnails to.
+The folder must be given as an absolute path, relative paths do not work.
 Note that any folder not named \fI.sh_thumbnails\fR will be considered in
 \fB\-\-watch\-directories\fR. Also, note that while \fBpqiv\fR will store
 thumbnails to another folder, it will still attempt to load them from the

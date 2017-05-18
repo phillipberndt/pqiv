@@ -272,7 +272,11 @@ static cairo_surface_t *load_thumbnail(gchar *file_name, gchar *file_uri, time_t
 }
 
 /* This library's public API */
-gboolean load_thumbnail_from_cache(file_t *file, unsigned width, unsigned height, char *special_thumbnail_directory) {
+gboolean load_thumbnail_from_cache(file_t *file, unsigned width, unsigned height, thumbnail_persist_mode_t persist_mode, char *special_thumbnail_directory) {
+	if(persist_mode == THUMBNAILS_PERSIST_OFF) {
+		return FALSE;
+	}
+
 	// Obtain a local path to the file
 	gchar *local_filename = get_local_filename(file);
 	if(!local_filename) {
@@ -291,7 +295,7 @@ gboolean load_thumbnail_from_cache(file_t *file, unsigned width, unsigned height
 
 	// Search two directory structures: special_thumbnail_directory, then get_thumbnail_cache_directory()
 	for(int k=0; k<2; k++) {
-		if(k == 0 && (special_thumbnail_directory == NULL || special_thumbnail_directory == SPECIAL_THUMBNAIL_DIRECTORY_LOCAL)) {
+		if(k == 0 && special_thumbnail_directory == NULL) {
 			continue;
 		}
 		// Search in the directories for the different sizes
@@ -308,6 +312,7 @@ gboolean load_thumbnail_from_cache(file_t *file, unsigned width, unsigned height
 				g_free(thumbnail_candidate);
 				if(thumbnail != NULL) {
 					file->thumbnail = thumbnail;
+					g_free(local_filename);
 					g_free(file_uri);
 					g_free(md5_filename);
 					return TRUE;
@@ -349,6 +354,7 @@ gboolean load_thumbnail_from_cache(file_t *file, unsigned width, unsigned height
 				if(thumbnail != NULL) {
 					file->thumbnail = thumbnail;
 					g_free(md5_basename);
+					g_free(local_filename);
 					g_free(shared_thumbnail_directory);
 					return TRUE;
 				}
@@ -362,6 +368,7 @@ gboolean load_thumbnail_from_cache(file_t *file, unsigned width, unsigned height
 		g_free(file_basename);
 	}
 	g_free(shared_thumbnail_directory);
+	g_free(local_filename);
 
 	return FALSE;
 }
@@ -434,7 +441,11 @@ static cairo_status_t png_writer(struct png_writer_info *info, const unsigned ch
 	return CAIRO_STATUS_SUCCESS;
 }
 
-gboolean store_thumbnail_to_cache(file_t *file, unsigned width, unsigned height, char *special_thumbnail_directory) {
+gboolean store_thumbnail_to_cache(file_t *file, unsigned width, unsigned height, thumbnail_persist_mode_t persist_mode, char *special_thumbnail_directory) {
+	if(persist_mode == THUMBNAILS_PERSIST_OFF || persist_mode == THUMBNAILS_PERSIST_RO) {
+		return FALSE;
+	}
+
 	// We only store thumbnails if they have the correct size
 	unsigned actual_width  = cairo_image_surface_get_width(file->thumbnail);
 	unsigned actual_height = cairo_image_surface_get_height(file->thumbnail);
@@ -455,6 +466,9 @@ gboolean store_thumbnail_to_cache(file_t *file, unsigned width, unsigned height,
 	}
 	else {
 		thumbnail_level = 0;
+		if(persist_mode == THUMBNAILS_PERSIST_STANDARD) {
+			return FALSE;
+		}
 	}
 
 	// Obtain absolute path to file
@@ -466,6 +480,10 @@ gboolean store_thumbnail_to_cache(file_t *file, unsigned width, unsigned height,
 	if(multi_page_suffix) {
 		// Unspecified by standard, use x-pqiv cache
 		thumbnail_level = 0;
+		if(persist_mode == THUMBNAILS_PERSIST_STANDARD) {
+			g_free(local_filename);
+			return FALSE;
+		}
 	}
 
 	// Obtain modification timestamp
@@ -475,7 +493,7 @@ gboolean store_thumbnail_to_cache(file_t *file, unsigned width, unsigned height,
 
 	// Obtain the name of the thumbnail file
 	gchar *file_uri, *md5_filename, *thumbnail_directory, *thumbnail_file;
-	if(special_thumbnail_directory == SPECIAL_THUMBNAIL_DIRECTORY_LOCAL) {
+	if(persist_mode == THUMBNAILS_PERSIST_LOCAL) {
 		// Create a .sh_thumbnails directory
 		file_uri = g_path_get_basename(local_filename);
 		if(multi_page_suffix) {
@@ -536,6 +554,7 @@ gboolean store_thumbnail_to_cache(file_t *file, unsigned width, unsigned height,
 	g_free(file_uri);
 	g_free(md5_filename);
 	g_free(thumbnail_file);
+	g_free(local_filename);
 
 	return retval;
 }

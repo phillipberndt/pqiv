@@ -318,12 +318,12 @@ struct {
 #ifndef CONFIGURED_WITHOUT_MONTAGE_MODE /* option --without-montage: Do not include support for a thumbnail overview */
 struct {
 	gboolean enabled;
-	gboolean persist;
+	thumbnail_persist_mode_t persist;
 	gchar *special_thumbnail_directory;
 	gint width;
 	gint height;
 	gint auto_generate_for_adjacents;
-} option_thumbnails = { 0, 0, NULL, 128, 128, -1 };
+} option_thumbnails = { 0, THUMBNAILS_PERSIST_RO, NULL, 128, 128, -1 };
 
 struct {
 	int scroll_y;
@@ -760,25 +760,32 @@ gboolean option_thumbnail_preload_callback(const gchar *option_name, const gchar
 	return TRUE;
 }/*}}}*/
 gboolean option_thumbnail_persistence_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error) {/*{{{*/
+	if(option_thumbnails.special_thumbnail_directory != NULL) {
+		g_free(option_thumbnails.special_thumbnail_directory);
+		option_thumbnails.special_thumbnail_directory = NULL;
+	}
 	if(value == NULL || !*value || strcasecmp(value, "yes") == 0 || strcasecmp(value, "true") == 0 || strcasecmp(value, "1") == 0 || strcasecmp(value, "on") == 0) {
-		option_thumbnails.persist = TRUE;
+		option_thumbnails.persist = THUMBNAILS_PERSIST_ON;
+	}
+	else if(strcasecmp(value, "read-only") == 0) {
+		option_thumbnails.persist = THUMBNAILS_PERSIST_RO;
+	}
+	else if(strcasecmp(value, "standard") == 0) {
+		option_thumbnails.persist = THUMBNAILS_PERSIST_STANDARD;
 	}
 	else if(strcasecmp(value, "no") == 0 || strcasecmp(value, "false") == 0 || strcasecmp(value, "1") == 0 || strcasecmp(value, "off") == 0) {
-		option_thumbnails.persist = FALSE;
+		option_thumbnails.persist = THUMBNAILS_PERSIST_OFF;
 	}
 	else if(strcasecmp(value, "local") == 0) {
-		option_thumbnails.persist = TRUE;
-		if(option_thumbnails.special_thumbnail_directory != NULL && option_thumbnails.special_thumbnail_directory != SPECIAL_THUMBNAIL_DIRECTORY_LOCAL) {
-			g_free(option_thumbnails.special_thumbnail_directory);
-		}
-		option_thumbnails.special_thumbnail_directory = SPECIAL_THUMBNAIL_DIRECTORY_LOCAL;
+		option_thumbnails.persist = THUMBNAILS_PERSIST_LOCAL;
+	}
+	else if(value[0] == '/') {
+		option_thumbnails.persist = THUMBNAILS_PERSIST_ON;
+		option_thumbnails.special_thumbnail_directory = g_strdup(value);
 	}
 	else {
-		option_thumbnails.persist = TRUE;
-		if(option_thumbnails.special_thumbnail_directory != NULL && option_thumbnails.special_thumbnail_directory != SPECIAL_THUMBNAIL_DIRECTORY_LOCAL) {
-			g_free(option_thumbnails.special_thumbnail_directory);
-		}
-		option_thumbnails.special_thumbnail_directory = g_strdup(value);
+		g_set_error(error, G_OPTION_ERROR, G_OPTION_ERROR_FAILED, "Unexpected argument value for the --thumbnail-persistence option.");
+		return FALSE;
 	}
 	return TRUE;
 }/*}}}*/
@@ -2296,8 +2303,8 @@ gpointer image_loader_thread(gpointer user_data) {/*{{{*/
 			// Unload an old thumbnail if it does not have the correct size
 			D_LOCK(file_tree);
 			test_and_invalidate_thumbnail(FILE(node));
-			if(!FILE(node)->thumbnail && (option_thumbnails.enabled || application_mode == MONTAGE) && option_thumbnails.persist) {
-				if(load_thumbnail_from_cache(FILE(node), option_thumbnails.width, option_thumbnails.height, option_thumbnails.special_thumbnail_directory) == TRUE) {
+			if(!FILE(node)->thumbnail && (option_thumbnails.enabled || application_mode == MONTAGE) && option_thumbnails.persist != THUMBNAILS_PERSIST_OFF) {
+				if(load_thumbnail_from_cache(FILE(node), option_thumbnails.width, option_thumbnails.height, option_thumbnails.persist, option_thumbnails.special_thumbnail_directory) == TRUE) {
 					// Loading the thumbnail succeeded. We may break here.
 					bostree_node_weak_unref(file_tree, node);
 					D_UNLOCK(file_tree);
@@ -2378,12 +2385,12 @@ gpointer image_loader_thread(gpointer user_data) {/*{{{*/
 			D_LOCK(file_tree);
 			test_and_invalidate_thumbnail(FILE(node));
 			if(!FILE(node)->thumbnail && (option_thumbnails.enabled || application_mode == MONTAGE)) {
-				if(!option_thumbnails.persist || load_thumbnail_from_cache(FILE(node), option_thumbnails.width, option_thumbnails.height, option_thumbnails.special_thumbnail_directory) == FALSE) {
+				if(option_thumbnails.persist == THUMBNAILS_PERSIST_OFF || load_thumbnail_from_cache(FILE(node), option_thumbnails.width, option_thumbnails.height, option_thumbnails.persist, option_thumbnails.special_thumbnail_directory) == FALSE) {
 					D_UNLOCK(file_tree);
 					image_loader_create_thumbnail(FILE(node));
 					D_LOCK(file_tree);
-					if(FILE(node)->thumbnail && option_thumbnails.persist) {
-						store_thumbnail_to_cache(FILE(node), option_thumbnails.width, option_thumbnails.height, option_thumbnails.special_thumbnail_directory);
+					if(FILE(node)->thumbnail && option_thumbnails.persist != THUMBNAILS_PERSIST_OFF && option_thumbnails.persist != THUMBNAILS_PERSIST_RO) {
+						store_thumbnail_to_cache(FILE(node), option_thumbnails.width, option_thumbnails.height, option_thumbnails.persist, option_thumbnails.special_thumbnail_directory);
 					}
 				}
 			}

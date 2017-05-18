@@ -20,7 +20,8 @@
 #include "../pqiv.h"
 
 #ifndef CONFIGURED_WITHOUT_MONTAGE_MODE
-#define SPECIAL_THUMBNAIL_DIRECTORY_LOCAL (char *)1
-gboolean load_thumbnail_from_cache(file_t *file, unsigned width, unsigned height, char *special_thumbnail_directory);
-gboolean store_thumbnail_to_cache(file_t *file, unsigned width, unsigned height, char *special_thumbnail_directory);
+typedef enum { THUMBNAILS_PERSIST_OFF, THUMBNAILS_PERSIST_ON, THUMBNAILS_PERSIST_STANDARD, THUMBNAILS_PERSIST_RO, THUMBNAILS_PERSIST_LOCAL } thumbnail_persist_mode_t;
+
+gboolean load_thumbnail_from_cache(file_t *file, unsigned width, unsigned height, thumbnail_persist_mode_t persist_mode, char *special_thumbnail_directory);
+gboolean store_thumbnail_to_cache(file_t *file, unsigned width, unsigned height, thumbnail_persist_mode_t persist_mode, char *special_thumbnail_directory);
 #endif
