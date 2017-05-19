@@ -185,12 +185,14 @@ gboolean check_png_attributes(gchar *file_name, gchar *file_uri, time_t file_mti
 			// This is interesting. Read the whole contents first.
 			char *data = g_malloc(header_length);
 			if(read(fd, data, header_length) != header_length) {
+				g_free(data);
 				g_close(fd, NULL);
 				return FALSE;
 			}
 
 			// Check against CRC
 			if(read(fd, header.buf, 4) != 4) {
+				g_free(data);
 				g_close(fd, NULL);
 				return FALSE;
 			}
@@ -208,10 +210,13 @@ gboolean check_png_attributes(gchar *file_name, gchar *file_uri, time_t file_mti
 				}
 
 				if(file_uri_match && file_mtime_match) {
+					g_free(data);
 					g_close(fd, NULL);
 					return TRUE;
 				}
 			}
+
+			g_free(data);
 		}
 		else {
 			// Skip header and its CRC
