@@ -193,6 +193,7 @@ BOSNode *file_type_archive_alloc(load_images_state_t state, file_t *file) {/*{{{
 
 	archive_read_free(archive);
 	buffered_file_unref(file);
+	file_free(file);
 	return first_node;
 }/*}}}*/
 
