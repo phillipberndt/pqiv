@@ -2521,7 +2521,6 @@ void remove_image(BOSNode *node) {/*{{{*/
 		queue_image_load(bostree_node_weak_ref(current_file_node));
 	}
 	else {
-		unload_image(node);
 		bostree_remove(file_tree, node);
 	}
 
@@ -7097,7 +7096,7 @@ int main(int argc, char *argv[]) {
 
 	gtk_main();
 
-	// We are outside of the main thread again, so we can unload the remaining images
+	// We are outside of the main loop again, so we can unload the remaining images
 	// We need to do this, because some file types create temporary files
 	//
 	// Note: If we locked the file_tree here, unload_image() could dead-lock
@@ -7106,8 +7105,8 @@ int main(int argc, char *argv[]) {
 	// At least, after file_tree_valid = FALSE, no new images will be inserted.
 	file_tree_valid = FALSE;
 	D_LOCK(file_tree);
-	D_UNLOCK(file_tree);
 	abort_pending_image_loads(NULL);
+	D_UNLOCK(file_tree);
 	for(BOSNode *node = bostree_select(file_tree, 0); node; node = bostree_next_node(node)) {
 		// Iterate over the images ourselves, because there might be open weak references which
 		// prevent this to be called from bostree_destroy.
