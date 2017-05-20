@@ -220,7 +220,10 @@ gboolean check_png_attributes(gchar *file_name, gchar *file_uri, time_t file_mti
 		}
 		else {
 			// Skip header and its CRC
-			lseek(fd, header_length + 4, SEEK_CUR);
+			if(lseek(fd, header_length + 4, SEEK_CUR) < 0) {
+				g_close(fd, NULL);
+				return FALSE;
+			}
 		}
 	}
 }
@@ -291,7 +294,10 @@ gboolean load_thumbnail_from_cache(file_t *file, unsigned width, unsigned height
 
 	// Obtain modification timestamp
 	struct stat file_stat;
-	stat(local_filename, &file_stat);
+	if(stat(local_filename, &file_stat) < 0) {
+		g_free(local_filename);
+		return FALSE;
+	}
 	time_t file_mtime = file_stat.st_mtime;
 
 	// Obtain the name of the candidate for the local thumbnail file
@@ -493,7 +499,10 @@ gboolean store_thumbnail_to_cache(file_t *file, unsigned width, unsigned height,
 
 	// Obtain modification timestamp
 	struct stat file_stat;
-	stat(local_filename, &file_stat);
+	if(stat(local_filename, &file_stat) < 0) {
+		g_free(local_filename);
+		return FALSE;
+	}
 	time_t file_mtime = file_stat.st_mtime;
 
 	// Obtain the name of the thumbnail file
