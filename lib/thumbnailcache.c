@@ -545,7 +545,7 @@ gboolean store_thumbnail_to_cache(file_t *file, unsigned width, unsigned height,
 	// We use a wrapper to inject the tEXt chunks as required by the thumbnail standard
 	gboolean retval = TRUE;
 	int file_fd = g_open(thumbnail_file, O_CREAT | O_WRONLY, 0600);
-	if(file_fd > 0) {
+	if(file_fd >= 0) {
 		gchar *string_mtime = g_strdup_printf("%lu", file_mtime);
 		struct png_writer_info writer_info = { file_fd, 0, file_uri, string_mtime };
 		if(cairo_surface_write_to_png_stream(file->thumbnail, (cairo_write_func_t)png_writer, &writer_info) != CAIRO_STATUS_SUCCESS) {
