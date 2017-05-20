@@ -4727,7 +4727,7 @@ gboolean set_scale_level_to_fit_callback(gpointer user_data) {
 key_binding_t *key_binding_t_duplicate(key_binding_t *binding) {/*{{{*/
 	key_binding_t *retval = g_slice_new(key_binding_t);
 	retval->action = binding->action;
-	retval->parameter = retval->parameter;
+	retval->parameter = binding->parameter;
 	if(pqiv_action_descriptors[binding->action].parameter_type == PARAMETER_CHARPTR) {
 		retval->parameter.pcharptr = g_strdup(retval->parameter.pcharptr);
 	}
