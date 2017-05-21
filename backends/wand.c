@@ -310,7 +310,7 @@ void file_type_wand_initializer(file_type_handler_t *info) {/*{{{*/
 			"HTML\0"
 			"HTM\0"
 			"SHTML\0"
-			"MAT\0");
+			"MAT\0\0");
 		int skip = 0;
 		for(const char *extension = disabled_extensions; *extension; extension = strchr(extension, '\0') + 1) {
 			if((skip = (strcmp(formats[i], extension) == 0))) {
