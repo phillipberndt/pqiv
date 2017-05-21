@@ -303,12 +303,21 @@ void file_type_wand_initializer(file_type_handler_t *info) {/*{{{*/
 	char **formats = MagickQueryFormats("*", &count);
 	for(i=0; i<count; i++) {
 		// Skip some broken formats
-		if(!strcmp(formats[i], "DJVU")) continue;              // DJVU crashes my development PC
-		if(!strcmp(formats[i], "TXT")) continue;               // Ridiculous formats for an image viewer
-		if(!strcmp(formats[i], "HTML")) continue;
-		if(!strcmp(formats[i], "HTM")) continue;
-		if(!strcmp(formats[i], "SHTML")) continue;
-		if(!strcmp(formats[i], "MAT")) continue;               // Matlab format is long broken as well
+		const char disabled_extensions[] = (
+			"DJVU\0"        // DJVU crashes my development PC
+			"BIN\0"         // BIN is not necessarily an image; skip those files.
+			"TXT\0"         // Ridiculous formats for an image viewer
+			"HTML\0"
+			"HTM\0"
+			"SHTML\0"
+			"MAT\0");
+		int skip = 0;
+		for(const char *extension = disabled_extensions; *extension; extension = strchr(extension, '\0') + 1) {
+			if((skip = (strcmp(formats[i], extension) == 0))) {
+				break;
+			}
+		}
+		if(skip) continue;
 		if(formats[i][0] != 0 && formats[i][1] == 0) continue; // One letter extensions are too random to be sure it's an image,
 		                                                       // and hence they are raw format's would always succeed to load
 
