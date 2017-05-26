@@ -3277,7 +3277,9 @@ void hardlink_current_image() {/*{{{*/
 			if(store_target != NULL) {
 				g_free(store_target);
 			}
-			#if(GLIB_CHECK_VERSION(2, 28, 0))
+			#if(GLIB_CHECK_VERSION(2, 28, 0) && !defined(_WIN32))
+				// Note: Win32 GLib uses I64 for G_GINT64_FORMAT, which isn't
+				// supported by the standard.
 				store_target = g_strdup_printf("./.pqiv-select/memory-%" G_GINT64_FORMAT "-%u.png", g_get_real_time(), g_random_int());
 			#else
 				store_target = g_strdup_printf("./.pqiv-select/memory-%u.png", g_random_int());
