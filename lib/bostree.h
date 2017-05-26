@@ -44,8 +44,8 @@ struct _BOSNode {
 	void *key;
 	void *data;
 
-	unsigned char weak_ref_count      : 7;
-	unsigned char weak_ref_node_valid : 1;
+	unsigned char weak_ref_count;
+	unsigned char weak_ref_node_valid;
 };
 typedef struct _BOSNode BOSNode;
 
