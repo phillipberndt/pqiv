@@ -31,6 +31,7 @@
 	#pragma clang diagnostic push
 	#pragma clang diagnostic ignored "-Wunused-variable"
 	#pragma clang diagnostic ignored "-Wunknown-attributes"
+	#pragma clang diagnostic ignored "-Wkeyword-macro"
 #endif
 
 #if defined(WAND_VERSION) && WAND_VERSION > 6
@@ -303,14 +304,14 @@ void file_type_wand_initializer(file_type_handler_t *info) {/*{{{*/
 	char **formats = MagickQueryFormats("*", &count);
 	for(i=0; i<count; i++) {
 		// Skip some broken formats
-		const char disabled_extensions[] = (
+		const char disabled_extensions[] =
 			"DJVU\0"        // DJVU crashes my development PC
 			"BIN\0"         // BIN is not necessarily an image; skip those files.
 			"TXT\0"         // Ridiculous formats for an image viewer
 			"HTML\0"
 			"HTM\0"
 			"SHTML\0"
-			"MAT\0\0");
+			"MAT\0\0";
 		int skip = 0;
 		for(const char *extension = disabled_extensions; *extension; extension = strchr(extension, '\0') + 1) {
 			if((skip = (strcmp(formats[i], extension) == 0))) {

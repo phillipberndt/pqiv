@@ -81,11 +81,11 @@ struct _file {
 	// and valid. i.e. if it is set, you can assume that
 	// private_data contains a representation of the image;
 	// if not, you can NOT assume that it does not.
-	gboolean is_loaded : 1;
+	gboolean is_loaded;
 
 	// This flag determines whether this file should be reloaded
 	// despite is_loaded being set
-	gboolean force_reload : 1;
+	gboolean force_reload;
 
 	// Cached image size
 	guint width;

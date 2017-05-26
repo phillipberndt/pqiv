@@ -73,8 +73,18 @@
 
 #if defined(__clang__) || defined(__GNUC__)
 	#define UNUSED_FUNCTION __attribute__((unused))
+
+	#if defined(__clang__)
+		#define PQIV_DISABLE_PEDANTIC _Pragma("clang diagnostic push") _Pragma("clang diagnostic ignored \"-Wpedantic\"")
+		#define PQIV_ENABLE_PEDANTIC _Pragma("clang diagnostic pop")
+	#elif defined(__GNUC__) || defined(__GNUG__)
+		#define PQIV_DISABLE_PEDANTIC _Pragma("GCC diagnostic push") _Pragma("GCC diagnostic ignored \"-Wpedantic\"")
+		#define PQIV_ENABLE_PEDANTIC _Pragma("GCC diagnostic pop")
+	#endif
 #else
 	#define UNUSED_FUNCTION
+	#define PQIV_DISABLE_PEDANTIC
+	#define PQIV_ENABLE_PEDANTIC
 #endif
 
 #if !GLIB_CHECK_VERSION(2, 32, 0)
@@ -334,6 +344,10 @@ struct {
 enum { MONTAGE_MODE_WRAP_OFF, MONTAGE_MODE_WRAP_ROWS, MONTAGE_MODE_WRAP_FULL, _MONTAGE_MODE_WRAP_SENTINEL } option_montage_mode_wrap_mode = MONTAGE_MODE_WRAP_ROWS;
 #endif
 
+// The standard forbids casting object pointers to function pointers, but
+// GLib requires it in its GOptionEntry structure.
+PQIV_DISABLE_PEDANTIC
+
 // Hint: Only types G_OPTION_ARG_NONE, G_OPTION_ARG_STRING, G_OPTION_ARG_DOUBLE/INTEGER and G_OPTION_ARG_CALLBACK are
 // implemented for option parsing.
 GOptionEntry options[] = {
@@ -346,10 +360,10 @@ GOptionEntry options[] = {
 #endif
 	{ "lazy-load", 'l', 0, G_OPTION_ARG_NONE, &option_lazy_load, "Display the main window as soon as one image is loaded", NULL },
 	{ "sort", 'n', 0, G_OPTION_ARG_NONE, &option_sort, "Sort files in natural order", NULL },
-	{ "window-position", 'P', 0, G_OPTION_ARG_CALLBACK, (gpointer)&option_window_position_callback, "Set initial window position (`x,y' or `off' to not position the window at all)", "POSITION" },
+	{ "window-position", 'P', 0, G_OPTION_ARG_CALLBACK, &option_window_position_callback, "Set initial window position (`x,y' or `off' to not position the window at all)", "POSITION" },
 	{ "additional-from-stdin", 'r', 0, G_OPTION_ARG_NONE, &option_addl_from_stdin, "Read additional filenames/folders from stdin", NULL },
 	{ "slideshow", 's', 0, G_OPTION_ARG_NONE, &option_start_with_slideshow_mode, "Activate slideshow mode", NULL },
-	{ "scale-images-up", 't', G_OPTION_FLAG_NO_ARG, G_OPTION_ARG_CALLBACK, (gpointer)&option_scale_level_callback, "Scale images up to fill the whole screen", NULL },
+	{ "scale-images-up", 't', G_OPTION_FLAG_NO_ARG, G_OPTION_ARG_CALLBACK, &option_scale_level_callback, "Scale images up to fill the whole screen", NULL },
 	{ "window-title", 'T', 0, G_OPTION_ARG_STRING, &option_window_title, "Set the title of the window. See manpage for available variables.", "TITLE" },
 	{ "zoom-level", 'z', 0, G_OPTION_ARG_DOUBLE, &option_initial_scale, "Set initial zoom level (1.0 is 100%)", "FLOAT" },
 
@@ -373,8 +387,8 @@ GOptionEntry options[] = {
 #endif
 	{ "browse", 0, 0, G_OPTION_ARG_NONE, &option_browse, "For each command line argument, additionally load all images from the image's directory", NULL },
 	{ "disable-backends", 0, 0, G_OPTION_ARG_STRING, &option_disable_backends, "Disable the given backends", "BACKENDS" },
-	{ "disable-scaling", 0, G_OPTION_FLAG_NO_ARG, G_OPTION_ARG_CALLBACK, (gpointer)&option_scale_level_callback, "Disable scaling of images", NULL },
-	{ "end-of-files-action", 0, 0, G_OPTION_ARG_CALLBACK, (gpointer)&option_end_of_files_action_callback, "Action to take after all images have been viewed. (`quit', `wait', `wrap', `wrap-no-reshuffle')", "ACTION" },
+	{ "disable-scaling", 0, G_OPTION_FLAG_NO_ARG, G_OPTION_ARG_CALLBACK, &option_scale_level_callback, "Disable scaling of images", NULL },
+	{ "end-of-files-action", 0, 0, G_OPTION_ARG_CALLBACK, &option_end_of_files_action_callback, "Action to take after all images have been viewed. (`quit', `wait', `wrap', `wrap-no-reshuffle')", "ACTION" },
 	{ "enforce-window-aspect-ratio", 0, 0, G_OPTION_ARG_NONE, &option_enforce_window_aspect_ratio, "Fix the aspect ratio of the window to match the current image's", NULL },
 	{ "fade-duration", 0, 0, G_OPTION_ARG_DOUBLE, &option_fading_duration, "Adjust fades' duration", "SECONDS" },
 	{ "low-memory", 0, 0, G_OPTION_ARG_NONE, &option_lowmem, "Try to keep memory usage to a minimum", NULL },
@@ -384,19 +398,21 @@ GOptionEntry options[] = {
 #ifndef CONFIGURED_WITHOUT_ACTIONS
 	{ "show-bindings", 0, G_OPTION_FLAG_NO_ARG, G_OPTION_ARG_CALLBACK, &help_show_key_bindings, "Display the keyboard and mouse bindings and exit", NULL },
 #endif
-	{ "sort-key", 0, 0, G_OPTION_ARG_CALLBACK, (gpointer)&option_sort_key_callback, "Key to use for sorting", "PROPERTY" },
+	{ "sort-key", 0, 0, G_OPTION_ARG_CALLBACK, &option_sort_key_callback, "Key to use for sorting", "PROPERTY" },
 #ifndef CONFIGURED_WITHOUT_MONTAGE_MODE
-	{ "thumbnail-size", 0, 0, G_OPTION_ARG_CALLBACK, (gpointer)&option_thumbnail_size_callback, "Set the dimensions of thumbnails in montage mode", "WIDTHxHEIGHT" },
-	{ "thumbnail-preload", 0, 0, G_OPTION_ARG_CALLBACK, (gpointer)&option_thumbnail_preload_callback, "Preload the adjacent COUNT thumbnails", "COUNT" },
-	{ "thumbnail-persistence", 0, 0, G_OPTION_ARG_CALLBACK, (gpointer)&option_thumbnail_persistence_callback, "Persist thumbnails to disk, to DIRECTORY.", "DIRECTORY" },
+	{ "thumbnail-size", 0, 0, G_OPTION_ARG_CALLBACK, &option_thumbnail_size_callback, "Set the dimensions of thumbnails in montage mode", "WIDTHxHEIGHT" },
+	{ "thumbnail-preload", 0, 0, G_OPTION_ARG_CALLBACK, &option_thumbnail_preload_callback, "Preload the adjacent COUNT thumbnails", "COUNT" },
+	{ "thumbnail-persistence", 0, 0, G_OPTION_ARG_CALLBACK, &option_thumbnail_persistence_callback, "Persist thumbnails to disk, to DIRECTORY.", "DIRECTORY" },
 #endif
 	{ "wait-for-images-to-appear", 0, 0, G_OPTION_ARG_NONE, &option_wait_for_images_to_appear, "If no images are found, wait until at least one appears", NULL },
 	{ "watch-directories", 0, 0, G_OPTION_ARG_NONE, &option_watch_directories, "Watch directories for new files", NULL },
-	{ "watch-files", 0, 0, G_OPTION_ARG_CALLBACK, (gpointer)&option_watch_files_callback, "Watch files for changes on disk (`on`, `off', `changes-only', i.e. do nothing on deletetion)", "VALUE" },
-	{ "version", 0, G_OPTION_FLAG_NO_ARG, G_OPTION_ARG_CALLBACK, (gpointer)&help_show_version, "Show version information and quit", NULL },
+	{ "watch-files", 0, 0, G_OPTION_ARG_CALLBACK, &option_watch_files_callback, "Watch files for changes on disk (`on`, `off', `changes-only', i.e. do nothing on deletetion)", "VALUE" },
+	{ "version", 0, G_OPTION_FLAG_NO_ARG, G_OPTION_ARG_CALLBACK, &help_show_version, "Show version information and quit", NULL },
 
 	{ NULL, 0, 0, 0, NULL, NULL, NULL }
 };
+
+PQIV_ENABLE_PEDANTIC
 
 /* Key bindings & actions {{{ */
 
@@ -1008,7 +1024,9 @@ void parse_configuration_file_callback(char *section, char *key, config_parser_v
 							if(iter->arg == G_OPTION_ARG_CALLBACK) {
 								gchar long_name[64];
 								g_snprintf(long_name, 64, "--%s", iter->long_name);
+								PQIV_DISABLE_PEDANTIC
 								((GOptionArgFunc)(iter->arg_data))(long_name, value->chrpval, NULL, &error_pointer);
+								PQIV_ENABLE_PEDANTIC
 							}
 							else {
 								*(gchar **)(iter->arg_data) = g_strdup(value->chrpval);
@@ -4995,7 +5013,8 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 					return;
 				}
 				gchar *command = external_image_filter_commands[parameter.pint - 1];
-				action(ACTION_COMMAND, (pqiv_action_parameter_t)( command));
+				pqiv_action_parameter_t action_parameter = { .pcharptr = command };
+				action(ACTION_COMMAND, action_parameter);
 				return;
 			}
 			break;
@@ -6920,7 +6939,7 @@ void initialize_key_bindings() {/*{{{*/
 	for(const struct default_key_bindings_struct *kb = default_key_bindings; kb->key_binding_value; kb++) {
 		key_binding_t *nkb = g_slice_new(key_binding_t);
 		nkb->action = kb->action;
-		nkb->parameter = (pqiv_action_parameter_t)(kb->parameter);
+		nkb->parameter = kb->parameter;
 		nkb->next_action = NULL;
 		nkb->next_key_bindings = NULL;
 		g_hash_table_insert(key_bindings[kb->context], GUINT_TO_POINTER(kb->key_binding_value), nkb);
@@ -6931,7 +6950,9 @@ void recreate_window() {/*{{{*/
 	if(!main_window_visible) {
 		return;
 	}
+	PQIV_DISABLE_PEDANTIC
 	g_signal_handlers_disconnect_by_func(main_window, G_CALLBACK(window_close_callback), NULL);
+	PQIV_ENABLE_PEDANTIC
 	gtk_widget_destroy(GTK_WIDGET(main_window));
 	main_window = NULL;
 	option_start_fullscreen = main_window_in_fullscreen;

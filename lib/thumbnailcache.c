@@ -160,7 +160,7 @@ gboolean check_png_attributes(gchar *file_name, gchar *file_uri, time_t file_mti
 		g_close(fd, NULL);
 		return FALSE;
 	}
-	const char expected_header[] = { 137, 80, 78, 71, 13, 10, 26, 10 };
+	const unsigned char expected_header[] = { 137, 80, 78, 71, 13, 10, 26, 10 };
 	if(memcmp(header.buf, expected_header, sizeof(expected_header)) != 0) {
 		g_close(fd, NULL);
 		return FALSE;
@@ -573,4 +573,6 @@ gboolean store_thumbnail_to_cache(file_t *file, unsigned width, unsigned height,
 	return retval;
 }
 
+#else
+void __thumbnailcache__empty_translation_unit() {}
 #endif
