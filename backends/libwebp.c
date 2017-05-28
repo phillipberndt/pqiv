@@ -68,12 +68,17 @@ void file_type_libwebp_load(file_t *file, GInputStream *data, GError **error_poi
 		return;
 	}
 	const gchar *image_data = g_bytes_get_data(image_bytes, &image_size);
-	int webp_retval = WebPGetInfo((const uint8_t*)image_data, image_size, &image_width, &image_height);
+	WebPBitstreamFeatures image_features;
+	VP8StatusCode webp_retstatus = WebPGetFeatures((const uint8_t*)image_data, image_size, &image_features);
+	int image_decode_ok = 0;
 	uint8_t* webp_retptr = NULL;
 	uint8_t* surface_data = NULL;
-	int surface_stride = 0;;
+	int surface_stride = 0;
 	
-	if ( webp_retval ) {
+	if ( webp_retstatus == VP8_STATUS_OK ) {
+		image_width = image_features.width;
+		image_height = image_features.height;
+		
 		// Create the surface
 		private->rendered_image_surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, image_width, image_height);
 		
@@ -89,13 +94,13 @@ void file_type_libwebp_load(file_t *file, GInputStream *data, GError **error_poi
 			webp_retptr = WebPDecodeBGRAInto((const uint8_t*)image_data, image_size, surface_data, surface_stride*image_height*4, surface_stride);
 		}
 		cairo_surface_mark_dirty(private->rendered_image_surface);
-		if ( webp_retptr == NULL ) webp_retval = 0;
+		if ( webp_retptr != NULL ) image_decode_ok = 1;
 	}
 	buffered_file_unref(file);
 	image_data = NULL;
 	image_size = 0;
 	
-	if ( !webp_retval ) {
+	if ( !image_decode_ok ) {
 		// Clear the rendered_image_surface if an error occurred
 		if(private->rendered_image_surface) {
 			cairo_surface_destroy(private->rendered_image_surface);
@@ -108,27 +113,29 @@ void file_type_libwebp_load(file_t *file, GInputStream *data, GError **error_poi
 	
 	/* Note that cairo's ARGB32 format requires precomputed alpha, but
 	 * the output from webp is not precomputed. Therefore, we do the
-	 * alpha precomputation below
+	 * alpha precomputation below if the file have alpha channel.
 	 */
 	
 	int i, j;
 	float fR, fG, fB, fA;
 	int R, G, B;
 	uint32_t pixel;
-	for ( i = 0; i < image_height; i++ ) {
-		for ( j = 0; j < image_width; j++ ) {
-			pixel = *((uint32_t*)&surface_data[i*surface_stride+j*4]);
-			// Unpack into float
-			fR = (pixel&0x0FF)/255.0;
-			fG = ((pixel>>8)&0x0FF)/255.0;
-			fB = ((pixel>>16)&0x0FF)/255.0;
-			fA = ((pixel>>24)&0x0FF)/255.0;
-			// Casting float to int truncates, so for rounding, we add 0.5
-			R = (fR*fA*255.0+0.5);
-			G = (fG*fA*255.0+0.5);
-			B = (fB*fA*255.0+0.5);
-			pixel = R | (G<<8) | (B<<16) | (pixel&0xFF000000);
-			*((uint32_t*)&surface_data[i*surface_stride+j*4]) = pixel;
+	if ( image_features.has_alpha ) {
+		for ( i = 0; i < image_height; i++ ) {
+			for ( j = 0; j < image_width; j++ ) {
+				pixel = *((uint32_t*)&surface_data[i*surface_stride+j*4]);
+				// Unpack into float
+				fR = (pixel&0x0FF)/255.0;
+				fG = ((pixel>>8)&0x0FF)/255.0;
+				fB = ((pixel>>16)&0x0FF)/255.0;
+				fA = ((pixel>>24)&0x0FF)/255.0;
+				// Casting float to int truncates, so for rounding, we add 0.5
+				R = (fR*fA*255.0+0.5);
+				G = (fG*fA*255.0+0.5);
+				B = (fB*fA*255.0+0.5);
+				pixel = R | (G<<8) | (B<<16) | (pixel&0xFF000000);
+				*((uint32_t*)&surface_data[i*surface_stride+j*4]) = pixel;
+			}
 		}
 	}
 
