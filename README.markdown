@@ -94,6 +94,7 @@ Contributors
 Contributors to pqiv 2.x are:
 
  * J. Paul Reed
+ * Chen Jonh L
 
 Contributors to pqiv ≤ 1.0 were:
 
