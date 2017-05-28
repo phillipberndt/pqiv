@@ -160,7 +160,8 @@ void file_type_libwebp_initializer(file_type_handler_t *info) {/*{{{*/
 	// Fill the file filter pattern
 	info->file_types_handled = gtk_file_filter_new();
 	gtk_file_filter_add_pattern(info->file_types_handled, "*.webp");
-
+	gtk_file_filter_add_mime_type(info->file_types_handled, "image/webp");
+	
 	// Assign the handlers
 	info->alloc_fn                 =  file_type_libwebp_alloc;
 	info->free_fn                  =  file_type_libwebp_free;
