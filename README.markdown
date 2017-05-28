@@ -69,11 +69,12 @@ If you'd like to compile pqiv manually, you'll need
 
 and optionally also
 
- * libspectre (any version, for ps/eps support)
- * poppler (any version, for pdf support)
- * MagickWand (any version, for additional image formats like psd)
- * libarchive (for images in archives and cbX comic book files)
  * ffmpeg / libav (for video support)
+ * libarchive (for images in archives and cbX comic book files)
+ * libspectre (any version, for ps/eps support)
+ * libwebp (for WebP support)
+ * MagickWand (any version, for additional image formats like psd)
+ * poppler (any version, for pdf support)
 
 The backends are per default linked statically into the code, so all backend
 related build-time dependencies are also run-time dependencies. If you need a
@@ -94,6 +95,7 @@ Contributors
 Contributors to pqiv 2.x are:
 
  * J. Paul Reed
+ * Chen Jonh L
 
 Contributors to pqiv ≤ 1.0 were:
 
@@ -138,6 +140,7 @@ pqiv 2.9 (wip)
  * Bind Control+t to toggle to "maintain scale mode" by default
  * Fixed support for huge images (>32,767px) to the GdkPixbuf backend
  * Added a montage/image grid mode (bound to `m` by default)
+ * Added a WebP backend (by @john0312)
 
 pqiv 2.8.5
  * Fixed an issue where the checkerboard pattern sometimes was visible at image
