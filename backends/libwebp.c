@@ -48,63 +48,90 @@ void file_type_libwebp_free(file_t *file) {/*{{{*/
 void file_type_libwebp_load(file_t *file, GInputStream *data, GError **error_pointer) {/*{{{*/
 	file_private_data_libwebp_t *private = file->private;
 
-	int image_width, image_height;
-	uint8_t* image_rawdata;
-	{
-		// Scope for the buffered_file, the content of the file is read and decoded here.
-		gsize image_size;
-		GBytes *image_bytes = buffered_file_as_bytes(file, data, error_pointer);
-		if(!image_bytes) {
-			return;
-		}
-		const gchar *image_data = g_bytes_get_data(image_bytes, &image_size);
-		image_rawdata = WebPDecodeRGB((const uint8_t*)image_data, image_size, &image_width, &image_height);
-		buffered_file_unref(file);
-		image_data = NULL;
-		image_size = 0;
-	}
-	
-	if ( image_rawdata == NULL ) {
-		*error_pointer = g_error_new(g_quark_from_static_string("pqiv-libwebp-error"), 1, "Failed to load image %s, malformed webp file", file->file_name);
-		return;
-	}
-
+	// Reset the rendered_image_surface back to NULL
 	if(private->rendered_image_surface) {
 		cairo_surface_destroy(private->rendered_image_surface);
 		private->rendered_image_surface = NULL;
 	}
 	
-	// Copy the image_rawdata over into the cairo image surface
-	private->rendered_image_surface = cairo_image_surface_create(CAIRO_FORMAT_RGB24, image_width, image_height);
-	uint8_t* surface_data = cairo_image_surface_get_data(private->rendered_image_surface);
-	int surface_stride = cairo_image_surface_get_stride(private->rendered_image_surface);
+	union {
+		uint32_t u32;
+		uint8_t u8arr[4];
+	} endian_tester;
+	endian_tester.u32 = 0x12345678;
+	
+	int image_width, image_height;
+
+	gsize image_size;
+	GBytes *image_bytes = buffered_file_as_bytes(file, data, error_pointer);
+	if(!image_bytes) {
+		return;
+	}
+	const gchar *image_data = g_bytes_get_data(image_bytes, &image_size);
+	int webp_retval = WebPGetInfo((const uint8_t*)image_data, image_size, &image_width, &image_height);
+	uint8_t* webp_retptr = NULL;
+	uint8_t* surface_data = NULL;
+	int surface_stride = 0;;
+	
+	if ( webp_retval ) {
+		// Create the surface
+		private->rendered_image_surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, image_width, image_height);
+		
+		surface_data = cairo_image_surface_get_data(private->rendered_image_surface);
+		surface_stride = cairo_image_surface_get_stride(private->rendered_image_surface);
+
+		cairo_surface_flush(private->rendered_image_surface);
+		if ( endian_tester.u8arr[0] == 0x12 ) {
+			// We are in big endian
+			webp_retptr = WebPDecodeARGBInto((const uint8_t*)image_data, image_size, surface_data, surface_stride*image_height*4, surface_stride);
+		} else {
+			// we are in little endian
+			webp_retptr = WebPDecodeBGRAInto((const uint8_t*)image_data, image_size, surface_data, surface_stride*image_height*4, surface_stride);
+		}
+		cairo_surface_mark_dirty(private->rendered_image_surface);
+		if ( webp_retptr == NULL ) webp_retval = 0;
+	}
+	buffered_file_unref(file);
+	image_data = NULL;
+	image_size = 0;
+	
+	if ( !webp_retval ) {
+		// Clear the rendered_image_surface if an error occurred
+		if(private->rendered_image_surface) {
+			cairo_surface_destroy(private->rendered_image_surface);
+			private->rendered_image_surface = NULL;
+		}
+	
+		*error_pointer = g_error_new(g_quark_from_static_string("pqiv-libwebp-error"), 1, "Failed to load image %s, malformed webp file", file->file_name);
+		return;
+	}
+	
+	/* Note that cairo's ARGB32 format requires precomputed alpha, but
+	 * the output from webp is not precomputed. Therefore, we do the
+	 * alpha precomputation below
+	 */
 	
 	int i, j;
-	uint32_t R, G, B;
-	cairo_surface_flush(private->rendered_image_surface);
+	float fR, fG, fB, fA;
+	int R, G, B;
+	uint32_t pixel;
 	for ( i = 0; i < image_height; i++ ) {
 		for ( j = 0; j < image_width; j++ ) {
-			/* Note that the reason why we need to unpack the bytes from webp decoder and
-			 * repack it into the cairo image surface data is because the sequence of bytes
-			 * from webp doesn't change with regards to endianness, while the cairo stores
-			 * 4-byte pixel data in native endian.
-			 */
-			R = image_rawdata[(i*image_width+j)*3+0];
-			G = image_rawdata[(i*image_width+j)*3+1];
-			B = image_rawdata[(i*image_width+j)*3+2];
-			
-			*((uint32_t*)&surface_data[i*surface_stride+j*4]) = (R<<16) | (G<<8) | (B);
+			pixel = *((uint32_t*)&surface_data[i*surface_stride+j*4]);
+			// Unpack into float
+			fR = (pixel&0x0FF)/255.0;
+			fG = ((pixel>>8)&0x0FF)/255.0;
+			fB = ((pixel>>16)&0x0FF)/255.0;
+			fA = ((pixel>>24)&0x0FF)/255.0;
+			// Casting float to int truncates, so for rounding, we add 0.5
+			R = (fR*fA*255.0+0.5);
+			G = (fG*fA*255.0+0.5);
+			B = (fB*fA*255.0+0.5);
+			pixel = R | (G<<8) | (B<<16) | (pixel&0xFF000000);
+			*((uint32_t*)&surface_data[i*surface_stride+j*4]) = pixel;
 		}
 	}
-	cairo_surface_mark_dirty(private->rendered_image_surface);
 
-#if WEBP_ENCODER_ABI_VERSION < 0x0209
-	free(image_rawdata);
-#else
-	WebPFree(image_rawdata);
-#endif
-	image_rawdata = NULL;
-	
 	file->width = image_width;
 	file->height = image_height;
 	file->is_loaded = TRUE;
