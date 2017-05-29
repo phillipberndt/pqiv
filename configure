@@ -56,7 +56,7 @@ options to select pqiv's backends:
                         Available:
                           archive (generic archive file support),
                           archive_cbx (*.cb? comic book archive support),
-                          libav (Video support, never included by default),
+                          libav (Video support, works with ffmpeg as well),
                           gdkpixbuf (images),
                           poppler (PDF),
                           spectre (PS/EPS),
