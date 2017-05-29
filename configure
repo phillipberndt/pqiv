@@ -61,6 +61,7 @@ options to select pqiv's backends:
                           poppler (PDF),
                           spectre (PS/EPS),
                           wand (ImageMagick, various formats)
+                          webp (WebP format)
   --with[out]-<backend> Alternative syntax for backend selection. Non-specified backends are
                         autodetermined.
   --backends-build=..   Either \`shared' to compile the backends as shared libraries,

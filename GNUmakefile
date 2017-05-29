@@ -57,7 +57,7 @@ LIBS_wand=MagickWand
 LIBS_libav=libavformat libavcodec libswscale libavutil
 LIBS_archive_cbx=libarchive gdk-pixbuf-2.0 >= 2.2
 LIBS_archive=libarchive
-LIBS_libwebp=libwebp
+LIBS_webp=libwebp
 
 # This might be required if you use mingw, and is required as of
 # Aug 2014 for mxe, but IMHO shouldn't be required / is a bug in

@@ -16,7 +16,7 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *
- * libwebp backend
+ * webp backend
  *
  */
 
@@ -33,20 +33,20 @@
 
 typedef struct {
 	cairo_surface_t *rendered_image_surface;
-} file_private_data_libwebp_t;
+} file_private_data_webp_t;
 
-BOSNode *file_type_libwebp_alloc(load_images_state_t state, file_t *file) {/*{{{*/
-	file->private = g_slice_new0(file_private_data_libwebp_t);
+BOSNode *file_type_webp_alloc(load_images_state_t state, file_t *file) {/*{{{*/
+	file->private = g_slice_new0(file_private_data_webp_t);
 	BOSNode *first_node = load_images_handle_parameter_add_file(state, file);
 	return first_node;
 }/*}}}*/
 
-void file_type_libwebp_free(file_t *file) {/*{{{*/
-	g_slice_free(file_private_data_libwebp_t, file->private);
+void file_type_webp_free(file_t *file) {/*{{{*/
+	g_slice_free(file_private_data_webp_t, file->private);
 }/*}}}*/
 
-void file_type_libwebp_load(file_t *file, GInputStream *data, GError **error_pointer) {/*{{{*/
-	file_private_data_libwebp_t *private = file->private;
+void file_type_webp_load(file_t *file, GInputStream *data, GError **error_pointer) {/*{{{*/
+	file_private_data_webp_t *private = file->private;
 
 	// Reset the rendered_image_surface back to NULL
 	if(private->rendered_image_surface) {
@@ -109,7 +109,7 @@ void file_type_libwebp_load(file_t *file, GInputStream *data, GError **error_poi
 			private->rendered_image_surface = NULL;
 		}
 
-		*error_pointer = g_error_new(g_quark_from_static_string("pqiv-libwebp-error"), 1, "Failed to load image %s, malformed webp file", file->file_name);
+		*error_pointer = g_error_new(g_quark_from_static_string("pqiv-webp-error"), 1, "Failed to load image %s, malformed webp file", file->file_name);
 		return;
 	}
 
@@ -146,8 +146,8 @@ void file_type_libwebp_load(file_t *file, GInputStream *data, GError **error_poi
 	file->is_loaded = TRUE;
 }/*}}}*/
 
-void file_type_libwebp_unload(file_t *file) {/*{{{*/
-	file_private_data_libwebp_t *private = file->private;
+void file_type_webp_unload(file_t *file) {/*{{{*/
+	file_private_data_webp_t *private = file->private;
 
 	if(private->rendered_image_surface) {
 		cairo_surface_destroy(private->rendered_image_surface);
@@ -155,8 +155,8 @@ void file_type_libwebp_unload(file_t *file) {/*{{{*/
 	}
 }/*}}}*/
 
-void file_type_libwebp_draw(file_t *file, cairo_t *cr) {/*{{{*/
-	file_private_data_libwebp_t *private = file->private;
+void file_type_webp_draw(file_t *file, cairo_t *cr) {/*{{{*/
+	file_private_data_webp_t *private = file->private;
 
 	if(private->rendered_image_surface) {
 		cairo_set_source_surface(cr, private->rendered_image_surface, 0, 0);
@@ -165,16 +165,16 @@ void file_type_libwebp_draw(file_t *file, cairo_t *cr) {/*{{{*/
 	}
 }/*}}}*/
 
-void file_type_libwebp_initializer(file_type_handler_t *info) {/*{{{*/
+void file_type_webp_initializer(file_type_handler_t *info) {/*{{{*/
 	// Fill the file filter pattern
 	info->file_types_handled = gtk_file_filter_new();
 	gtk_file_filter_add_pattern(info->file_types_handled, "*.webp");
 	gtk_file_filter_add_mime_type(info->file_types_handled, "image/webp");
 
 	// Assign the handlers
-	info->alloc_fn                 =  file_type_libwebp_alloc;
-	info->free_fn                  =  file_type_libwebp_free;
-	info->load_fn                  =  file_type_libwebp_load;
-	info->unload_fn                =  file_type_libwebp_unload;
-	info->draw_fn                  =  file_type_libwebp_draw;
+	info->alloc_fn                 =  file_type_webp_alloc;
+	info->free_fn                  =  file_type_webp_free;
+	info->load_fn                  =  file_type_webp_load;
+	info->unload_fn                =  file_type_webp_unload;
+	info->draw_fn                  =  file_type_webp_draw;
 }/*}}}*/
