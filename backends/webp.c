@@ -125,7 +125,8 @@ void file_type_webp_load(file_t *file, GInputStream *data, GError **error_pointe
 	if(image_features.has_alpha) {
 		for(i = 0; i < image_height; i++) {
 			for(j = 0; j < image_width; j++) {
-				pixel = *((uint32_t*)&surface_data[i*surface_stride+j*4]);
+				memcpy(&pixel, &surface_data[i*surface_stride+j*4], sizeof(uint32_t));
+
 				// Unpack into float
 				fR = (pixel&0x0FF)/255.0;
 				fG = ((pixel>>8)&0x0FF)/255.0;
@@ -136,7 +137,8 @@ void file_type_webp_load(file_t *file, GInputStream *data, GError **error_pointe
 				G = (fG*fA*255.0+0.5);
 				B = (fB*fA*255.0+0.5);
 				pixel = R | (G<<8) | (B<<16) | (pixel&0xFF000000);
-				*((uint32_t*)&surface_data[i*surface_stride+j*4]) = pixel;
+
+				memcpy(&surface_data[i*surface_stride+j*4], &pixel, sizeof(uint32_t));
 			}
 		}
 	}
