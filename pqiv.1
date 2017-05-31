@@ -309,6 +309,11 @@ Instead of resizing, recreate the window whenever the image is changed. This
 does not redraw images upon changes in zoom alone.
 .\"
 .TP
+.BR \-\-scale\-mode\-screen\-fraction=\fIFRACTION\fR
+Adjust how much screen space \fBpqiv\fR uses when scaling the window outside
+fullscreen mode. Defaults to 0.8 (80%).
+.\"
+.TP
 .BR \-\-wait\-for\-images\-to\-appear
 If no images are found in the directories specified on the command line,
 instead of exiting, wait for some to appear. This option only works in
@@ -523,6 +528,11 @@ Adjust the scale level multiplicatively by the parameter value.
 .TP
 .BR set_scale_mode_fit_px(INT,\ INT)
 Always adjust the scale level such that each image fits the given dimensions.
+.TP
+.BR set_scale_mode_screen_fraction(DOUBLE)
+Adjust how much of the available screen space is used for scaling the window
+outside fullscreen mode. Defaults to 0.8. This also affects the size of the
+\fImontage\fR mode window.
 .TP
 .BR set_shift_align_corner(STRING)
 Align the image to the window/screen border. Possible parameter values are the

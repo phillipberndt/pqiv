@@ -252,6 +252,7 @@ gchar *external_image_filter_commands[] = {
 // Scaling mode, only 0-2 are available in the default UI, FIXED_SCALE can be
 // set using a command line option, SCALE_TO_FIT only using an action
 enum { NO_SCALING=0, AUTO_SCALEDOWN, AUTO_SCALEUP, FIXED_SCALE, SCALE_TO_FIT } option_scale = AUTO_SCALEDOWN;
+double option_scale_screen_fraction = .8;
 struct {
 	guint width;
 	guint height;
@@ -394,6 +395,7 @@ GOptionEntry options[] = {
 	{ "low-memory", 0, 0, G_OPTION_ARG_NONE, &option_lowmem, "Try to keep memory usage to a minimum", NULL },
 	{ "max-depth", 0, 0, G_OPTION_ARG_INT, &option_max_depth, "Descend at most LEVELS levels of directories below the command line arguments", "LEVELS" },
 	{ "recreate-window", 0, 0, G_OPTION_ARG_NONE, &option_recreate_window, "Create a new window instead of resizing the old one", NULL },
+	{ "scale-mode-screen-fraction", 0, 0, G_OPTION_ARG_DOUBLE, &option_scale_screen_fraction, "Screen fraction to use for scaling", "FLOAT" },
 	{ "shuffle", 0, 0, G_OPTION_ARG_NONE, &option_shuffle, "Shuffle files", NULL },
 #ifndef CONFIGURED_WITHOUT_ACTIONS
 	{ "show-bindings", 0, G_OPTION_FLAG_NO_ARG, G_OPTION_ARG_CALLBACK, &help_show_key_bindings, "Display the keyboard and mouse bindings and exit", NULL },
@@ -589,6 +591,7 @@ const struct pqiv_action_descriptor {
 	{ "set_scale_level_relative", PARAMETER_DOUBLE },
 	{ "set_scale_level_absolute", PARAMETER_DOUBLE },
 	{ "toggle_scale_mode", PARAMETER_INT },
+	{ "set_scale_mode_screen_fraction", PARAMETER_DOUBLE },
 	{ "toggle_shuffle_mode", PARAMETER_INT },
 	{ "reload", PARAMETER_NONE },
 	{ "reset_scale_level", PARAMETER_NONE },
@@ -1875,8 +1878,8 @@ void main_window_adjust_for_image() {/*{{{*/
 		const int screen_width = screen_geometry.width;
 		const int screen_height = screen_geometry.height;
 
-		new_window_width = screen_width * .8;
-		new_window_height = screen_height * .8;
+		new_window_width = screen_width * option_scale_screen_fraction;
+		new_window_height = screen_height * option_scale_screen_fraction;
 	}
 	#endif
 	else {
@@ -4661,20 +4664,20 @@ void set_scale_level_for_screen() {/*{{{*/
 		else {
 			current_scale_level = 1.0;
 			if(option_scale == AUTO_SCALEUP) {
-				// Scale up to 80% screen size
-				current_scale_level = screen_width * .8 / image_width;
+				// Scale up to screen size
+				current_scale_level = screen_width * option_scale_screen_fraction / image_width;
 			}
 			else if(option_scale == SCALE_TO_FIT) {
 				current_scale_level = fmin(scale_to_fit_size.width * 1. / image_width, scale_to_fit_size.height * 1. / image_height);
 			}
-			else if(option_scale == AUTO_SCALEDOWN && image_width > screen_width * .8) {
-				// Scale down to 80% screen size
-				current_scale_level = screen_width * .8 / image_width;
+			else if(option_scale == AUTO_SCALEDOWN && image_width > screen_width * option_scale_screen_fraction) {
+				// Scale down to screen size
+				current_scale_level = screen_width * option_scale_screen_fraction / image_width;
 			}
-			// In both cases: If the height exceeds 80% screen size, scale
+			// In both cases: If the height exceeds screen size, scale
 			// down
 			if((option_scale == AUTO_SCALEUP || option_scale == AUTO_SCALEDOWN) && image_height * current_scale_level > screen_height * .8) {
-				current_scale_level = screen_height * .8 / image_height;
+				current_scale_level = screen_height * option_scale_screen_fraction / image_height;
 			}
 		}
 		current_scale_level = round(current_scale_level * 100.) / 100.;
@@ -4862,6 +4865,23 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 				case FIXED_SCALE: update_info_text("Maintaining current scale level"); break;
 				default: break;
 			}
+			break;
+
+		case ACTION_SET_SCALE_MODE_SCREEN_FRACTION:
+			if(parameter.pdouble <= 0) {
+				g_printerr("Invalid parameter for set_scale_mode_screen_fraction()\n");
+				break;
+			}
+			option_scale_screen_fraction = parameter.pdouble;
+
+			scale_override = FALSE;
+			current_image_drawn = FALSE;
+			current_shift_x = 0;
+			current_shift_y = 0;
+			set_scale_level_for_screen();
+			main_window_adjust_for_image();
+			invalidate_current_scaled_image_surface();
+			gtk_widget_queue_draw(GTK_WIDGET(main_window));
 			break;
 
 		case ACTION_TOGGLE_SHUFFLE_MODE:
