@@ -57,6 +57,7 @@ distribution packages are usually somewhat out of date:
  * [FreeBSD port](https://www.freshports.org/graphics/pqiv/)
  * [Gentoo ebuild](https://packages.gentoo.org/packages/media-gfx/pqiv)
  * [macOS brew](http://braumeister.org/formula/pqiv)
+ * [NixOS package](https://github.com/NixOS/nixpkgs/blob/HEAD/pkgs/applications/graphics/pqiv/default.nix)
 
 If you'd like to compile pqiv manually, you'll need
 
