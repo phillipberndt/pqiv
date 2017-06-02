@@ -4676,7 +4676,7 @@ void set_scale_level_for_screen() {/*{{{*/
 			}
 			// In both cases: If the height exceeds screen size, scale
 			// down
-			if((option_scale == AUTO_SCALEUP || option_scale == AUTO_SCALEDOWN) && image_height * current_scale_level > screen_height * .8) {
+			if((option_scale == AUTO_SCALEUP || option_scale == AUTO_SCALEDOWN) && image_height * current_scale_level > screen_height * option_scale_screen_fraction) {
 				current_scale_level = screen_height * option_scale_screen_fraction / image_height;
 			}
 		}
@@ -4685,7 +4685,8 @@ void set_scale_level_for_screen() {/*{{{*/
 	else {
 		// In fullscreen, the screen size and window size match, so the
 		// function to adjust to the window size works just fine (and does
-		// not come with the 80%, as users would expect in fullscreen)
+		// not come with the option_scale_screen_fraction limitation,
+		// as users would expect in fullscreen)
 		set_scale_level_to_fit();
 	}
 }/*}}}*/
