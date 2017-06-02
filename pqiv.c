@@ -4445,7 +4445,7 @@ gboolean window_draw_callback(GtkWidget *widget, cairo_t *cr_arg, gpointer user_
 			if(skip_px == 0) {
 				skip_px = 1;
 			}
-			if(main_window_in_fullscreen && CURRENT_FILE->width > 2*skip_px && CURRENT_FILE->height > 2*skip_px) {
+			if(CURRENT_FILE->width > 2*skip_px && CURRENT_FILE->height > 2*skip_px) {
 				cairo_rectangle(cr, skip_px, skip_px, CURRENT_FILE->width - 2*skip_px, CURRENT_FILE->height - 2*skip_px);
 			}
 			else {
