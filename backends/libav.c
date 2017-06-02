@@ -51,7 +51,7 @@
 // It is not a complete list of audio formats supported by ffmpeg,
 // only those I recognized right away.
 static const char * const ignore_extensions[] = {
-	"aac", "ac3", "aiff", "dts", "flac", "gsm", "m4a", "mp3", "ogg", "f64be", "f64le",
+	"aac", "ac3", "aiff", "bin", "dts", "flac", "gsm", "m4a", "mp3", "ogg", "f64be", "f64le",
 	"f32be", "f32le", "s32be", "s32le", "s24be", "s24le", "s16be", "s16le", "s8",
 	"u32be", "u32le", "u24be", "u24le", "u16be", "u16le", "u8", "sox", "spdif", "txt",
 	"w64", "wav", "xa", "xwma", NULL
