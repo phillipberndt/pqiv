@@ -3858,6 +3858,9 @@ void window_fullscreen() {/*{{{*/
 		main_window_in_fullscreen = TRUE;
 		main_window_prerender_window_pixmap(screen_geometry.width, screen_geometry.height);
 		main_window_in_fullscreen = FALSE;
+	#else
+		// This avoids flickering for GTK3
+		gtk_window_resize(main_window, screen_geometry.width / screen_scale_factor, screen_geometry.height / screen_scale_factor);
 	#endif
 }/*}}}*/
 void window_unfullscreen() {/*{{{*/
@@ -3872,9 +3875,30 @@ void window_unfullscreen() {/*{{{*/
 
 	gtk_window_unfullscreen(main_window);
 
+	// Avoid flickering
 	#if GTK_MAJOR_VERSION < 3
 		main_window_in_fullscreen = FALSE;
 		main_window_prerender_window_pixmap(-1, -1);
+		main_window_in_fullscreen = TRUE;
+	#else
+		main_window_in_fullscreen = FALSE;
+		set_scale_level_for_screen();
+		main_window_calculate_ideal_size(&main_window_width, &main_window_height);
+		set_scale_level_to_fit();
+		#if GDK_MAJOR_VERSION > 3 || GDK_MINOR_VERSION >= 22
+			cairo_region_t *region = gdk_window_get_clip_region(gtk_widget_get_window(GTK_WIDGET(main_window)));
+			GdkDrawingContext *drawing_context = gdk_window_begin_draw_frame(gtk_widget_get_window(GTK_WIDGET(main_window)), region);
+
+			cairo_t *cr = gdk_drawing_context_get_cairo_context(drawing_context);
+			window_draw_callback(GTK_WIDGET(main_window), cr, NULL);
+
+			gdk_window_end_draw_frame(gtk_widget_get_window(GTK_WIDGET(main_window)), drawing_context);
+			cairo_region_destroy(region);
+		#else
+			cairo_t *cr = gdk_cairo_create(gtk_widget_get_window(GTK_WIDGET(main_window)));
+			window_draw_callback(GTK_WIDGET(main_window), cr, NULL);
+			cairo_destroy(cr);
+		#endif
 		main_window_in_fullscreen = TRUE;
 	#endif
 }/*}}}*/
