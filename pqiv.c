@@ -4775,7 +4775,6 @@ void set_scale_level_for_screen() {/*{{{*/
 				current_scale_level = screen_height * option_scale_screen_fraction / image_height;
 			}
 		}
-		current_scale_level = round(current_scale_level * 100.) / 100.;
 	}
 	else {
 		// In fullscreen, the screen size and window size match, so the
