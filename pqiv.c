@@ -1950,9 +1950,9 @@ gboolean main_window_resize_callback(gpointer user_data) {/*{{{*/
 
 	return FALSE;
 }/*}}}*/
-#if GTK_MAJOR_VERSION < 3
 void main_window_prerender_window_pixmap(int new_window_width, int new_window_height) {
-	if(!GTK_WIDGET(main_window)->window) {
+	GdkWindow *window = gtk_widget_get_window(GTK_WIDGET(main_window));
+	if(!window) {
 		return;
 	}
 
@@ -1970,12 +1970,29 @@ void main_window_prerender_window_pixmap(int new_window_width, int new_window_he
 	current_shift_y = 0;
 	set_scale_level_to_fit();
 	#ifndef CONFIGURED_WITHOUT_INFO_TEXT
-	current_info_text_cached_font_size = -1;
+		current_info_text_cached_font_size = -1;
 	#endif
 
-	GdkPixmap *pixmap = gdk_pixmap_new(GTK_WIDGET(main_window)->window, main_window_width, main_window_height, -1);
-	cairo_t *cr = gdk_cairo_create(pixmap);
-	window_draw_callback(GTK_WIDGET(main_window), cr, NULL);
+	#if GTK_MAJOR_VERSION < 3
+		GdkPixmap *pixmap = gdk_pixmap_new(window, main_window_width, main_window_height, -1);
+		cairo_t *cr = gdk_cairo_create(pixmap);
+		window_draw_callback(GTK_WIDGET(main_window), cr, NULL);
+		cairo_destroy(cr);
+		gdk_window_set_back_pixmap(window, pixmap, FALSE);
+		g_object_unref(pixmap);
+		gdk_window_clear(window);
+	#else
+		cairo_surface_t *surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, main_window_width, main_window_height);
+		cairo_t *cr = cairo_create(surface);
+		window_draw_callback(GTK_WIDGET(main_window), cr, NULL);
+		cairo_destroy(cr);
+		cairo_pattern_t *pattern = cairo_pattern_create_for_surface(surface);
+		cairo_pattern_set_extend(pattern, CAIRO_EXTEND_PAD);
+		gdk_window_set_background_pattern(window, pattern);
+		cairo_pattern_destroy(pattern);
+		cairo_surface_destroy(surface);
+	#endif
+
 	main_window_width = ow;
 	main_window_height = oh;
 	#ifndef CONFIGURED_WITHOUT_INFO_TEXT
@@ -1984,13 +2001,43 @@ void main_window_prerender_window_pixmap(int new_window_width, int new_window_he
 	current_shift_x = csx;
 	current_shift_y = csy;
 	current_scale_level = csl;
-
-	cairo_destroy(cr);
-	gdk_window_set_back_pixmap(GTK_WIDGET(main_window)->window, pixmap, FALSE);
-	g_object_unref(pixmap);
-	gdk_window_clear(GTK_WIDGET(main_window)->window);
 }
-#endif
+void main_window_reset_pixmap(gboolean clear_window) {
+	#if GTK_MAJOR_VERSION < 3
+		if(option_transparent_background) {
+			gdk_window_set_back_pixmap(window, NULL, FALSE);
+		}
+		else {
+			GdkColor black = { 0, 0, 0, 0 };
+			gdk_rgb_find_color(gtk_widget_get_colormap(GTK_WIDGET(main_window)), &black);
+			gdk_window_set_background(GTK_WIDGET(main_window)->window, &black);
+		}
+		if(clear_window) {
+			gdk_window_clear(GTK_WIDGET(main_window)->window);
+		}
+	#else
+		GdkRGBA black = { 0, 0, 0, option_transparent_background ? 0. : 1. };
+		gdk_window_set_background_rgba(gtk_widget_get_window(GTK_WIDGET(main_window)), &black);
+		if(clear_window) {
+			#if GDK_MAJOR_VERSION > 3 || GDK_MINOR_VERSION >= 22
+				cairo_region_t *region = gdk_window_get_clip_region(gtk_widget_get_window(GTK_WIDGET(main_window)));
+				GdkDrawingContext *drawing_context = gdk_window_begin_draw_frame(gtk_widget_get_window(GTK_WIDGET(main_window)), region);
+				cairo_t *cr = gdk_drawing_context_get_cairo_context(drawing_context);
+				cairo_set_source_rgba(cr, 0., 0., 0., option_transparent_background ? 0. : 1.);
+				cairo_set_operator(cr, CAIRO_OPERATOR_SOURCE);
+				cairo_paint(cr);
+				gdk_window_end_draw_frame(gtk_widget_get_window(GTK_WIDGET(main_window)), drawing_context);
+				cairo_region_destroy(region);
+			#else
+				cairo_t *cr = gdk_cairo_create(gtk_widget_get_window(GTK_WIDGET(main_window)));
+				cairo_set_source_rgba(cr, 0., 0., 0., option_transparent_background ? 0. : 1.);
+				cairo_set_operator(cr, CAIRO_OPERATOR_SOURCE);
+				cairo_paint(cr);
+				cairo_destroy(cr);
+			#endif
+		}
+	#endif
+}
 gboolean main_window_calculate_ideal_size(int *new_window_width, int *new_window_height) {
 	if(!current_file_node) {
 		return FALSE;
@@ -2056,9 +2103,8 @@ void main_window_adjust_for_image() {/*{{{*/
 			recreate_window();
 		}
 		else {
-			#if GTK_MAJOR_VERSION < 3
-				main_window_prerender_window_pixmap(new_window_width, new_window_height);
-			#endif
+			// Avoid tearing
+			main_window_prerender_window_pixmap(new_window_width, new_window_height);
 		}
 
 		if(option_window_position.x >= 0) {
@@ -3854,14 +3900,8 @@ void window_fullscreen() {/*{{{*/
 
 	gtk_window_fullscreen(main_window);
 
-	#if GTK_MAJOR_VERSION < 3
-		main_window_in_fullscreen = TRUE;
-		main_window_prerender_window_pixmap(screen_geometry.width, screen_geometry.height);
-		main_window_in_fullscreen = FALSE;
-	#else
-		// This avoids flickering for GTK3
-		gtk_window_resize(main_window, screen_geometry.width / screen_scale_factor, screen_geometry.height / screen_scale_factor);
-	#endif
+	// Avoid flickering
+	main_window_reset_pixmap(TRUE);
 }/*}}}*/
 void window_unfullscreen() {/*{{{*/
 	#ifndef _WIN32
@@ -3876,31 +3916,7 @@ void window_unfullscreen() {/*{{{*/
 	gtk_window_unfullscreen(main_window);
 
 	// Avoid flickering
-	#if GTK_MAJOR_VERSION < 3
-		main_window_in_fullscreen = FALSE;
-		main_window_prerender_window_pixmap(-1, -1);
-		main_window_in_fullscreen = TRUE;
-	#else
-		main_window_in_fullscreen = FALSE;
-		set_scale_level_for_screen();
-		main_window_calculate_ideal_size(&main_window_width, &main_window_height);
-		set_scale_level_to_fit();
-		#if GDK_MAJOR_VERSION > 3 || GDK_MINOR_VERSION >= 22
-			cairo_region_t *region = gdk_window_get_clip_region(gtk_widget_get_window(GTK_WIDGET(main_window)));
-			GdkDrawingContext *drawing_context = gdk_window_begin_draw_frame(gtk_widget_get_window(GTK_WIDGET(main_window)), region);
-
-			cairo_t *cr = gdk_drawing_context_get_cairo_context(drawing_context);
-			window_draw_callback(GTK_WIDGET(main_window), cr, NULL);
-
-			gdk_window_end_draw_frame(gtk_widget_get_window(GTK_WIDGET(main_window)), drawing_context);
-			cairo_region_destroy(region);
-		#else
-			cairo_t *cr = gdk_cairo_create(gtk_widget_get_window(GTK_WIDGET(main_window)));
-			window_draw_callback(GTK_WIDGET(main_window), cr, NULL);
-			cairo_destroy(cr);
-		#endif
-		main_window_in_fullscreen = TRUE;
-	#endif
+	main_window_reset_pixmap(TRUE);
 }/*}}}*/
 inline void queue_draw() {/*{{{*/
 	if(!current_image_drawn) {
@@ -5022,9 +5038,8 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 					queue_draw();
 				}
 
-				#if GTK_MAJOR_VERSION < 3
-					main_window_prerender_window_pixmap(current_scale_level * image_width, current_scale_level * image_height);
-				#endif
+				// This is to prevent tearing
+				main_window_prerender_window_pixmap(current_scale_level * image_width, current_scale_level * image_height);
 			}
 			update_info_text(NULL);
 			break;
@@ -6031,11 +6046,7 @@ gboolean window_configure_callback(GtkWidget *widget, GdkEventConfigure *event, 
 	}
 	#endif
 
-
-	#if GTK_MAJOR_VERSION < 3
-		gdk_window_set_back_pixmap(GTK_WIDGET(main_window)->window, NULL, FALSE);
-	#endif
-
+	main_window_reset_pixmap(FALSE);
 	return FALSE;
 }/*}}}*/
 void handle_input_event(guint key_binding_value);
