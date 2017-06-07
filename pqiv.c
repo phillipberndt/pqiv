@@ -6463,6 +6463,18 @@ void window_realize_callback(GtkWidget *widget, gpointer user_data) {/*{{{*/
 	#if GTK_MAJOR_VERSION < 3 && !defined(_WIN32)
 		gdk_property_change(gtk_widget_get_window(GTK_WIDGET(main_window)), gdk_atom_intern("_GTK_THEME_VARIANT", FALSE), (GdkAtom)XA_STRING, 8, GDK_PROP_MODE_REPLACE, (guchar *)"dark", 4);
 	#endif
+
+	if(!option_transparent_background) {
+		// Ensure that extra pixels (shown e.g. while resizing the window) are black
+		#if GTK_MAJOR_VERSION >= 3
+			GdkRGBA black = { 0., 0., 0., 1. };
+			gdk_window_set_background_rgba(gtk_widget_get_window(GTK_WIDGET(main_window)), &black);
+		#else
+			GdkColor black = { 0, 0, 0, 0 };
+			gdk_rgb_find_color(gtk_widget_get_colormap(GTK_WIDGET(main_window), &black);
+			gdk_window_set_background(gtk_widget_get_window(GTK_WIDGET(main_window)), &black);
+		#endif
+	}
 }/*}}}*/
 void create_window() { /*{{{*/
 	if(main_window != NULL) {
