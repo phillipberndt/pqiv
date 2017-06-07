@@ -708,7 +708,9 @@ void window_hide_cursor();
 void window_show_cursor();
 void preload_adjacent_images();
 void window_center_mouse();
+gboolean main_window_calculate_ideal_size(int *new_window_width, int *new_window_height);
 void calculate_current_image_transformed_size(int *image_width, int *image_height);
+double calculate_auto_scale_level_for_screen(int image_width, int image_height);
 cairo_surface_t *get_scaled_image_surface_for_current_image();
 void window_state_into_fullscreen_actions();
 void window_state_out_of_fullscreen_actions();
@@ -1948,6 +1950,46 @@ gboolean main_window_resize_callback(gpointer user_data) {/*{{{*/
 
 	return FALSE;
 }/*}}}*/
+gboolean main_window_calculate_ideal_size(int *new_window_width, int *new_window_height) {/*{{{*/
+	if(!current_file_node) {
+		return FALSE;
+	}
+
+	// We only need to adjust the window if it is not in fullscreen
+	if(main_window_in_fullscreen) {
+		queue_draw();
+		return FALSE;
+	}
+
+	if(application_mode == DEFAULT) {
+		int image_width, image_height;
+		calculate_current_image_transformed_size(&image_width, &image_height);
+
+		*new_window_width = current_scale_level * image_width;
+		*new_window_height = current_scale_level * image_height;
+	}
+	#ifndef CONFIGURED_WITHOUT_MONTAGE_MODE
+	else if(application_mode == MONTAGE) {
+		const int screen_width = screen_geometry.width;
+		const int screen_height = screen_geometry.height;
+
+		*new_window_width = screen_width * option_scale_screen_fraction;
+		*new_window_height = screen_height * option_scale_screen_fraction;
+	}
+	#endif
+	else {
+		*new_window_width = *new_window_height = 0;
+	}
+
+	if(*new_window_height <= 0) {
+		*new_window_height = 1;
+	}
+	if(*new_window_width <= 0) {
+		*new_window_width = 1;
+	}
+
+	return TRUE;
+}/*}}}*/
 void main_window_adjust_for_image() {/*{{{*/
 	if(!current_file_node) {
 		return;
@@ -1960,32 +2002,8 @@ void main_window_adjust_for_image() {/*{{{*/
 	}
 
 	int new_window_width, new_window_height;
-
-	if(application_mode == DEFAULT) {
-		int image_width, image_height;
-		calculate_current_image_transformed_size(&image_width, &image_height);
-
-		new_window_width = current_scale_level * image_width;
-		new_window_height = current_scale_level * image_height;
-	}
-	#ifndef CONFIGURED_WITHOUT_MONTAGE_MODE
-	else if(application_mode == MONTAGE) {
-		const int screen_width = screen_geometry.width;
-		const int screen_height = screen_geometry.height;
-
-		new_window_width = screen_width * option_scale_screen_fraction;
-		new_window_height = screen_height * option_scale_screen_fraction;
-	}
-	#endif
-	else {
-		new_window_width = new_window_height = 0;
-	}
-
-	if(new_window_height <= 0) {
-		new_window_height = 1;
-	}
-	if(new_window_width <= 0) {
-		new_window_width = 1;
+	if(!main_window_calculate_ideal_size(&new_window_width, &new_window_height)) {
+		return;
 	}
 
 	GdkGeometry hints;
@@ -2393,6 +2411,48 @@ void image_loader_create_thumbnail(file_t *file) {/*{{{*/
 	file->thumbnail = surf;
 }/*}}}*/
 #endif
+void image_generate_prerendered_view(file_t *file, gboolean force, double scale_level) {/*{{{*/
+	if(option_lowmem) {
+		return;
+	}
+	if(file->file_flags && FILE_FLAGS_ANIMATION) {
+		return;
+	}
+	if(force && file->prerendered_view) {
+		cairo_surface_destroy(file->prerendered_view);
+		file->prerendered_view = NULL;
+	}
+	if(scale_level < 0) {
+		scale_level = calculate_auto_scale_level_for_screen(file->width, file->height);
+	}
+	int width = scale_level * file->width + .5;
+	int height = scale_level * file->height + .5;
+
+	if(file->prerendered_view) {
+		int old_width = cairo_image_surface_get_width(file->prerendered_view);
+		int old_height = cairo_image_surface_get_height(file->prerendered_view);
+
+		if(old_width != width || old_height != height) {
+			cairo_surface_destroy(file->prerendered_view);
+			file->prerendered_view = NULL;
+		}
+	}
+
+	if(!file->prerendered_view) {
+		cairo_surface_t *prerendered_view = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, width, height);
+		if(cairo_surface_status(prerendered_view) == CAIRO_STATUS_SUCCESS) {
+			cairo_t *cr = cairo_create(prerendered_view);
+			cairo_scale(cr, scale_level, scale_level);
+			cairo_set_operator(cr, CAIRO_OPERATOR_SOURCE);
+			if(file->file_type->draw_fn != NULL) {
+				file->file_type->draw_fn(file, cr);
+			}
+			cairo_destroy(cr);
+			file->prerendered_view = cairo_surface_reference(prerendered_view);
+		}
+		cairo_surface_destroy(prerendered_view);
+	}
+}/*}}}*/
 gpointer image_loader_thread(gpointer user_data) {/*{{{*/
 	while(TRUE) {
 		// Handle new queued image load
@@ -2515,6 +2575,10 @@ gpointer image_loader_thread(gpointer user_data) {/*{{{*/
 			if(node == current_file_node) {
 				current_image_drawn = FALSE;
 			}
+
+			// Prerender the default scaled view of the image for faster image transitions
+			image_generate_prerendered_view(FILE(node), FALSE, -1);
+
 			gdk_threads_add_idle((GSourceFunc)image_loaded_handler, node);
 		}
 
@@ -2602,6 +2666,10 @@ void unload_image(BOSNode *node) {/*{{{*/
 	file_t *file = FILE(node);
 	if(file->file_type->unload_fn != NULL) {
 		file->file_type->unload_fn(file);
+	}
+	if(file->prerendered_view) {
+		cairo_surface_destroy(file->prerendered_view);
+		file->prerendered_view = NULL;
 	}
 	file->is_loaded = FALSE;
 	file->force_reload = FALSE;
@@ -3164,7 +3232,6 @@ void transform_current_image(cairo_matrix_t *transformation) {/*{{{*/
 
 	// Resize and queue a redraw
 	main_window_adjust_for_image();
-	invalidate_current_scaled_image_surface();
 	gtk_widget_queue_draw(GTK_WIDGET(main_window));
 }/*}}}*/
 #ifndef CONFIGURED_WITHOUT_EXTERNAL_COMMANDS /* option --without-external-commands: Do not include support for calling external programs */
@@ -3532,6 +3599,16 @@ cairo_surface_t *get_scaled_image_surface_for_current_image() {/*{{{*/
 	if(!CURRENT_FILE->is_loaded) {
 		return NULL;
 	}
+	if(CURRENT_FILE->prerendered_view &&
+			(int)(current_scale_level * CURRENT_FILE->width + .5)  == cairo_image_surface_get_width(CURRENT_FILE->prerendered_view) &&
+			(int)(current_scale_level * CURRENT_FILE->height + .5) == cairo_image_surface_get_height(CURRENT_FILE->prerendered_view)) {
+		// If the file has a prerender at the correct size attached, we can reuse it here.
+		cairo_surface_t *retval = cairo_surface_reference(CURRENT_FILE->prerendered_view);
+		if(!option_lowmem) {
+			current_scaled_image_surface = cairo_surface_reference(retval);
+		}
+		return retval;
+	}
 
 	cairo_surface_t *retval = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, current_scale_level * CURRENT_FILE->width + .5, current_scale_level * CURRENT_FILE->height + .5);
 	if(cairo_surface_status(retval) != CAIRO_STATUS_SUCCESS) {
@@ -3782,6 +3859,12 @@ void do_jump_dialog() { /* {{{ */
 // }}}
 /* Main window functions {{{ */
 void window_fullscreen() {/*{{{*/
+	if(is_current_file_loaded()) {
+		main_window_in_fullscreen = TRUE;
+		image_generate_prerendered_view(CURRENT_FILE, FALSE, -1);
+		main_window_in_fullscreen = FALSE;
+	}
+
 	// Bugfix for Awesome WM: If hints are active, windows are fullscreen'ed honoring the aspect ratio
 	if(option_enforce_window_aspect_ratio) {
 		gtk_window_set_geometry_hints(main_window, NULL, NULL, 0);
@@ -3801,6 +3884,12 @@ void window_fullscreen() {/*{{{*/
 	gtk_window_fullscreen(main_window);
 }/*}}}*/
 void window_unfullscreen() {/*{{{*/
+	if(is_current_file_loaded()) {
+		main_window_in_fullscreen = FALSE;
+		image_generate_prerendered_view(CURRENT_FILE, FALSE, -1);
+		main_window_in_fullscreen = TRUE;
+	}
+
 	#ifndef _WIN32
 		if(!wm_supports_fullscreen) {
 			// WM does not support _NET_WM_ACTION_FULLSCREEN or no WM present
@@ -4742,6 +4831,77 @@ gboolean window_draw_callback(GtkWidget *widget, cairo_t *cr_arg, gpointer user_
 		return TRUE;
 	}/*}}}*/
 #endif
+double calculate_scale_level_to_fit(int image_width, int image_height, int window_width, int window_height) {/*{{{*/
+	if(scale_override || option_scale == FIXED_SCALE) {
+		return current_scale_level;
+	}
+
+	// Calculate diplay width/heights with rotation, but without scaling, applied
+	gdouble scale_level = 1.0;
+
+	// Only scale if scaling is not disabled. The alternative is to also
+	// scale for no-scaling mode if (!main_window_in_fullscreen). This
+	// effectively disables the no-scaling mode in non-fullscreen. I
+	// implemented that this way, but changed it per user request.
+	if(option_scale == AUTO_SCALEUP || option_scale == AUTO_SCALEDOWN) {
+		if(option_scale == AUTO_SCALEUP) {
+			// Scale up
+			if(image_width * scale_level < window_width) {
+				scale_level = window_width * 1.0 / image_width;
+			}
+
+			if(image_height * scale_level < window_height) {
+				scale_level = window_height * 1.0 / image_height;
+			}
+		}
+
+		// Scale down
+		if(window_height < scale_level * image_height) {
+			scale_level = window_height * 1.0 / image_height;
+		}
+		if(window_width < scale_level * image_width) {
+			scale_level = window_width * 1.0 / image_width;
+		}
+	}
+	else if(option_scale == SCALE_TO_FIT) {
+		scale_level = fmin(scale_to_fit_size.width * 1. / image_width, scale_to_fit_size.height * 1. / image_height);
+	}
+
+	return scale_level;
+}/*}}}*/
+double calculate_auto_scale_level_for_screen(int image_width, int image_height) {/*{{{*/
+	double scale_level = current_scale_level;
+
+	if(!main_window_in_fullscreen) {
+		const int screen_width = screen_geometry.width;
+		const int screen_height = screen_geometry.height;
+
+		if(option_scale != FIXED_SCALE && !scale_override) {
+			scale_level = 1.0;
+			if(option_scale == AUTO_SCALEUP) {
+				// Scale up to screen size
+				scale_level = screen_width * option_scale_screen_fraction / image_width;
+			}
+			else if(option_scale == SCALE_TO_FIT) {
+				scale_level = fmin(scale_to_fit_size.width * 1. / image_width, scale_to_fit_size.height * 1. / image_height);
+			}
+			else if(option_scale == AUTO_SCALEDOWN && image_width > screen_width * option_scale_screen_fraction) {
+				// Scale down to screen size
+				scale_level = screen_width * option_scale_screen_fraction / image_width;
+			}
+			// In both cases: If the height exceeds screen size, scale
+			// down
+			if((option_scale == AUTO_SCALEUP || option_scale == AUTO_SCALEDOWN) && image_height * scale_level > screen_height * option_scale_screen_fraction) {
+				scale_level = screen_height * option_scale_screen_fraction / image_height;
+			}
+		}
+	}
+	else {
+		scale_level = calculate_scale_level_to_fit(image_width, image_height, screen_geometry.width, screen_geometry.height);
+	}
+
+	return scale_level;
+}/*}}}*/
 void set_scale_level_for_screen() {/*{{{*/
 	if(!current_file_node) {
 		return;
@@ -4750,31 +4910,7 @@ void set_scale_level_for_screen() {/*{{{*/
 		// Calculate diplay width/heights with rotation, but without scaling, applied
 		int image_width, image_height;
 		calculate_current_image_transformed_size(&image_width, &image_height);
-		const int screen_width = screen_geometry.width;
-		const int screen_height = screen_geometry.height;
-
-		if(option_scale == FIXED_SCALE || scale_override) {
-			return;
-		}
-		else {
-			current_scale_level = 1.0;
-			if(option_scale == AUTO_SCALEUP) {
-				// Scale up to screen size
-				current_scale_level = screen_width * option_scale_screen_fraction / image_width;
-			}
-			else if(option_scale == SCALE_TO_FIT) {
-				current_scale_level = fmin(scale_to_fit_size.width * 1. / image_width, scale_to_fit_size.height * 1. / image_height);
-			}
-			else if(option_scale == AUTO_SCALEDOWN && image_width > screen_width * option_scale_screen_fraction) {
-				// Scale down to screen size
-				current_scale_level = screen_width * option_scale_screen_fraction / image_width;
-			}
-			// In both cases: If the height exceeds screen size, scale
-			// down
-			if((option_scale == AUTO_SCALEUP || option_scale == AUTO_SCALEDOWN) && image_height * current_scale_level > screen_height * option_scale_screen_fraction) {
-				current_scale_level = screen_height * option_scale_screen_fraction / image_height;
-			}
-		}
+		current_scale_level = calculate_auto_scale_level_for_screen(image_width, image_height);
 	}
 	else {
 		// In fullscreen, the screen size and window size match, so the
@@ -4799,35 +4935,7 @@ void set_scale_level_to_fit() {/*{{{*/
 		int image_width, image_height;
 		calculate_current_image_transformed_size(&image_width, &image_height);
 
-		gdouble new_scale_level = 1.0;
-
-		// Only scale if scaling is not disabled. The alternative is to also
-		// scale for no-scaling mode if (!main_window_in_fullscreen). This
-		// effectively disables the no-scaling mode in non-fullscreen. I
-		// implemented that this way, but changed it per user request.
-		if(option_scale == AUTO_SCALEUP || option_scale == AUTO_SCALEDOWN) {
-			if(option_scale == AUTO_SCALEUP) {
-				// Scale up
-				if(image_width * new_scale_level < main_window_width) {
-					new_scale_level = main_window_width * 1.0 / image_width;
-				}
-
-				if(image_height * new_scale_level < main_window_height) {
-					new_scale_level = main_window_height * 1.0 / image_height;
-				}
-			}
-
-			// Scale down
-			if(main_window_height < new_scale_level * image_height) {
-				new_scale_level = main_window_height * 1.0 / image_height;
-			}
-			if(main_window_width < new_scale_level * image_width) {
-				new_scale_level = main_window_width * 1.0 / image_width;
-			}
-		}
-		else if(option_scale == SCALE_TO_FIT) {
-			new_scale_level = fmin(scale_to_fit_size.width * 1. / image_width, scale_to_fit_size.height * 1. / image_height);
-		}
+		double new_scale_level = calculate_scale_level_to_fit(image_width, image_height, main_window_width, main_window_height);
 
 		if(fabs(new_scale_level - current_scale_level) > DBL_EPSILON) {
 			current_scale_level = new_scale_level;
@@ -4919,6 +5027,7 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 				scale_override = TRUE;
 			}
 			invalidate_current_scaled_image_surface();
+			image_generate_prerendered_view(CURRENT_FILE, FALSE, current_scale_level);
 			current_image_drawn = FALSE;
 			if(main_window_in_fullscreen) {
 				gtk_widget_queue_draw(GTK_WIDGET(main_window));
@@ -4973,6 +5082,7 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 			current_image_drawn = FALSE;
 			current_shift_x = 0;
 			current_shift_y = 0;
+			image_generate_prerendered_view(CURRENT_FILE, FALSE, -1);
 			set_scale_level_for_screen();
 			main_window_adjust_for_image();
 			invalidate_current_scaled_image_surface();
@@ -5005,6 +5115,7 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 			if(!is_current_file_loaded()) return;
 			current_image_drawn = FALSE;
 			scale_override = FALSE;
+			image_generate_prerendered_view(CURRENT_FILE, FALSE, -1);
 			set_scale_level_for_screen();
 			main_window_adjust_for_image();
 			invalidate_current_scaled_image_surface();
