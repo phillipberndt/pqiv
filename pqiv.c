@@ -1957,7 +1957,6 @@ void main_window_prerender_window_pixmap(int new_window_width, int new_window_he
 	}
 
 	int ow = main_window_width, oh = main_window_height, csx = current_shift_x, csy = current_shift_y;
-	double csl = current_scale_level;
 	if(new_window_width == -1 || new_window_width == -1) {
 		set_scale_level_for_screen();
 		main_window_calculate_ideal_size(&main_window_width, &main_window_height);
@@ -2000,12 +1999,14 @@ void main_window_prerender_window_pixmap(int new_window_width, int new_window_he
 	#endif
 	current_shift_x = csx;
 	current_shift_y = csy;
-	current_scale_level = csl;
+
+	// We deliberately do not reset the scale level in order to be able to
+	// resue the current_scaled_image_surface
 }
 void main_window_reset_pixmap(gboolean clear_window) {
 	#if GTK_MAJOR_VERSION < 3
 		if(option_transparent_background) {
-			gdk_window_set_back_pixmap(window, NULL, FALSE);
+			gdk_window_set_back_pixmap(GTK_WIDGET(main_window)->window, NULL, FALSE);
 		}
 		else {
 			GdkColor black = { 0, 0, 0, 0 };
