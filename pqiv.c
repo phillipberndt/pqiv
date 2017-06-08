@@ -6478,7 +6478,7 @@ void window_realize_callback(GtkWidget *widget, gpointer user_data) {/*{{{*/
 			gdk_window_set_background_rgba(gtk_widget_get_window(GTK_WIDGET(main_window)), &black);
 		#else
 			GdkColor black = { 0, 0, 0, 0 };
-			gdk_rgb_find_color(gtk_widget_get_colormap(GTK_WIDGET(main_window), &black);
+			gdk_rgb_find_color(gtk_widget_get_colormap(GTK_WIDGET(main_window)), &black);
 			gdk_window_set_background(gtk_widget_get_window(GTK_WIDGET(main_window)), &black);
 		#endif
 	}
