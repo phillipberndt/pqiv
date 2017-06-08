@@ -3231,6 +3231,7 @@ void transform_current_image(cairo_matrix_t *transformation) {/*{{{*/
 	cairo_matrix_multiply(&current_transformation, &operand, transformation);
 
 	// Resize and queue a redraw
+	set_scale_level_for_screen();
 	main_window_adjust_for_image();
 	gtk_widget_queue_draw(GTK_WIDGET(main_window));
 }/*}}}*/
