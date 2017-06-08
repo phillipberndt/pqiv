@@ -708,12 +708,14 @@ void window_hide_cursor();
 void window_show_cursor();
 void preload_adjacent_images();
 void window_center_mouse();
+double calculate_scale_level_to_fit(int image_width, int image_height, int window_width, int window_height);
 gboolean main_window_calculate_ideal_size(int *new_window_width, int *new_window_height);
 void calculate_current_image_transformed_size(int *image_width, int *image_height);
 double calculate_auto_scale_level_for_screen(int image_width, int image_height);
 cairo_surface_t *get_scaled_image_surface_for_current_image();
 void window_state_into_fullscreen_actions();
 void window_state_out_of_fullscreen_actions();
+gboolean window_draw_callback(GtkWidget *widget, cairo_t *cr_arg, gpointer user_data);
 BOSNode *image_pointer_by_name(gchar *display_name);
 BOSNode *relative_image_pointer(ptrdiff_t movement);
 void file_tree_free_helper(BOSNode *node);
@@ -2156,9 +2158,9 @@ gboolean image_loaded_handler(gconstpointer node) {/*{{{*/
 	if(!current_image_drawn) {
 		scale_override = FALSE;
 	}
+	invalidate_current_scaled_image_surface();
 	set_scale_level_for_screen();
 	main_window_adjust_for_image();
-	invalidate_current_scaled_image_surface();
 	current_image_drawn = FALSE;
 	queue_draw();
 
@@ -3231,8 +3233,14 @@ void transform_current_image(cairo_matrix_t *transformation) {/*{{{*/
 	cairo_matrix_multiply(&current_transformation, &operand, transformation);
 
 	// Resize and queue a redraw
+	double old_scale_level = current_scale_level;
 	set_scale_level_for_screen();
+	if(fabs(old_scale_level - current_scale_level) > DBL_EPSILON) {
+		invalidate_current_scaled_image_surface();
+		image_generate_prerendered_view(CURRENT_FILE, FALSE, current_scale_level);
+	}
 	main_window_adjust_for_image();
+
 	gtk_widget_queue_draw(GTK_WIDGET(main_window));
 }/*}}}*/
 #ifndef CONFIGURED_WITHOUT_EXTERNAL_COMMANDS /* option --without-external-commands: Do not include support for calling external programs */
@@ -3614,6 +3622,9 @@ cairo_surface_t *get_scaled_image_surface_for_current_image() {/*{{{*/
 	else if(CURRENT_FILE->prerendered_view) {
 		printf("Info: Cache miss! %dx%d (cached) vs %dx%d (requested)\n", cairo_image_surface_get_width(CURRENT_FILE->prerendered_view), cairo_image_surface_get_height(CURRENT_FILE->prerendered_view),
 			(int)(current_scale_level * CURRENT_FILE->width + .5), (int)(current_scale_level * CURRENT_FILE->height + .5));
+	}
+	else {
+		printf("Info: Cache miss! Nothing present %dx%d (requested)\n", (int)(current_scale_level * CURRENT_FILE->width + .5), (int)(current_scale_level * CURRENT_FILE->height + .5));
 	}
 	*/
 
@@ -5065,9 +5076,9 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 			current_image_drawn = FALSE;
 			current_shift_x = 0;
 			current_shift_y = 0;
+			invalidate_current_scaled_image_surface();
 			set_scale_level_for_screen();
 			main_window_adjust_for_image();
-			invalidate_current_scaled_image_surface();
 			gtk_widget_queue_draw(GTK_WIDGET(main_window));
 			switch(option_scale) {
 				case NO_SCALING: update_info_text("Scaling disabled"); break;
@@ -5089,10 +5100,10 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 			current_image_drawn = FALSE;
 			current_shift_x = 0;
 			current_shift_y = 0;
+			invalidate_current_scaled_image_surface();
 			image_generate_prerendered_view(CURRENT_FILE, FALSE, -1);
 			set_scale_level_for_screen();
 			main_window_adjust_for_image();
-			invalidate_current_scaled_image_surface();
 			gtk_widget_queue_draw(GTK_WIDGET(main_window));
 			break;
 
@@ -5122,10 +5133,10 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 			if(!is_current_file_loaded()) return;
 			current_image_drawn = FALSE;
 			scale_override = FALSE;
+			invalidate_current_scaled_image_surface();
 			image_generate_prerendered_view(CURRENT_FILE, FALSE, -1);
 			set_scale_level_for_screen();
 			main_window_adjust_for_image();
-			invalidate_current_scaled_image_surface();
 			gtk_widget_queue_draw(GTK_WIDGET(main_window));
 			update_info_text(NULL);
 			break;
@@ -5403,9 +5414,9 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 			scale_to_fit_size.width = parameter.p2short.p1;
 			scale_to_fit_size.height = parameter.p2short.p2;
 
+			invalidate_current_scaled_image_surface();
 			set_scale_level_for_screen();
 			main_window_adjust_for_image();
-			invalidate_current_scaled_image_surface();
 			gtk_widget_queue_draw(GTK_WIDGET(main_window));
 			{
 				gchar info_text[255];
