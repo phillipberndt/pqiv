@@ -716,6 +716,7 @@ cairo_surface_t *get_scaled_image_surface_for_current_image();
 void window_state_into_fullscreen_actions();
 void window_state_out_of_fullscreen_actions();
 gboolean window_draw_callback(GtkWidget *widget, cairo_t *cr_arg, gpointer user_data);
+void window_draw_now_for_window_size(int window_width, int window_height, double scale_level, gboolean fullscreen);
 BOSNode *image_pointer_by_name(gchar *display_name);
 BOSNode *relative_image_pointer(ptrdiff_t movement);
 void file_tree_free_helper(BOSNode *node);
@@ -2053,6 +2054,9 @@ void main_window_adjust_for_image() {/*{{{*/
 			gdk_threads_add_idle(main_window_resize_callback, NULL);
 		}
 		else {
+			// Required to avoid tearing
+			window_draw_now_for_window_size(new_window_width, new_window_height, current_scale_level, main_window_in_fullscreen);
+
 			if(option_enforce_window_aspect_ratio) {
 				gtk_window_set_geometry_hints(main_window, NULL, &hints, GDK_HINT_ASPECT);
 			}
@@ -3899,6 +3903,14 @@ void window_fullscreen() {/*{{{*/
 		}
 	#endif
 
+	// Required to avoid tearing
+	invalidate_current_scaled_image_surface();
+	const int window_width = screen_geometry.width, window_height = screen_geometry.height;
+	int image_width, image_height;
+	calculate_current_image_transformed_size(&image_width, &image_height);
+	double scale_level = calculate_scale_level_to_fit(image_width, image_height, window_width, window_height);
+	window_draw_now_for_window_size(window_width, window_height, scale_level, TRUE);
+
 	gtk_window_fullscreen(main_window);
 }/*}}}*/
 void window_unfullscreen() {/*{{{*/
@@ -3916,6 +3928,16 @@ void window_unfullscreen() {/*{{{*/
 			return;
 		}
 	#endif
+
+	// Required to avoid tearing
+	invalidate_current_scaled_image_surface();
+	int window_width, window_height;
+	if(main_window_calculate_ideal_size(&window_width, &window_height)) {
+		int image_width, image_height;
+		calculate_current_image_transformed_size(&image_width, &image_height);
+		double scale_level = calculate_scale_level_to_fit(image_width, image_height, window_width, window_height);
+		window_draw_now_for_window_size(window_width, window_height, scale_level, FALSE);
+	}
 
 	gtk_window_unfullscreen(main_window);
 }/*}}}*/
@@ -4556,6 +4578,53 @@ gboolean window_draw_thumbnail_montage(cairo_t *cr_arg) {/*{{{*/
 	return TRUE;
 }/*}}}*/
 #endif
+void window_draw_now_for_window_size(int window_width, int window_height, double scale_level, gboolean fullscreen) {
+	int ow = main_window_width, oh = main_window_height;
+	double osl = current_scale_level;
+	gboolean ofs = main_window_in_fullscreen;
+	main_window_width = window_width;
+	main_window_height = window_height;
+	current_scale_level = scale_level;
+	main_window_in_fullscreen = fullscreen;
+	current_info_text_cached_font_size = -1;
+	#if GDK_MAJOR_VERSION > 3 || GDK_MINOR_VERSION >= 22
+			cairo_region_t *region = gdk_window_get_clip_region(gtk_widget_get_window(GTK_WIDGET(main_window)));
+			GdkDrawingContext *drawing_context = gdk_window_begin_draw_frame(gtk_widget_get_window(GTK_WIDGET(main_window)), region);
+			cairo_t *cr = gdk_drawing_context_get_cairo_context(drawing_context);
+			window_draw_callback(GTK_WIDGET(main_window), cr, NULL);
+			cairo_surface_flush(cairo_get_target(cr));
+			gdk_window_end_draw_frame(gtk_widget_get_window(GTK_WIDGET(main_window)), drawing_context);
+			cairo_region_destroy(region);
+	#else
+			GdkWindow *window = gtk_widget_get_window(GTK_WIDGET(main_window));
+			#if GDK_MAJOR_VERSION > 2
+			cairo_region_t *region = gdk_window_get_clip_region(window);
+			gdk_window_begin_paint_region(window, region);
+			cairo_region_destroy(region);
+			#else
+			GdkRectangle rect = { 0, 0, main_window_width, main_window_height };
+			gdk_window_invalidate_rect(window, &rect, TRUE);
+			GdkRegion *region = gdk_window_get_update_area(window);
+			gdk_window_begin_paint_region(window, region);
+			gdk_region_destroy(region);
+			#endif
+			cairo_t *cr = gdk_cairo_create(window);
+			cairo_save(cr);
+			window_draw_callback(GTK_WIDGET(main_window), cr, NULL);
+			cairo_restore(cr);
+			/*cairo_set_source_rgba(cr, 1., 0, 0, .5);
+			cairo_set_operator(cr, CAIRO_OPERATOR_OVERLAY);
+			cairo_paint(cr);*/
+			cairo_surface_flush(cairo_get_target(cr));
+			cairo_destroy(cr);
+			gdk_window_end_paint(window);
+	#endif
+	main_window_width = ow;
+	main_window_height = oh;
+	current_scale_level = osl;
+	main_window_in_fullscreen = ofs;
+	current_info_text_cached_font_size = -1;
+}
 gboolean window_draw_callback(GtkWidget *widget, cairo_t *cr_arg, gpointer user_data) {/*{{{*/
 	// Continue an action chain, if one exists The placement of this is a
 	// compromise: What we really want is to perform actions that follow an
