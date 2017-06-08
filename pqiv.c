@@ -1965,8 +1965,8 @@ gboolean main_window_calculate_ideal_size(int *new_window_width, int *new_window
 		int image_width, image_height;
 		calculate_current_image_transformed_size(&image_width, &image_height);
 
-		*new_window_width = current_scale_level * image_width;
-		*new_window_height = current_scale_level * image_height;
+		*new_window_width = current_scale_level * image_width + 0.5;
+		*new_window_height = current_scale_level * image_height + 0.5;
 	}
 	#ifndef CONFIGURED_WITHOUT_MONTAGE_MODE
 	else if(application_mode == MONTAGE) {
@@ -3600,8 +3600,8 @@ cairo_surface_t *get_scaled_image_surface_for_current_image() {/*{{{*/
 		return NULL;
 	}
 	if(CURRENT_FILE->prerendered_view &&
-			(int)(current_scale_level * CURRENT_FILE->width + .5)  == cairo_image_surface_get_width(CURRENT_FILE->prerendered_view) &&
-			(int)(current_scale_level * CURRENT_FILE->height + .5) == cairo_image_surface_get_height(CURRENT_FILE->prerendered_view)) {
+			fabs(current_scale_level * CURRENT_FILE->width + .5 - cairo_image_surface_get_width(CURRENT_FILE->prerendered_view)) < 2 &&
+			fabs(current_scale_level * CURRENT_FILE->height + .5 - cairo_image_surface_get_height(CURRENT_FILE->prerendered_view)) < 2) {
 		// If the file has a prerender at the correct size attached, we can reuse it here.
 		cairo_surface_t *retval = cairo_surface_reference(CURRENT_FILE->prerendered_view);
 		if(!option_lowmem) {
@@ -3609,6 +3609,12 @@ cairo_surface_t *get_scaled_image_surface_for_current_image() {/*{{{*/
 		}
 		return retval;
 	}
+	/*
+	else if(CURRENT_FILE->prerendered_view) {
+		printf("Info: Cache miss! %dx%d (cached) vs %dx%d (requested)\n", cairo_image_surface_get_width(CURRENT_FILE->prerendered_view), cairo_image_surface_get_height(CURRENT_FILE->prerendered_view),
+			(int)(current_scale_level * CURRENT_FILE->width + .5), (int)(current_scale_level * CURRENT_FILE->height + .5));
+	}
+	*/
 
 	cairo_surface_t *retval = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, current_scale_level * CURRENT_FILE->width + .5, current_scale_level * CURRENT_FILE->height + .5);
 	if(cairo_surface_status(retval) != CAIRO_STATUS_SUCCESS) {
