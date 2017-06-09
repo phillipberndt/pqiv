@@ -4592,9 +4592,9 @@ void window_prerender_background_pixmap(int window_width, int window_height, dou
 		moveresize. One will typically see tearing effects there, because the
 		time between resizing the window, pqiv receiving an expose event and
 		actually drawing is to large to be unnoticable. This function resolves
-		the issue the issue by assigning a background pixmap to the window
-		containing the new contents of the window. X11 will have something to
-		display until the actual drawing pass is done, and things look better.
+		the issue by assigning a background pixmap to the window containing the
+		new contents of the window. X11 will have something to display until
+		the actual drawing pass is done, and things look better.
 
 		The downside is that everything is drawn twice. This isn't a huge problem
 		unless --low-memory is set, where, due to the disabled cache, the scaled
