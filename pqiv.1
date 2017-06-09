@@ -399,7 +399,6 @@ Flip the current image vertically.
 .TP
 .BR goto_directory_relative(INT)
 Jump to the \fIn\fR'th next or previous directory.
-(This is by default bound to \fIControl+(Back-)Space\fR.)
 .TP
 .BR goto_earlier_file()
 Return to the image that was opened before the current one. (This is by default
@@ -413,6 +412,15 @@ Jump to a file given by its displayed name.
 .TP
 .BR goto_file_relative(INT)
 Jump to the \fIn\fR'th next or previous file.
+.TP
+.BR goto_logical_directory_relative(INT)
+Jump to the \fIn\fR'th next or previous logical directory. Any multi-page
+documents, such as PDFs or archive files, are regarded as logical directories.
+Directories within archive files, recognizable by a slash in the archive
+member's file name, are regarded as directories too. Basically, the rule is
+that two images are in the same logical directory if no character following
+the common prefix of their file names in either name is a slash or a hash
+symbol. (This is by default bound to \fIControl+(Back-)Space\fR.)
 .TP
 .BR hardlink_current_image()
 Hardlink the current image to \fI./.pqiv-select/\fR, or copy it if hardlinking

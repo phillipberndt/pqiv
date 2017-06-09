@@ -515,9 +515,9 @@ static const struct default_key_bindings_struct {
 	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_a                ), ACTION_HARDLINK_CURRENT_IMAGE          , { 0   }},
 	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_period           ), ACTION_ANIMATION_STEP                  , { 1   }},
 	{ DEFAULT, KEY_BINDING_VALUE(0 , GDK_CONTROL_MASK , GDK_KEY_period           ), ACTION_ANIMATION_CONTINUE              , { 0   }},
-	{ DEFAULT, KEY_BINDING_VALUE(0 , GDK_CONTROL_MASK , GDK_KEY_BackSpace        ), ACTION_GOTO_DIRECTORY_RELATIVE         , { -1  }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , GDK_CONTROL_MASK , GDK_KEY_BackSpace        ), ACTION_GOTO_LOGICAL_DIRECTORY_RELATIVE , { -1  }},
 	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_BackSpace        ), ACTION_GOTO_FILE_RELATIVE              , { -1  }},
-	{ DEFAULT, KEY_BINDING_VALUE(0 , GDK_CONTROL_MASK , GDK_KEY_space            ), ACTION_GOTO_DIRECTORY_RELATIVE         , { 1   }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , GDK_CONTROL_MASK , GDK_KEY_space            ), ACTION_GOTO_LOGICAL_DIRECTORY_RELATIVE , { 1   }},
 	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_space            ), ACTION_GOTO_FILE_RELATIVE              , { 1   }},
 	{ DEFAULT, KEY_BINDING_VALUE(0 , GDK_CONTROL_MASK , GDK_KEY_Page_Up          ), ACTION_GOTO_FILE_RELATIVE              , { 10  }},
 	{ DEFAULT, KEY_BINDING_VALUE(0 , GDK_CONTROL_MASK , GDK_KEY_KP_Page_Up       ), ACTION_GOTO_FILE_RELATIVE              , { 10  }},
@@ -621,6 +621,7 @@ const struct pqiv_action_descriptor {
 	{ "toggle_slideshow", PARAMETER_NONE },
 	{ "hardlink_current_image", PARAMETER_NONE },
 	{ "goto_directory_relative", PARAMETER_INT },
+	{ "goto_logical_directory_relative", PARAMETER_INT },
 	{ "goto_file_relative", PARAMETER_INT },
 	{ "quit", PARAMETER_NONE },
 	{ "numeric_command", PARAMETER_INT },
@@ -3037,14 +3038,14 @@ void relative_image_movement(ptrdiff_t movement) {/*{{{*/
 		}
 	}
 }/*}}}*/
-BOSNode *directory_image_movement_find_different_directory(BOSNode *current, int direction) {/*{{{*/
+BOSNode *directory_image_movement_find_different_directory(BOSNode *current, int direction, gboolean logical_directories) {/*{{{*/
 	// Return a reference to the first image with a different directory than current
 	// when searching in direction direction (-1 or 1)
 	//
 	// This function does not perform any locking!
 	BOSNode *target = current;
 
-	if(FILE(current)->file_flags & FILE_FLAGS_MEMORY_IMAGE) {
+	if(!logical_directories && FILE(current)->file_flags & FILE_FLAGS_MEMORY_IMAGE) {
 		target = direction > 0 ? bostree_next_node(target) : bostree_previous_node(target);
 		if(!target) {
 			target = direction > 0 ? bostree_select(file_tree, 0) : bostree_select(file_tree, bostree_node_count(file_tree) - 1);
@@ -3060,33 +3061,39 @@ BOSNode *directory_image_movement_find_different_directory(BOSNode *current, int
 
 			// Check for special abort conditions: Again at first image (no different directory found),
 			// or memory image
-			if(target == current || (FILE(target)->file_flags & FILE_FLAGS_MEMORY_IMAGE)) {
+			if(target == current || (!logical_directories && FILE(target)->file_flags & FILE_FLAGS_MEMORY_IMAGE)) {
 				break;
 			}
+
+			const char *target_name  = logical_directories ? FILE(target)->display_name  : FILE(target)->file_name;
+			const char *current_name = logical_directories ? FILE(current)->display_name : FILE(current)->file_name;
 
 			// Check if the directory changed. If it did, abort the search.
 			// Search for the first byte where the file names differ
 			unsigned int pos = 0;
-			while(FILE(target)->file_name[pos] && FILE(current)->file_name[pos] && FILE(target)->file_name[pos] == FILE(current)->file_name[pos]) {
+			while(target_name[pos] && current_name[pos] && target_name[pos] == current_name[pos]) {
 				pos++;
 			}
 
-			// The path changed if either
+			// The physical path changed if either
 			//  * the target file name contains a slash at or after pos
 			//    (e.g. current -> ./foo/bar.png, target -> ./foo2/baz.png)
 			//  * the current file name contains a slash at or after pos
 			//    (e.g. current -> ./foo/bar.png, target -> ./baz.png
+			// The logical path changed if the same holds, only that the
+			// special character '#' (used to separate entries from the archive
+			// name in archives) counts as a directory separator, too.
 			gboolean directory_changed = FALSE;
-			for(unsigned int i=pos; FILE(target)->file_name[i]; i++) {
-				if(FILE(target)->file_name[i] == G_DIR_SEPARATOR) {
+			for(unsigned int i=pos; target_name[i]; i++) {
+				if(target_name[i] == G_DIR_SEPARATOR || (logical_directories && target_name[i] == '#')) {
 					// Gotcha.
 					directory_changed = TRUE;
 					break;
 				}
 			}
 			if(!directory_changed) {
-				for(unsigned int i=pos; FILE(current)->file_name[i]; i++) {
-					if(FILE(current)->file_name[i] == G_DIR_SEPARATOR) {
+				for(unsigned int i=pos; current_name[i]; i++) {
+					if(current_name[i] == G_DIR_SEPARATOR || (logical_directories && current_name[i] == '#')) {
 						directory_changed = TRUE;
 						break;
 					}
@@ -3100,7 +3107,7 @@ BOSNode *directory_image_movement_find_different_directory(BOSNode *current, int
 
 	return target;
 }/*}}}*/
-BOSNode *relative_image_pointer_directory(int direction) {/*{{{*/
+BOSNode *relative_image_pointer_directory(int direction, gboolean logical_directories) {/*{{{*/
 	// Directory movement
 	//
 	// This should be consistent, i.e. movements in different directions should
@@ -3112,14 +3119,14 @@ BOSNode *relative_image_pointer_directory(int direction) {/*{{{*/
 
 	if(direction == 1) {
 		// Forward searches are trivial
-		target = directory_image_movement_find_different_directory(current, 1);
+		target = directory_image_movement_find_different_directory(current, 1, logical_directories);
 	}
 	else {
 		// Bardward searches are more involved, because we want to end up at the first image
 		// of the previous directory, not at the last one. The trick is to
 		// search backwards twice and then again go forward by one image.
-		target = directory_image_movement_find_different_directory(current, -1);
-		target = directory_image_movement_find_different_directory(target, -1);
+		target = directory_image_movement_find_different_directory(current, -1, logical_directories);
+		target = directory_image_movement_find_different_directory(target, -1, logical_directories);
 
 		if(target != current) {
 			target = bostree_next_node(target);
@@ -3131,7 +3138,7 @@ BOSNode *relative_image_pointer_directory(int direction) {/*{{{*/
 
 	return target;
 }/*}}}*/
-void directory_image_movement(int direction) {/*{{{*/
+void directory_image_movement(int direction, gboolean logical_directories) {/*{{{*/
 	// Directory movement
 	//
 	// This should be consistent, i.e. movements in different directions should
@@ -3139,7 +3146,7 @@ void directory_image_movement(int direction) {/*{{{*/
 	// complex.
 
 	D_LOCK(file_tree);
-	BOSNode *target = bostree_node_weak_ref(relative_image_pointer_directory(direction));
+	BOSNode *target = bostree_node_weak_ref(relative_image_pointer_directory(direction, logical_directories));
 	D_UNLOCK(file_tree);
 
 	if(application_mode == DEFAULT) {
@@ -4291,7 +4298,15 @@ void window_draw_thumbnail_montage_show_binding_overlays_looper(gpointer key, gp
 				}
 				break;
 			case ACTION_GOTO_DIRECTORY_RELATIVE:
-				target_node = relative_image_pointer_directory(binding->parameter.pint);
+				target_node = relative_image_pointer_directory(binding->parameter.pint, FALSE);
+				if(target_node) {
+					target_index = bostree_rank(target_node);
+					data.current_y = target_index / n_thumbs_x - montage_window_control.scroll_y;
+					data.current_x = target_index % n_thumbs_x;
+				}
+				break;
+			case ACTION_GOTO_LOGICAL_DIRECTORY_RELATIVE:
+				target_node = relative_image_pointer_directory(binding->parameter.pint, TRUE);
 				if(target_node) {
 					target_index = bostree_rank(target_node);
 					data.current_y = target_index / n_thumbs_x - montage_window_control.scroll_y;
@@ -5108,7 +5123,12 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 			break;
 
 		case ACTION_GOTO_DIRECTORY_RELATIVE:
-			directory_image_movement(parameter.pint);
+			directory_image_movement(parameter.pint, FALSE);
+			return;
+			break;
+
+		case ACTION_GOTO_LOGICAL_DIRECTORY_RELATIVE:
+			directory_image_movement(parameter.pint, TRUE);
 			return;
 			break;
 
