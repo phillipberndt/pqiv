@@ -6201,7 +6201,7 @@ gboolean window_configure_callback(GtkWidget *widget, GdkEventConfigure *event, 
 		requested_main_window_width = -1;
 	}
 
-	if(main_window_width != event->width || main_window_height != event->height) {
+	if(wm_ignores_size_requests || (main_window_width != event->width || main_window_height != event->height)) {
 		// Reset cached font size for info text
 		#ifndef CONFIGURED_WITHOUT_INFO_TEXT
 			current_info_text_cached_font_size = -1;
