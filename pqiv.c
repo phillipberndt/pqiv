@@ -179,6 +179,11 @@ gboolean current_image_drawn = FALSE;
 GtkWindow *main_window;
 gboolean main_window_visible = FALSE;
 
+// Detection of tiled WMs: They should ignore our resize events
+gint requested_main_window_width = -1;
+gint requested_main_window_height = -1;
+gboolean wm_ignores_size_requests = FALSE;
+
 gint main_window_width = 10;
 gint main_window_height = 10;
 gboolean main_window_in_fullscreen = FALSE;
@@ -1931,6 +1936,9 @@ gboolean window_move_helper_callback(gpointer user_data) {/*{{{*/
 	return FALSE;
 }/*}}}*/
 gboolean main_window_resize_callback(gpointer user_data) {/*{{{*/
+	// Only used once at application startup, this is not a callback invoked
+	// each time the window size changes!
+
 	D_LOCK(file_tree);
 	// If there is no image loaded, abort
 	if(!is_current_file_loaded()) {
@@ -1953,6 +1961,8 @@ gboolean main_window_resize_callback(gpointer user_data) {/*{{{*/
 
 	// Resize if this has not worked before, but accept a slight deviation (might be round-off error)
 	if(main_window_width >= 0 && abs(main_window_width - new_window_width) + abs(main_window_height - new_window_height) > 1) {
+		requested_main_window_width = new_window_width;
+		requested_main_window_height = new_window_height;
 		gtk_window_resize(main_window, new_window_width / screen_scale_factor, new_window_height / screen_scale_factor);
 	}
 
@@ -2051,6 +2061,8 @@ void main_window_adjust_for_image() {/*{{{*/
 			}
 			main_window_width = new_window_width;
 			main_window_height = new_window_height;
+			requested_main_window_width = new_window_width;
+			requested_main_window_height = new_window_height;
 
 			// Some window managers create a race here upon application startup:
 			// They resize, as requested above, and afterwards apply their idea of
@@ -2062,6 +2074,8 @@ void main_window_adjust_for_image() {/*{{{*/
 			// Required to avoid tearing
 			window_prerender_background_pixmap(new_window_width, new_window_height, current_scale_level, main_window_in_fullscreen);
 
+			requested_main_window_width = new_window_width;
+			requested_main_window_height = new_window_height;
 			if(option_enforce_window_aspect_ratio) {
 				gtk_window_set_geometry_hints(main_window, NULL, &hints, GDK_HINT_ASPECT);
 			}
@@ -3903,6 +3917,8 @@ void window_fullscreen() {/*{{{*/
 			main_window_in_fullscreen = TRUE;
 			gtk_window_move(main_window, screen_geometry.x / screen_scale_factor, screen_geometry.y / screen_scale_factor);
 			gtk_window_resize(main_window, screen_geometry.width / screen_scale_factor, screen_geometry.height / screen_scale_factor);
+			requested_main_window_width = screen_geometry.width;
+			requested_main_window_height = screen_geometry.height;
 			window_state_into_fullscreen_actions();
 			return;
 		}
@@ -4608,6 +4624,10 @@ void window_prerender_background_pixmap(int window_width, int window_height, dou
 		// There's no need for that here.
 		return;
 	}
+	if(wm_ignores_size_requests) {
+		// Tiling WM, do nothing
+		return;
+	}
 
 	#if defined(GDK_WINDOWING_X11)
 		GdkScreen *screen = gdk_screen_get_default();
@@ -4626,16 +4646,19 @@ void window_prerender_background_pixmap(int window_width, int window_height, dou
 			unsigned long window_xid = GDK_WINDOW_XID(window);
 		#endif
 
-		if(main_window_width >= window_width && main_window_height >= window_height) {
+		if(main_window_width == window_width && main_window_height == window_height) {
 			// There will be no tearing, do nothing.
 			XSetWindowBackground(display, window_xid, 0);
-			XClearWindow(display, window_xid);
 			return;
 		}
 
-		Visual* default_visual = DefaultVisual(display, DefaultScreen(display));
-		Pixmap pixmap = XCreatePixmap(display, window_xid, window_width, window_height, 24);
-		cairo_surface_t *pixmap_surface = cairo_xlib_surface_create(display, pixmap, default_visual, window_width, window_height);
+		XWindowAttributes window_attributes;
+		if(XGetWindowAttributes(display, window_xid, &window_attributes) == 0) {
+			// Failure, abort.
+			return;
+		}
+		Pixmap pixmap = XCreatePixmap(display, window_xid, window_width, window_height, window_attributes.visual->bits_per_rgb * (3 + !!option_transparent_background));
+		cairo_surface_t *pixmap_surface = cairo_xlib_surface_create(display, pixmap, window_attributes.visual, window_width, window_height);
 
 		int ow = main_window_width, oh = main_window_height;
 		double osl = current_scale_level;
@@ -5193,7 +5216,9 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 				calculate_current_image_transformed_size(&image_width, &image_height);
 
 				// Required to avoid tearing
-				window_prerender_background_pixmap(current_scale_level * image_width, current_scale_level * image_height, current_scale_level, main_window_in_fullscreen);
+				requested_main_window_width = current_scale_level * image_width;
+				requested_main_window_height = current_scale_level * image_height;
+				window_prerender_background_pixmap(requested_main_window_width, requested_main_window_height, current_scale_level, main_window_in_fullscreen);
 				gtk_window_resize(main_window, current_scale_level * image_width / screen_scale_factor, current_scale_level * image_height / screen_scale_factor);
 				if(!wm_supports_moveresize) {
 					queue_draw();
@@ -6168,6 +6193,12 @@ gboolean window_configure_callback(GtkWidget *widget, GdkEventConfigure *event, 
 		if(main_window_in_fullscreen && (event->x != screen_geometry.x || event->y != screen_geometry.y)) {
 			gtk_window_move(main_window, screen_geometry.x, screen_geometry.y);
 		}
+	}
+
+	// Check whether the WM completely ignored our size request to detect tiling WMs
+	if(requested_main_window_width >= 0) {
+		wm_ignores_size_requests = !(abs(event->width - requested_main_window_width) < 3 && abs(event->height - requested_main_window_height) < 3);
+		requested_main_window_width = -1;
 	}
 
 	if(main_window_width != event->width || main_window_height != event->height) {
