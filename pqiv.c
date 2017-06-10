@@ -3909,12 +3909,14 @@ void window_fullscreen() {/*{{{*/
 	#endif
 
 	// Required to avoid tearing
-	invalidate_current_scaled_image_surface();
-	const int window_width = screen_geometry.width, window_height = screen_geometry.height;
-	int image_width, image_height;
-	calculate_current_image_transformed_size(&image_width, &image_height);
-	double scale_level = calculate_scale_level_to_fit(image_width, image_height, window_width, window_height);
-	window_prerender_background_pixmap(window_width, window_height, scale_level, TRUE);
+	if(is_current_file_loaded() && main_window_visible) {
+		invalidate_current_scaled_image_surface();
+		const int window_width = screen_geometry.width, window_height = screen_geometry.height;
+		int image_width, image_height;
+		calculate_current_image_transformed_size(&image_width, &image_height);
+		double scale_level = calculate_scale_level_to_fit(image_width, image_height, window_width, window_height);
+		window_prerender_background_pixmap(window_width, window_height, scale_level, TRUE);
+	}
 	gtk_window_fullscreen(main_window);
 }/*}}}*/
 void window_unfullscreen() {/*{{{*/
@@ -3934,17 +3936,19 @@ void window_unfullscreen() {/*{{{*/
 	#endif
 
 	// Required to avoid tearing
-	invalidate_current_scaled_image_surface();
-	int window_width, window_height;
-	main_window_in_fullscreen = FALSE;
-	if(main_window_calculate_ideal_size(&window_width, &window_height)) {
-		int image_width, image_height;
-		calculate_current_image_transformed_size(&image_width, &image_height);
-		double scale_level = calculate_scale_level_to_fit(image_width, image_height, window_width, window_height);
-		window_prerender_background_pixmap(window_width, window_height, scale_level, FALSE);
-	}
-	if(wm_supports_fullscreen) {
-		main_window_in_fullscreen = TRUE;
+	if(is_current_file_loaded() && main_window_visible) {
+		invalidate_current_scaled_image_surface();
+		int window_width, window_height;
+		main_window_in_fullscreen = FALSE;
+		if(main_window_calculate_ideal_size(&window_width, &window_height)) {
+			int image_width, image_height;
+			calculate_current_image_transformed_size(&image_width, &image_height);
+			double scale_level = calculate_scale_level_to_fit(image_width, image_height, window_width, window_height);
+			window_prerender_background_pixmap(window_width, window_height, scale_level, FALSE);
+		}
+		if(wm_supports_fullscreen) {
+			main_window_in_fullscreen = TRUE;
+		}
 	}
 
 	gtk_window_unfullscreen(main_window);
