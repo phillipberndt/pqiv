@@ -726,6 +726,7 @@ void window_state_into_fullscreen_actions();
 void window_state_out_of_fullscreen_actions();
 gboolean window_draw_callback(GtkWidget *widget, cairo_t *cr_arg, gpointer user_data);
 void window_prerender_background_pixmap(int window_width, int window_height, double scale_level, gboolean fullscreen);
+void window_clear_background_pixmap();
 gboolean window_show_background_pixmap_cb(gpointer user_data);
 BOSNode *image_pointer_by_name(gchar *display_name);
 BOSNode *relative_image_pointer(ptrdiff_t movement);
@@ -3926,12 +3927,10 @@ void window_fullscreen() {/*{{{*/
 
 	// Required to avoid tearing
 	if(is_current_file_loaded() && main_window_visible) {
-		invalidate_current_scaled_image_surface();
-		const int window_width = screen_geometry.width, window_height = screen_geometry.height;
-		int image_width, image_height;
-		calculate_current_image_transformed_size(&image_width, &image_height);
-		double scale_level = calculate_scale_level_to_fit(image_width, image_height, window_width, window_height);
-		window_prerender_background_pixmap(window_width, window_height, scale_level, TRUE);
+		// This calls only the 2nd part of window_show_background_pixmap, which
+		// blanks the window.
+		window_clear_background_pixmap();
+		window_show_background_pixmap_cb(NULL);
 	}
 	gtk_window_fullscreen(main_window);
 }/*}}}*/
@@ -3953,18 +3952,10 @@ void window_unfullscreen() {/*{{{*/
 
 	// Required to avoid tearing
 	if(is_current_file_loaded() && main_window_visible) {
-		invalidate_current_scaled_image_surface();
-		int window_width, window_height;
-		main_window_in_fullscreen = FALSE;
-		if(main_window_calculate_ideal_size(&window_width, &window_height)) {
-			int image_width, image_height;
-			calculate_current_image_transformed_size(&image_width, &image_height);
-			double scale_level = calculate_scale_level_to_fit(image_width, image_height, window_width, window_height);
-			window_prerender_background_pixmap(window_width, window_height, scale_level, FALSE);
-		}
-		if(wm_supports_fullscreen) {
-			main_window_in_fullscreen = TRUE;
-		}
+		// This calls only the 2nd part of window_show_background_pixmap, which
+		// blanks the window.
+		window_clear_background_pixmap();
+		window_show_background_pixmap_cb(NULL);
 	}
 
 	gtk_window_unfullscreen(main_window);
@@ -4606,6 +4597,31 @@ gboolean window_draw_thumbnail_montage(cairo_t *cr_arg) {/*{{{*/
 	return TRUE;
 }/*}}}*/
 #endif
+void window_clear_background_pixmap() {/*{{{*/
+	if(wm_supports_moveresize) {
+		// There's no need for that here.
+		return;
+	}
+	#if defined(GDK_WINDOWING_X11)
+		GdkScreen *screen = gdk_screen_get_default();
+		#if GTK_MAJOR_VERSION >= 3
+			if(!GDK_IS_X11_SCREEN(screen)) {
+				return;
+			}
+		#endif
+
+		Display *display = GDK_SCREEN_XDISPLAY(screen);
+		GdkWindow *window = gtk_widget_get_window(GTK_WIDGET(main_window));
+
+		#if GTK_MAJOR_VERSION >= 3
+			unsigned long window_xid = gdk_x11_window_get_xid(window);
+		#else
+			unsigned long window_xid = GDK_WINDOW_XID(window);
+		#endif
+
+		XSetWindowBackground(display, window_xid, 0);
+	#endif
+}/*}}}*/
 void window_prerender_background_pixmap(int window_width, int window_height, double scale_level, gboolean fullscreen) {/*{{{*/
 	/*
 		This function is for old X11 environments that do not support
