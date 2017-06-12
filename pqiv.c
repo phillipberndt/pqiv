@@ -6114,14 +6114,8 @@ gboolean window_motion_notify_callback(GtkWidget *widget, GdkEventMotion *event,
 	}
 
 	if(event->state & (GDK_BUTTON1_MASK | GDK_BUTTON2_MASK | GDK_BUTTON3_MASK)) {
-		// Revert scale factor
-		if(screen_scale_factor != 1) {
-			event->x_root *= screen_scale_factor;
-			event->y_root *= screen_scale_factor;
-		}
-
-		gdouble dev_x = screen_geometry.width / 2 + screen_geometry.x - event->x_root;
-		gdouble dev_y = screen_geometry.height / 2 + screen_geometry.y - event->y_root;
+		gdouble dev_x = screen_geometry.width / 2 + screen_geometry.x - event->x_root * screen_scale_factor;
+		gdouble dev_y = screen_geometry.height / 2 + screen_geometry.y - event->y_root * screen_scale_factor;
 
 		if(fabs(dev_x) < 5 && fabs(dev_y) < 4) {
 			return FALSE;
