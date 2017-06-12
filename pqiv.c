@@ -6528,6 +6528,12 @@ void window_state_out_of_fullscreen_actions() {/*{{{*/
 	invalidate_current_scaled_image_surface();
 	window_show_cursor();
 }/*}}}*/
+#ifdef _WIN32
+gboolean window_state_out_of_fullscreen_actions_callback(gpointer user_data) {/*{{{*/
+	window_state_out_of_fullscreen_actions();
+	return FALSE;
+}/*}}}*/
+#endif
 gboolean window_state_callback(GtkWidget *widget, GdkEventWindowState *event, gpointer user_data) {/*{{{*/
 	/*
 	   struct GdkEventWindowState {
@@ -6549,7 +6555,11 @@ gboolean window_state_callback(GtkWidget *widget, GdkEventWindowState *event, gp
 			window_state_into_fullscreen_actions();
 		}
 		else {
+			#ifdef _WIN32
+			g_idle_add(window_state_out_of_fullscreen_actions_callback, NULL);
+			#else
 			window_state_out_of_fullscreen_actions();
+			#endif
 		}
 
 		update_info_text(NULL);
