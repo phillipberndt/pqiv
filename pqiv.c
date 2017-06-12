@@ -4673,8 +4673,8 @@ void window_prerender_background_pixmap(int window_width, int window_height, dou
 			// Failure, abort.
 			return;
 		}
-		Pixmap pixmap = XCreatePixmap(display, window_xid, window_width, window_height, window_attributes.visual->bits_per_rgb * (3 + !!option_transparent_background));
-		cairo_surface_t *pixmap_surface = cairo_xlib_surface_create(display, pixmap, window_attributes.visual, window_width, window_height);
+		Pixmap pixmap = XCreatePixmap(display, window_xid, window_width * screen_scale_factor, window_height * screen_scale_factor, window_attributes.visual->bits_per_rgb * (3 + !!option_transparent_background));
+		cairo_surface_t *pixmap_surface = cairo_xlib_surface_create(display, pixmap, window_attributes.visual, window_width * screen_scale_factor, window_height * screen_scale_factor);
 
 		int ow = main_window_width, oh = main_window_height;
 		double osl = current_scale_level;
@@ -4687,6 +4687,7 @@ void window_prerender_background_pixmap(int window_width, int window_height, dou
 
 		cairo_t *cr = cairo_create(pixmap_surface);
 		cairo_save(cr);
+		cairo_scale(cr, screen_scale_factor, screen_scale_factor);
 		window_draw_callback(GTK_WIDGET(main_window), cr, GUINT_TO_POINTER(1));
 		cairo_restore(cr);
 		/*cairo_set_source_rgba(cr, 1., 0, 0, .5);
@@ -6248,7 +6249,7 @@ gboolean window_configure_callback(GtkWidget *widget, GdkEventConfigure *event, 
 		// Make sure that the currently selected image stays in view & that all
 		// visible thumbnails are loaded
 		D_LOCK(file_tree);
-		montage_window_move_cursor(0, 0,  0);
+		montage_window_move_cursor(0, 0, 0);
 		D_UNLOCK(file_tree);
 	}
 	#endif
