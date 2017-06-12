@@ -1976,7 +1976,6 @@ gboolean main_window_calculate_ideal_size(int *new_window_width, int *new_window
 
 	// We only need to adjust the window if it is not in fullscreen
 	if(main_window_in_fullscreen) {
-		queue_draw();
 		return FALSE;
 	}
 
@@ -5032,7 +5031,7 @@ double calculate_scale_level_to_fit(int image_width, int image_height, int windo
 		return current_scale_level;
 	}
 
-	// Calculate diplay width/heights with rotation, but without scaling, applied
+	// Calculate display width/heights with rotation, but without scaling, applied
 	gdouble scale_level = 1.0;
 
 	// Only scale if scaling is not disabled. The alternative is to also
