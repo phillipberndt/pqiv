@@ -146,7 +146,9 @@ pqiv 2.9 (wip)
  * Added option --info-box-colors to customize the colors used in the info box
  * It is now possible to view --help even if no display is available
  * Added --version
+ * Added an auto scale mode that maintains window size
  * Bound Control+t to toggle to "maintain scale mode" by default
+ * Bound Alt+t to toggle to "maintain window size" by default
 
 pqiv 2.8.5
  * Fixed an issue where the checkerboard pattern sometimes was visible at image

@@ -270,8 +270,8 @@ gchar *external_image_filter_commands[] = {
 #endif
 
 // Scaling mode, only 0-2 are available in the default UI, FIXED_SCALE can be
-// set using a command line option, SCALE_TO_FIT only using an action
-enum { NO_SCALING=0, AUTO_SCALEDOWN, AUTO_SCALEUP, FIXED_SCALE, SCALE_TO_FIT } option_scale = AUTO_SCALEDOWN;
+// set using a command line option, SCALE_TO_FIT_PX and SCALE_TO_FIT_WINDOW only using an action
+enum { NO_SCALING=0, AUTO_SCALEDOWN, AUTO_SCALEUP, FIXED_SCALE, SCALE_TO_FIT_WINDOW, SCALE_TO_FIT_PX } option_scale = AUTO_SCALEDOWN;
 double option_scale_screen_fraction = .8;
 struct {
 	guint width;
@@ -509,6 +509,7 @@ static const struct default_key_bindings_struct {
 	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_KP_Subtract      ), ACTION_SET_SCALE_LEVEL_RELATIVE        , { .pdouble = 0.9 }},
 	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_t                ), ACTION_TOGGLE_SCALE_MODE               , { 0   }},
 	{ DEFAULT, KEY_BINDING_VALUE(0 , GDK_CONTROL_MASK , GDK_KEY_t                ), ACTION_TOGGLE_SCALE_MODE               , { 4   }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , GDK_MOD1_MASK    , GDK_KEY_t                ), ACTION_TOGGLE_SCALE_MODE               , { 5   }},
 	{ DEFAULT, KEY_BINDING_VALUE(0 , GDK_CONTROL_MASK , GDK_KEY_r                ), ACTION_TOGGLE_SHUFFLE_MODE             , { 0   }},
 	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_r                ), ACTION_RELOAD                          , { 0   }},
 	{ DEFAULT, KEY_BINDING_VALUE(0 , GDK_CONTROL_MASK , GDK_KEY_p                ), ACTION_GOTO_EARLIER_FILE               , { 0   }},
@@ -2017,6 +2018,12 @@ void main_window_adjust_for_image() {/*{{{*/
 
 	// We only need to adjust the window if it is not in fullscreen
 	if(main_window_in_fullscreen) {
+		queue_draw();
+		return;
+	}
+
+	// In SCALE_TO_FIT_WINDOW mode, do never resize
+	if(option_scale == SCALE_TO_FIT_WINDOW) {
 		queue_draw();
 		return;
 	}
@@ -5078,8 +5085,11 @@ double calculate_scale_level_to_fit(int image_width, int image_height, int windo
 			scale_level = window_width * 1.0 / image_width;
 		}
 	}
-	else if(option_scale == SCALE_TO_FIT) {
+	else if(option_scale == SCALE_TO_FIT_PX) {
 		scale_level = fmin(scale_to_fit_size.width * 1. / image_width, scale_to_fit_size.height * 1. / image_height);
+	}
+	else if(option_scale == SCALE_TO_FIT_WINDOW) {
+		scale_level = fmin(window_width * 1. / image_width, window_height * 1. / image_height);
 	}
 
 	return scale_level;
@@ -5097,16 +5107,18 @@ double calculate_auto_scale_level_for_screen(int image_width, int image_height) 
 				// Scale up to screen size
 				scale_level = screen_width * option_scale_screen_fraction / image_width;
 			}
-			else if(option_scale == SCALE_TO_FIT) {
+			else if(option_scale == SCALE_TO_FIT_PX) {
 				scale_level = fmin(scale_to_fit_size.width * 1. / image_width, scale_to_fit_size.height * 1. / image_height);
+			}
+			else if(option_scale == SCALE_TO_FIT_WINDOW) {
+				scale_level = fmin(main_window_width * 1. / image_width, main_window_height * 1. / image_height);
 			}
 			else if(option_scale == AUTO_SCALEDOWN && image_width > screen_width * option_scale_screen_fraction) {
 				// Scale down to screen size
 				scale_level = screen_width * option_scale_screen_fraction / image_width;
 			}
-			// In both cases: If the height exceeds screen size, scale
-			// down
 			if((option_scale == AUTO_SCALEUP || option_scale == AUTO_SCALEDOWN) && image_height * scale_level > screen_height * option_scale_screen_fraction) {
+				// If the height exceeds screen size, scale down
 				scale_level = screen_height * option_scale_screen_fraction / image_height;
 			}
 		}
@@ -5271,7 +5283,7 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 				}
 			}
 			else {
-				option_scale = (parameter.pint - 1) % 4;
+				option_scale = (parameter.pint - 1) % 5;
 			}
 			scale_override = FALSE;
 			current_image_drawn = FALSE;
@@ -5286,6 +5298,7 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 				case AUTO_SCALEDOWN: update_info_text("Automatic scaledown enabled"); break;
 				case AUTO_SCALEUP: update_info_text("Automatic scaling enabled"); break;
 				case FIXED_SCALE: update_info_text("Maintaining current scale level"); break;
+				case SCALE_TO_FIT_WINDOW: update_info_text("Maintaining window size"); break;
 				default: break;
 			}
 			break;
@@ -5616,7 +5629,7 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 			break;
 
 		case ACTION_SET_SCALE_MODE_FIT_PX:
-			option_scale = SCALE_TO_FIT;
+			option_scale = SCALE_TO_FIT_PX;
 			scale_to_fit_size.width = parameter.p2short.p1;
 			scale_to_fit_size.height = parameter.p2short.p2;
 
