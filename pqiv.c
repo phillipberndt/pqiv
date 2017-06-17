@@ -4698,7 +4698,9 @@ void window_prerender_background_pixmap(int window_width, int window_height, dou
 		main_window_height = window_height;
 		current_scale_level = scale_level;
 		main_window_in_fullscreen = fullscreen;
-		current_info_text_cached_font_size = -1;
+		#ifndef CONFIGURED_WITHOUT_INFO_TEXT
+			current_info_text_cached_font_size = -1;
+		#endif
 
 		cairo_t *cr = cairo_create(pixmap_surface);
 		cairo_save(cr);
@@ -4715,7 +4717,9 @@ void window_prerender_background_pixmap(int window_width, int window_height, dou
 		main_window_height = oh;
 		current_scale_level = osl;
 		main_window_in_fullscreen = ofs;
-		current_info_text_cached_font_size = -1;
+		#ifndef CONFIGURED_WITHOUT_INFO_TEXT
+			current_info_text_cached_font_size = -1;
+		#endif
 
 		XSetWindowBackgroundPixmap(display, window_xid, pixmap);
 		XFreePixmap(display, pixmap);
