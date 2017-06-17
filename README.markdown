@@ -136,6 +136,8 @@ Changelog
 ---------
 
 pqiv 2.9 (wip)
+ * Improved responsivity by caching pre-scaled copies of images
+ * Removed tearing/flickering in WMs without extended frame sync support
  * Add option --info-box-colors to customize the colors used in the info box
  * Allow to view help even if no display is available
  * Add --version
