@@ -136,17 +136,17 @@ Changelog
 ---------
 
 pqiv 2.9 (wip)
+ * Added a montage/image grid mode (bound to `m` by default)
+ * Added a WebP backend (by @john0312)
  * Added the means to skip over "logical" directories, such as archive files
    (bound to `ctrl+space` and `ctrl+backspace` by default)
  * Improved responsivity by caching pre-scaled copies of images
  * Removed tearing/flickering in WMs without extended frame sync support
- * Add option --info-box-colors to customize the colors used in the info box
- * Allow to view help even if no display is available
- * Add --version
- * Bind Control+t to toggle to "maintain scale mode" by default
- * Fixed support for huge images (>32,767px) to the GdkPixbuf backend
- * Added a montage/image grid mode (bound to `m` by default)
- * Added a WebP backend (by @john0312)
+ * Fixed support for huge images (>32,767px) in the GdkPixbuf backend
+ * Added option --info-box-colors to customize the colors used in the info box
+ * It is now possible to view --help even if no display is available
+ * Added --version
+ * Bound Control+t to toggle to "maintain scale mode" by default
 
 pqiv 2.8.5
  * Fixed an issue where the checkerboard pattern sometimes was visible at image
