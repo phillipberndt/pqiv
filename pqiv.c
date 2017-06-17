@@ -187,6 +187,7 @@ gboolean wm_ignores_size_requests = FALSE;
 gint main_window_width = 10;
 gint main_window_height = 10;
 gboolean main_window_in_fullscreen = FALSE;
+int fullscreen_transition_source_id = -1;
 GdkRectangle screen_geometry = { 0, 0, 0, 0 };
 gint screen_scale_factor = 1;
 gboolean wm_supports_fullscreen = TRUE;
@@ -722,8 +723,8 @@ gboolean main_window_calculate_ideal_size(int *new_window_width, int *new_window
 void calculate_current_image_transformed_size(int *image_width, int *image_height);
 double calculate_auto_scale_level_for_screen(int image_width, int image_height);
 cairo_surface_t *get_scaled_image_surface_for_current_image();
-void window_state_into_fullscreen_actions();
-void window_state_out_of_fullscreen_actions();
+gboolean window_state_into_fullscreen_actions(gpointer user_data);
+gboolean window_state_out_of_fullscreen_actions(gpointer user_data);
 gboolean window_draw_callback(GtkWidget *widget, cairo_t *cr_arg, gpointer user_data);
 void window_prerender_background_pixmap(int window_width, int window_height, double scale_level, gboolean fullscreen);
 void window_clear_background_pixmap();
@@ -3919,7 +3920,7 @@ void window_fullscreen() {/*{{{*/
 			gtk_window_resize(main_window, screen_geometry.width / screen_scale_factor, screen_geometry.height / screen_scale_factor);
 			requested_main_window_width = screen_geometry.width;
 			requested_main_window_height = screen_geometry.height;
-			window_state_into_fullscreen_actions();
+			window_state_into_fullscreen_actions(NULL);
 			return;
 		}
 	#endif
@@ -3944,7 +3945,7 @@ void window_unfullscreen() {/*{{{*/
 		if(!wm_supports_fullscreen) {
 			// WM does not support _NET_WM_ACTION_FULLSCREEN or no WM present
 			main_window_in_fullscreen = FALSE;
-			window_state_out_of_fullscreen_actions();
+			window_state_out_of_fullscreen_actions(NULL);
 			return;
 		}
 	#endif
@@ -6233,6 +6234,17 @@ gboolean window_configure_callback(GtkWidget *widget, GdkEventConfigure *event, 
 			main_window_height = event->height;
 		}
 
+		// If the fullscreen state just changed execute the post-change callbacks here
+		if(fullscreen_transition_source_id >= 0) {
+			g_source_remove(fullscreen_transition_source_id);
+			if(main_window_in_fullscreen) {
+				window_state_into_fullscreen_actions(NULL);
+			}
+			else {
+				window_state_out_of_fullscreen_actions(NULL);
+			}
+		}
+
 		// Rescale the image
 		set_scale_level_to_fit();
 		queue_draw();
@@ -6497,7 +6509,7 @@ void window_show_cursor() {/*{{{*/
 	GdkWindow *window = gtk_widget_get_window(GTK_WIDGET(main_window));
 	gdk_window_set_cursor(window, NULL);
 }/*}}}*/
-void window_state_into_fullscreen_actions() {/*{{{*/
+gboolean window_state_into_fullscreen_actions(gpointer user_data) {/*{{{*/
 	current_shift_x = 0;
 	current_shift_y = 0;
 
@@ -6511,8 +6523,11 @@ void window_state_into_fullscreen_actions() {/*{{{*/
 	#if GTK_MAJOR_VERSION < 3
 		gtk_widget_queue_draw(GTK_WIDGET(main_window));
 	#endif
+	update_info_text(NULL);
+	fullscreen_transition_source_id = -1;
+	return FALSE;
 }/*}}}*/
-void window_state_out_of_fullscreen_actions() {/*{{{*/
+gboolean window_state_out_of_fullscreen_actions(gpointer user_data) {/*{{{*/
 	current_shift_x = 0;
 	current_shift_y = 0;
 
@@ -6526,13 +6541,10 @@ void window_state_out_of_fullscreen_actions() {/*{{{*/
 	}
 	invalidate_current_scaled_image_surface();
 	window_show_cursor();
-}/*}}}*/
-#ifdef _WIN32
-gboolean window_state_out_of_fullscreen_actions_callback(gpointer user_data) {/*{{{*/
-	window_state_out_of_fullscreen_actions();
+	update_info_text(NULL);
+	fullscreen_transition_source_id = -1;
 	return FALSE;
 }/*}}}*/
-#endif
 gboolean window_state_callback(GtkWidget *widget, GdkEventWindowState *event, gpointer user_data) {/*{{{*/
 	/*
 	   struct GdkEventWindowState {
@@ -6551,17 +6563,11 @@ gboolean window_state_callback(GtkWidget *widget, GdkEventWindowState *event, gp
 		main_window_in_fullscreen = new_in_fs_state;
 
 		if(main_window_in_fullscreen) {
-			window_state_into_fullscreen_actions();
+			fullscreen_transition_source_id = g_timeout_add(500, window_state_into_fullscreen_actions, NULL);
 		}
 		else {
-			#ifdef _WIN32
-			g_idle_add(window_state_out_of_fullscreen_actions_callback, NULL);
-			#else
-			window_state_out_of_fullscreen_actions();
-			#endif
+			fullscreen_transition_source_id = g_timeout_add(500, window_state_out_of_fullscreen_actions, NULL);
 		}
-
-		update_info_text(NULL);
 	}
 
 	return FALSE;
