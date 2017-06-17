@@ -96,6 +96,10 @@ struct _file {
 	cairo_surface_t *thumbnail;
 #endif
 
+	// Default render, automatically unloaded with the image, not guaranteed to
+	// be present, not guaranteed to have the correct scale level.
+	cairo_surface_t *prerendered_view;
+
 	// File-type specific data, allocated and freed by the file type handlers
 	void *private;
 };

@@ -56,6 +56,7 @@
 #ifdef GDK_WINDOWING_X11
 	#include <gdk/gdkx.h>
 	#include <X11/Xlib.h>
+	#include <cairo/cairo-xlib.h>
 
 	#if GTK_MAJOR_VERSION < 3
 		#include <X11/Xatom.h>
@@ -178,15 +179,24 @@ gboolean current_image_drawn = FALSE;
 GtkWindow *main_window;
 gboolean main_window_visible = FALSE;
 
+// Detection of tiled WMs: They should ignore our resize events
+gint requested_main_window_width = -1;
+gint requested_main_window_height = -1;
+gboolean wm_ignores_size_requests = FALSE;
+
 gint main_window_width = 10;
 gint main_window_height = 10;
 gboolean main_window_in_fullscreen = FALSE;
+int fullscreen_transition_source_id = -1;
 GdkRectangle screen_geometry = { 0, 0, 0, 0 };
 gint screen_scale_factor = 1;
 gboolean wm_supports_fullscreen = TRUE;
 
 // If a WM indicates no moveresize support that's a hint it's a tiling WM
 gboolean wm_supports_moveresize = TRUE;
+
+// If a WM indicates no framedrawn support it's subject to tearing effects
+gboolean wm_supports_framedrawn = TRUE;
 
 cairo_pattern_t *background_checkerboard_pattern = NULL;
 
@@ -709,10 +719,17 @@ void window_hide_cursor();
 void window_show_cursor();
 void preload_adjacent_images();
 void window_center_mouse();
+double calculate_scale_level_to_fit(int image_width, int image_height, int window_width, int window_height);
+gboolean main_window_calculate_ideal_size(int *new_window_width, int *new_window_height);
 void calculate_current_image_transformed_size(int *image_width, int *image_height);
+double calculate_auto_scale_level_for_screen(int image_width, int image_height);
 cairo_surface_t *get_scaled_image_surface_for_current_image();
-void window_state_into_fullscreen_actions();
-void window_state_out_of_fullscreen_actions();
+gboolean window_state_into_fullscreen_actions(gpointer user_data);
+gboolean window_state_out_of_fullscreen_actions(gpointer user_data);
+gboolean window_draw_callback(GtkWidget *widget, cairo_t *cr_arg, gpointer user_data);
+void window_prerender_background_pixmap(int window_width, int window_height, double scale_level, gboolean fullscreen);
+void window_clear_background_pixmap();
+gboolean window_show_background_pixmap_cb(gpointer user_data);
 BOSNode *image_pointer_by_name(gchar *display_name);
 BOSNode *relative_image_pointer(ptrdiff_t movement);
 void file_tree_free_helper(BOSNode *node);
@@ -1922,6 +1939,9 @@ gboolean window_move_helper_callback(gpointer user_data) {/*{{{*/
 	return FALSE;
 }/*}}}*/
 gboolean main_window_resize_callback(gpointer user_data) {/*{{{*/
+	// Only used once at application startup, this is not a callback invoked
+	// each time the window size changes!
+
 	D_LOCK(file_tree);
 	// If there is no image loaded, abort
 	if(!is_current_file_loaded()) {
@@ -1944,10 +1964,51 @@ gboolean main_window_resize_callback(gpointer user_data) {/*{{{*/
 
 	// Resize if this has not worked before, but accept a slight deviation (might be round-off error)
 	if(main_window_width >= 0 && abs(main_window_width - new_window_width) + abs(main_window_height - new_window_height) > 1) {
+		requested_main_window_width = new_window_width;
+		requested_main_window_height = new_window_height;
 		gtk_window_resize(main_window, new_window_width / screen_scale_factor, new_window_height / screen_scale_factor);
 	}
 
 	return FALSE;
+}/*}}}*/
+gboolean main_window_calculate_ideal_size(int *new_window_width, int *new_window_height) {/*{{{*/
+	if(!current_file_node) {
+		return FALSE;
+	}
+
+	// We only need to adjust the window if it is not in fullscreen
+	if(main_window_in_fullscreen) {
+		return FALSE;
+	}
+
+	if(application_mode == DEFAULT) {
+		int image_width, image_height;
+		calculate_current_image_transformed_size(&image_width, &image_height);
+
+		*new_window_width = current_scale_level * image_width + 0.5;
+		*new_window_height = current_scale_level * image_height + 0.5;
+	}
+	#ifndef CONFIGURED_WITHOUT_MONTAGE_MODE
+	else if(application_mode == MONTAGE) {
+		const int screen_width = screen_geometry.width;
+		const int screen_height = screen_geometry.height;
+
+		*new_window_width = screen_width * option_scale_screen_fraction;
+		*new_window_height = screen_height * option_scale_screen_fraction;
+	}
+	#endif
+	else {
+		*new_window_width = *new_window_height = 0;
+	}
+
+	if(*new_window_height <= 0) {
+		*new_window_height = 1;
+	}
+	if(*new_window_width <= 0) {
+		*new_window_width = 1;
+	}
+
+	return TRUE;
 }/*}}}*/
 void main_window_adjust_for_image() {/*{{{*/
 	if(!current_file_node) {
@@ -1961,32 +2022,8 @@ void main_window_adjust_for_image() {/*{{{*/
 	}
 
 	int new_window_width, new_window_height;
-
-	if(application_mode == DEFAULT) {
-		int image_width, image_height;
-		calculate_current_image_transformed_size(&image_width, &image_height);
-
-		new_window_width = current_scale_level * image_width;
-		new_window_height = current_scale_level * image_height;
-	}
-	#ifndef CONFIGURED_WITHOUT_MONTAGE_MODE
-	else if(application_mode == MONTAGE) {
-		const int screen_width = screen_geometry.width;
-		const int screen_height = screen_geometry.height;
-
-		new_window_width = screen_width * option_scale_screen_fraction;
-		new_window_height = screen_height * option_scale_screen_fraction;
-	}
-	#endif
-	else {
-		new_window_width = new_window_height = 0;
-	}
-
-	if(new_window_height <= 0) {
-		new_window_height = 1;
-	}
-	if(new_window_width <= 0) {
-		new_window_width = 1;
+	if(!main_window_calculate_ideal_size(&new_window_width, &new_window_height)) {
+		return;
 	}
 
 	GdkGeometry hints;
@@ -2026,6 +2063,8 @@ void main_window_adjust_for_image() {/*{{{*/
 			}
 			main_window_width = new_window_width;
 			main_window_height = new_window_height;
+			requested_main_window_width = new_window_width;
+			requested_main_window_height = new_window_height;
 
 			// Some window managers create a race here upon application startup:
 			// They resize, as requested above, and afterwards apply their idea of
@@ -2034,6 +2073,11 @@ void main_window_adjust_for_image() {/*{{{*/
 			gdk_threads_add_idle(main_window_resize_callback, NULL);
 		}
 		else {
+			// Required to avoid tearing
+			window_prerender_background_pixmap(new_window_width, new_window_height, current_scale_level, main_window_in_fullscreen);
+
+			requested_main_window_width = new_window_width;
+			requested_main_window_height = new_window_height;
 			if(option_enforce_window_aspect_ratio) {
 				gtk_window_set_geometry_hints(main_window, NULL, &hints, GDK_HINT_ASPECT);
 			}
@@ -2139,9 +2183,9 @@ gboolean image_loaded_handler(gconstpointer node) {/*{{{*/
 	if(!current_image_drawn) {
 		scale_override = FALSE;
 	}
+	invalidate_current_scaled_image_surface();
 	set_scale_level_for_screen();
 	main_window_adjust_for_image();
-	invalidate_current_scaled_image_surface();
 	current_image_drawn = FALSE;
 	queue_draw();
 
@@ -2394,6 +2438,48 @@ void image_loader_create_thumbnail(file_t *file) {/*{{{*/
 	file->thumbnail = surf;
 }/*}}}*/
 #endif
+void image_generate_prerendered_view(file_t *file, gboolean force, double scale_level) {/*{{{*/
+	if(option_lowmem) {
+		return;
+	}
+	if(file->file_flags && FILE_FLAGS_ANIMATION) {
+		return;
+	}
+	if(force && file->prerendered_view) {
+		cairo_surface_destroy(file->prerendered_view);
+		file->prerendered_view = NULL;
+	}
+	if(scale_level < 0) {
+		scale_level = calculate_auto_scale_level_for_screen(file->width, file->height);
+	}
+	int width = scale_level * file->width + .5;
+	int height = scale_level * file->height + .5;
+
+	if(file->prerendered_view) {
+		int old_width = cairo_image_surface_get_width(file->prerendered_view);
+		int old_height = cairo_image_surface_get_height(file->prerendered_view);
+
+		if(old_width != width || old_height != height) {
+			cairo_surface_destroy(file->prerendered_view);
+			file->prerendered_view = NULL;
+		}
+	}
+
+	if(!file->prerendered_view) {
+		cairo_surface_t *prerendered_view = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, width, height);
+		if(cairo_surface_status(prerendered_view) == CAIRO_STATUS_SUCCESS) {
+			cairo_t *cr = cairo_create(prerendered_view);
+			cairo_scale(cr, scale_level, scale_level);
+			cairo_set_operator(cr, CAIRO_OPERATOR_SOURCE);
+			if(file->file_type->draw_fn != NULL) {
+				file->file_type->draw_fn(file, cr);
+			}
+			cairo_destroy(cr);
+			file->prerendered_view = cairo_surface_reference(prerendered_view);
+		}
+		cairo_surface_destroy(prerendered_view);
+	}
+}/*}}}*/
 gpointer image_loader_thread(gpointer user_data) {/*{{{*/
 	while(TRUE) {
 		// Handle new queued image load
@@ -2516,6 +2602,10 @@ gpointer image_loader_thread(gpointer user_data) {/*{{{*/
 			if(node == current_file_node) {
 				current_image_drawn = FALSE;
 			}
+
+			// Prerender the default scaled view of the image for faster image transitions
+			image_generate_prerendered_view(FILE(node), FALSE, -1);
+
 			gdk_threads_add_idle((GSourceFunc)image_loaded_handler, node);
 		}
 
@@ -2603,6 +2693,10 @@ void unload_image(BOSNode *node) {/*{{{*/
 	file_t *file = FILE(node);
 	if(file->file_type->unload_fn != NULL) {
 		file->file_type->unload_fn(file);
+	}
+	if(file->prerendered_view) {
+		cairo_surface_destroy(file->prerendered_view);
+		file->prerendered_view = NULL;
 	}
 	file->is_loaded = FALSE;
 	file->force_reload = FALSE;
@@ -3170,8 +3264,14 @@ void transform_current_image(cairo_matrix_t *transformation) {/*{{{*/
 	cairo_matrix_multiply(&current_transformation, &operand, transformation);
 
 	// Resize and queue a redraw
+	double old_scale_level = current_scale_level;
+	set_scale_level_for_screen();
+	if(fabs(old_scale_level - current_scale_level) > DBL_EPSILON) {
+		invalidate_current_scaled_image_surface();
+		image_generate_prerendered_view(CURRENT_FILE, FALSE, current_scale_level);
+	}
 	main_window_adjust_for_image();
-	invalidate_current_scaled_image_surface();
+
 	gtk_widget_queue_draw(GTK_WIDGET(main_window));
 }/*}}}*/
 #ifndef CONFIGURED_WITHOUT_EXTERNAL_COMMANDS /* option --without-external-commands: Do not include support for calling external programs */
@@ -3539,6 +3639,25 @@ cairo_surface_t *get_scaled_image_surface_for_current_image() {/*{{{*/
 	if(!CURRENT_FILE->is_loaded) {
 		return NULL;
 	}
+	if(CURRENT_FILE->prerendered_view &&
+			fabs(current_scale_level * CURRENT_FILE->width + .5 - cairo_image_surface_get_width(CURRENT_FILE->prerendered_view)) < 2 &&
+			fabs(current_scale_level * CURRENT_FILE->height + .5 - cairo_image_surface_get_height(CURRENT_FILE->prerendered_view)) < 2) {
+		// If the file has a prerender at the correct size attached, we can reuse it here.
+		cairo_surface_t *retval = cairo_surface_reference(CURRENT_FILE->prerendered_view);
+		if(!option_lowmem) {
+			current_scaled_image_surface = cairo_surface_reference(retval);
+		}
+		return retval;
+	}
+	/*
+	else if(CURRENT_FILE->prerendered_view) {
+		printf("Info: Cache miss! %dx%d (cached) vs %dx%d (requested)\n", cairo_image_surface_get_width(CURRENT_FILE->prerendered_view), cairo_image_surface_get_height(CURRENT_FILE->prerendered_view),
+			(int)(current_scale_level * CURRENT_FILE->width + .5), (int)(current_scale_level * CURRENT_FILE->height + .5));
+	}
+	else {
+		printf("Info: Cache miss! Nothing present %dx%d (requested)\n", (int)(current_scale_level * CURRENT_FILE->width + .5), (int)(current_scale_level * CURRENT_FILE->height + .5));
+	}
+	*/
 
 	cairo_surface_t *retval = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, current_scale_level * CURRENT_FILE->width + .5, current_scale_level * CURRENT_FILE->height + .5);
 	if(cairo_surface_status(retval) != CAIRO_STATUS_SUCCESS) {
@@ -3789,6 +3908,12 @@ void do_jump_dialog() { /* {{{ */
 // }}}
 /* Main window functions {{{ */
 void window_fullscreen() {/*{{{*/
+	if(is_current_file_loaded()) {
+		main_window_in_fullscreen = TRUE;
+		image_generate_prerendered_view(CURRENT_FILE, FALSE, -1);
+		main_window_in_fullscreen = FALSE;
+	}
+
 	// Bugfix for Awesome WM: If hints are active, windows are fullscreen'ed honoring the aspect ratio
 	if(option_enforce_window_aspect_ratio) {
 		gtk_window_set_geometry_hints(main_window, NULL, NULL, 0);
@@ -3800,22 +3925,45 @@ void window_fullscreen() {/*{{{*/
 			main_window_in_fullscreen = TRUE;
 			gtk_window_move(main_window, screen_geometry.x / screen_scale_factor, screen_geometry.y / screen_scale_factor);
 			gtk_window_resize(main_window, screen_geometry.width / screen_scale_factor, screen_geometry.height / screen_scale_factor);
-			window_state_into_fullscreen_actions();
+			requested_main_window_width = screen_geometry.width;
+			requested_main_window_height = screen_geometry.height;
+			window_state_into_fullscreen_actions(NULL);
 			return;
 		}
 	#endif
 
+	// Required to avoid tearing
+	if(is_current_file_loaded() && main_window_visible) {
+		// This calls only the 2nd part of window_show_background_pixmap, which
+		// blanks the window.
+		window_clear_background_pixmap();
+		window_show_background_pixmap_cb(NULL);
+	}
 	gtk_window_fullscreen(main_window);
 }/*}}}*/
 void window_unfullscreen() {/*{{{*/
+	if(is_current_file_loaded()) {
+		main_window_in_fullscreen = FALSE;
+		image_generate_prerendered_view(CURRENT_FILE, FALSE, -1);
+		main_window_in_fullscreen = TRUE;
+	}
+
 	#ifndef _WIN32
 		if(!wm_supports_fullscreen) {
 			// WM does not support _NET_WM_ACTION_FULLSCREEN or no WM present
 			main_window_in_fullscreen = FALSE;
-			window_state_out_of_fullscreen_actions();
+			window_state_out_of_fullscreen_actions(NULL);
 			return;
 		}
 	#endif
+
+	// Required to avoid tearing
+	if(is_current_file_loaded() && main_window_visible) {
+		// This calls only the 2nd part of window_show_background_pixmap, which
+		// blanks the window.
+		window_clear_background_pixmap();
+		window_show_background_pixmap_cb(NULL);
+	}
 
 	gtk_window_unfullscreen(main_window);
 }/*}}}*/
@@ -4464,6 +4612,143 @@ gboolean window_draw_thumbnail_montage(cairo_t *cr_arg) {/*{{{*/
 	return TRUE;
 }/*}}}*/
 #endif
+void window_clear_background_pixmap() {/*{{{*/
+	if(wm_supports_moveresize) {
+		// There's no need for that here.
+		return;
+	}
+	#if defined(GDK_WINDOWING_X11)
+		GdkScreen *screen = gdk_screen_get_default();
+		#if GTK_MAJOR_VERSION >= 3
+			if(!GDK_IS_X11_SCREEN(screen)) {
+				return;
+			}
+		#endif
+
+		Display *display = GDK_SCREEN_XDISPLAY(screen);
+		GdkWindow *window = gtk_widget_get_window(GTK_WIDGET(main_window));
+
+		#if GTK_MAJOR_VERSION >= 3
+			unsigned long window_xid = gdk_x11_window_get_xid(window);
+		#else
+			unsigned long window_xid = GDK_WINDOW_XID(window);
+		#endif
+
+		XSetWindowBackground(display, window_xid, 0);
+	#endif
+}/*}}}*/
+void window_prerender_background_pixmap(int window_width, int window_height, double scale_level, gboolean fullscreen) {/*{{{*/
+	/*
+		This function is for old X11 environments that do not support
+		moveresize. One will typically see tearing effects there, because the
+		time between resizing the window, pqiv receiving an expose event and
+		actually drawing is to large to be unnoticable. This function resolves
+		the issue by assigning a background pixmap to the window containing the
+		new contents of the window. X11 will have something to display until
+		the actual drawing pass is done, and things look better.
+
+		The downside is that everything is drawn twice. This isn't a huge problem
+		unless --low-memory is set, where, due to the disabled cache, the scaled
+		image must be rendered twice.
+	*/
+	if(wm_supports_moveresize) {
+		// There's no need for that here.
+		return;
+	}
+	if(wm_ignores_size_requests) {
+		// Tiling WM, do nothing
+		return;
+	}
+
+	#if defined(GDK_WINDOWING_X11)
+		GdkScreen *screen = gdk_screen_get_default();
+		#if GTK_MAJOR_VERSION >= 3
+			if(!GDK_IS_X11_SCREEN(screen)) {
+				return;
+			}
+		#endif
+
+		Display *display = GDK_SCREEN_XDISPLAY(screen);
+		GdkWindow *window = gtk_widget_get_window(GTK_WIDGET(main_window));
+
+		#if GTK_MAJOR_VERSION >= 3
+			unsigned long window_xid = gdk_x11_window_get_xid(window);
+		#else
+			unsigned long window_xid = GDK_WINDOW_XID(window);
+		#endif
+
+		if(main_window_width == window_width && main_window_height == window_height) {
+			// There will be no tearing, do nothing.
+			XSetWindowBackground(display, window_xid, 0);
+			return;
+		}
+
+		XWindowAttributes window_attributes;
+		if(XGetWindowAttributes(display, window_xid, &window_attributes) == 0) {
+			// Failure, abort.
+			return;
+		}
+		Pixmap pixmap = XCreatePixmap(display, window_xid, window_width * screen_scale_factor, window_height * screen_scale_factor, window_attributes.visual->bits_per_rgb * (3 + !!option_transparent_background));
+		cairo_surface_t *pixmap_surface = cairo_xlib_surface_create(display, pixmap, window_attributes.visual, window_width * screen_scale_factor, window_height * screen_scale_factor);
+
+		int ow = main_window_width, oh = main_window_height;
+		double osl = current_scale_level;
+		gboolean ofs = main_window_in_fullscreen;
+		main_window_width = window_width;
+		main_window_height = window_height;
+		current_scale_level = scale_level;
+		main_window_in_fullscreen = fullscreen;
+		current_info_text_cached_font_size = -1;
+
+		cairo_t *cr = cairo_create(pixmap_surface);
+		cairo_save(cr);
+		cairo_scale(cr, screen_scale_factor, screen_scale_factor);
+		window_draw_callback(GTK_WIDGET(main_window), cr, GUINT_TO_POINTER(1));
+		cairo_restore(cr);
+		/*cairo_set_source_rgba(cr, 1., 0, 0, .5);
+		cairo_set_operator(cr, CAIRO_OPERATOR_OVERLAY);
+		cairo_paint(cr);*/
+		cairo_surface_flush(cairo_get_target(cr));
+		cairo_destroy(cr);
+
+		main_window_width = ow;
+		main_window_height = oh;
+		current_scale_level = osl;
+		main_window_in_fullscreen = ofs;
+		current_info_text_cached_font_size = -1;
+
+		XSetWindowBackgroundPixmap(display, window_xid, pixmap);
+		XFreePixmap(display, pixmap);
+
+		g_idle_add(window_show_background_pixmap_cb, NULL);
+	#endif
+}/*}}}*/
+gboolean window_show_background_pixmap_cb(gpointer user_data) {/*{{{*/
+	if(wm_supports_moveresize) {
+		// There's no need for that here.
+		return FALSE;
+	}
+
+	#if defined(GDK_WINDOWING_X11)
+		GdkScreen *screen = gdk_screen_get_default();
+		#if GTK_MAJOR_VERSION >= 3
+			if(!GDK_IS_X11_SCREEN(screen)) {
+				return FALSE;
+			}
+		#endif
+		Display *display = GDK_SCREEN_XDISPLAY(screen);
+		GdkWindow *window = gtk_widget_get_window(GTK_WIDGET(main_window));
+		#if GTK_MAJOR_VERSION >= 3
+			unsigned long window_xid = gdk_x11_window_get_xid(window);
+		#else
+			unsigned long window_xid = GDK_WINDOW_XID(window);
+		#endif
+
+		XClearWindow(display, window_xid);
+	#endif
+
+	return FALSE;
+}/*}}}*/
 gboolean window_draw_callback(GtkWidget *widget, cairo_t *cr_arg, gpointer user_data) {/*{{{*/
 	// Continue an action chain, if one exists The placement of this is a
 	// compromise: What we really want is to perform actions that follow an
@@ -4757,6 +5042,77 @@ gboolean window_draw_callback(GtkWidget *widget, cairo_t *cr_arg, gpointer user_
 		return TRUE;
 	}/*}}}*/
 #endif
+double calculate_scale_level_to_fit(int image_width, int image_height, int window_width, int window_height) {/*{{{*/
+	if(scale_override || option_scale == FIXED_SCALE) {
+		return current_scale_level;
+	}
+
+	// Calculate display width/heights with rotation, but without scaling, applied
+	gdouble scale_level = 1.0;
+
+	// Only scale if scaling is not disabled. The alternative is to also
+	// scale for no-scaling mode if (!main_window_in_fullscreen). This
+	// effectively disables the no-scaling mode in non-fullscreen. I
+	// implemented that this way, but changed it per user request.
+	if(option_scale == AUTO_SCALEUP || option_scale == AUTO_SCALEDOWN) {
+		if(option_scale == AUTO_SCALEUP) {
+			// Scale up
+			if(image_width * scale_level < window_width) {
+				scale_level = window_width * 1.0 / image_width;
+			}
+
+			if(image_height * scale_level < window_height) {
+				scale_level = window_height * 1.0 / image_height;
+			}
+		}
+
+		// Scale down
+		if(window_height < scale_level * image_height) {
+			scale_level = window_height * 1.0 / image_height;
+		}
+		if(window_width < scale_level * image_width) {
+			scale_level = window_width * 1.0 / image_width;
+		}
+	}
+	else if(option_scale == SCALE_TO_FIT) {
+		scale_level = fmin(scale_to_fit_size.width * 1. / image_width, scale_to_fit_size.height * 1. / image_height);
+	}
+
+	return scale_level;
+}/*}}}*/
+double calculate_auto_scale_level_for_screen(int image_width, int image_height) {/*{{{*/
+	double scale_level = current_scale_level;
+
+	if(!main_window_in_fullscreen) {
+		const int screen_width = screen_geometry.width;
+		const int screen_height = screen_geometry.height;
+
+		if(option_scale != FIXED_SCALE && !scale_override) {
+			scale_level = 1.0;
+			if(option_scale == AUTO_SCALEUP) {
+				// Scale up to screen size
+				scale_level = screen_width * option_scale_screen_fraction / image_width;
+			}
+			else if(option_scale == SCALE_TO_FIT) {
+				scale_level = fmin(scale_to_fit_size.width * 1. / image_width, scale_to_fit_size.height * 1. / image_height);
+			}
+			else if(option_scale == AUTO_SCALEDOWN && image_width > screen_width * option_scale_screen_fraction) {
+				// Scale down to screen size
+				scale_level = screen_width * option_scale_screen_fraction / image_width;
+			}
+			// In both cases: If the height exceeds screen size, scale
+			// down
+			if((option_scale == AUTO_SCALEUP || option_scale == AUTO_SCALEDOWN) && image_height * scale_level > screen_height * option_scale_screen_fraction) {
+				scale_level = screen_height * option_scale_screen_fraction / image_height;
+			}
+		}
+	}
+	else {
+		scale_level = calculate_scale_level_to_fit(image_width, image_height, screen_geometry.width, screen_geometry.height);
+	}
+
+	return scale_level;
+}/*}}}*/
 void set_scale_level_for_screen() {/*{{{*/
 	if(!current_file_node) {
 		return;
@@ -4765,31 +5121,7 @@ void set_scale_level_for_screen() {/*{{{*/
 		// Calculate diplay width/heights with rotation, but without scaling, applied
 		int image_width, image_height;
 		calculate_current_image_transformed_size(&image_width, &image_height);
-		const int screen_width = screen_geometry.width;
-		const int screen_height = screen_geometry.height;
-
-		if(option_scale == FIXED_SCALE || scale_override) {
-			return;
-		}
-		else {
-			current_scale_level = 1.0;
-			if(option_scale == AUTO_SCALEUP) {
-				// Scale up to screen size
-				current_scale_level = screen_width * option_scale_screen_fraction / image_width;
-			}
-			else if(option_scale == SCALE_TO_FIT) {
-				current_scale_level = fmin(scale_to_fit_size.width * 1. / image_width, scale_to_fit_size.height * 1. / image_height);
-			}
-			else if(option_scale == AUTO_SCALEDOWN && image_width > screen_width * option_scale_screen_fraction) {
-				// Scale down to screen size
-				current_scale_level = screen_width * option_scale_screen_fraction / image_width;
-			}
-			// In both cases: If the height exceeds screen size, scale
-			// down
-			if((option_scale == AUTO_SCALEUP || option_scale == AUTO_SCALEDOWN) && image_height * current_scale_level > screen_height * option_scale_screen_fraction) {
-				current_scale_level = screen_height * option_scale_screen_fraction / image_height;
-			}
-		}
+		current_scale_level = calculate_auto_scale_level_for_screen(image_width, image_height);
 	}
 	else {
 		// In fullscreen, the screen size and window size match, so the
@@ -4814,35 +5146,7 @@ void set_scale_level_to_fit() {/*{{{*/
 		int image_width, image_height;
 		calculate_current_image_transformed_size(&image_width, &image_height);
 
-		gdouble new_scale_level = 1.0;
-
-		// Only scale if scaling is not disabled. The alternative is to also
-		// scale for no-scaling mode if (!main_window_in_fullscreen). This
-		// effectively disables the no-scaling mode in non-fullscreen. I
-		// implemented that this way, but changed it per user request.
-		if(option_scale == AUTO_SCALEUP || option_scale == AUTO_SCALEDOWN) {
-			if(option_scale == AUTO_SCALEUP) {
-				// Scale up
-				if(image_width * new_scale_level < main_window_width) {
-					new_scale_level = main_window_width * 1.0 / image_width;
-				}
-
-				if(image_height * new_scale_level < main_window_height) {
-					new_scale_level = main_window_height * 1.0 / image_height;
-				}
-			}
-
-			// Scale down
-			if(main_window_height < new_scale_level * image_height) {
-				new_scale_level = main_window_height * 1.0 / image_height;
-			}
-			if(main_window_width < new_scale_level * image_width) {
-				new_scale_level = main_window_width * 1.0 / image_width;
-			}
-		}
-		else if(option_scale == SCALE_TO_FIT) {
-			new_scale_level = fmin(scale_to_fit_size.width * 1. / image_width, scale_to_fit_size.height * 1. / image_height);
-		}
+		double new_scale_level = calculate_scale_level_to_fit(image_width, image_height, main_window_width, main_window_height);
 
 		if(fabs(new_scale_level - current_scale_level) > DBL_EPSILON) {
 			current_scale_level = new_scale_level;
@@ -4934,6 +5238,7 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 				scale_override = TRUE;
 			}
 			invalidate_current_scaled_image_surface();
+			image_generate_prerendered_view(CURRENT_FILE, FALSE, current_scale_level);
 			current_image_drawn = FALSE;
 			if(main_window_in_fullscreen) {
 				gtk_widget_queue_draw(GTK_WIDGET(main_window));
@@ -4942,6 +5247,10 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 				int image_width, image_height;
 				calculate_current_image_transformed_size(&image_width, &image_height);
 
+				// Required to avoid tearing
+				requested_main_window_width = current_scale_level * image_width;
+				requested_main_window_height = current_scale_level * image_height;
+				window_prerender_background_pixmap(requested_main_window_width, requested_main_window_height, current_scale_level, main_window_in_fullscreen);
 				gtk_window_resize(main_window, current_scale_level * image_width / screen_scale_factor, current_scale_level * image_height / screen_scale_factor);
 				if(!wm_supports_moveresize) {
 					queue_draw();
@@ -4964,9 +5273,9 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 			current_image_drawn = FALSE;
 			current_shift_x = 0;
 			current_shift_y = 0;
+			invalidate_current_scaled_image_surface();
 			set_scale_level_for_screen();
 			main_window_adjust_for_image();
-			invalidate_current_scaled_image_surface();
 			gtk_widget_queue_draw(GTK_WIDGET(main_window));
 			switch(option_scale) {
 				case NO_SCALING: update_info_text("Scaling disabled"); break;
@@ -4988,9 +5297,10 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 			current_image_drawn = FALSE;
 			current_shift_x = 0;
 			current_shift_y = 0;
+			invalidate_current_scaled_image_surface();
+			image_generate_prerendered_view(CURRENT_FILE, FALSE, -1);
 			set_scale_level_for_screen();
 			main_window_adjust_for_image();
-			invalidate_current_scaled_image_surface();
 			gtk_widget_queue_draw(GTK_WIDGET(main_window));
 			break;
 
@@ -5020,9 +5330,10 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 			if(!is_current_file_loaded()) return;
 			current_image_drawn = FALSE;
 			scale_override = FALSE;
+			invalidate_current_scaled_image_surface();
+			image_generate_prerendered_view(CURRENT_FILE, FALSE, -1);
 			set_scale_level_for_screen();
 			main_window_adjust_for_image();
-			invalidate_current_scaled_image_surface();
 			gtk_widget_queue_draw(GTK_WIDGET(main_window));
 			update_info_text(NULL);
 			break;
@@ -5305,9 +5616,9 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 			scale_to_fit_size.width = parameter.p2short.p1;
 			scale_to_fit_size.height = parameter.p2short.p2;
 
+			invalidate_current_scaled_image_surface();
 			set_scale_level_for_screen();
 			main_window_adjust_for_image();
-			invalidate_current_scaled_image_surface();
 			gtk_widget_queue_draw(GTK_WIDGET(main_window));
 			{
 				gchar info_text[255];
@@ -5921,7 +6232,13 @@ gboolean window_configure_callback(GtkWidget *widget, GdkEventConfigure *event, 
 		}
 	}
 
-	if(main_window_width != event->width || main_window_height != event->height) {
+	// Check whether the WM completely ignored our size request to detect tiling WMs
+	if(requested_main_window_width >= 0) {
+		wm_ignores_size_requests = !(abs(event->width - requested_main_window_width) < 3 && abs(event->height - requested_main_window_height) < 3);
+		requested_main_window_width = -1;
+	}
+
+	if(wm_ignores_size_requests || (main_window_width != event->width || main_window_height != event->height)) {
 		// Reset cached font size for info text
 		#ifndef CONFIGURED_WITHOUT_INFO_TEXT
 			current_info_text_cached_font_size = -1;
@@ -5935,6 +6252,17 @@ gboolean window_configure_callback(GtkWidget *widget, GdkEventConfigure *event, 
 		else {
 			main_window_width = event->width;
 			main_window_height = event->height;
+		}
+
+		// If the fullscreen state just changed execute the post-change callbacks here
+		if(fullscreen_transition_source_id >= 0) {
+			g_source_remove(fullscreen_transition_source_id);
+			if(main_window_in_fullscreen) {
+				window_state_into_fullscreen_actions(NULL);
+			}
+			else {
+				window_state_out_of_fullscreen_actions(NULL);
+			}
 		}
 
 		// Rescale the image
@@ -5952,7 +6280,7 @@ gboolean window_configure_callback(GtkWidget *widget, GdkEventConfigure *event, 
 		// Make sure that the currently selected image stays in view & that all
 		// visible thumbnails are loaded
 		D_LOCK(file_tree);
-		montage_window_move_cursor(0, 0,  0);
+		montage_window_move_cursor(0, 0, 0);
 		D_UNLOCK(file_tree);
 	}
 	#endif
@@ -6195,7 +6523,7 @@ void window_show_cursor() {/*{{{*/
 	GdkWindow *window = gtk_widget_get_window(GTK_WIDGET(main_window));
 	gdk_window_set_cursor(window, NULL);
 }/*}}}*/
-void window_state_into_fullscreen_actions() {/*{{{*/
+gboolean window_state_into_fullscreen_actions(gpointer user_data) {/*{{{*/
 	current_shift_x = 0;
 	current_shift_y = 0;
 
@@ -6209,8 +6537,11 @@ void window_state_into_fullscreen_actions() {/*{{{*/
 	#if GTK_MAJOR_VERSION < 3
 		gtk_widget_queue_draw(GTK_WIDGET(main_window));
 	#endif
+	update_info_text(NULL);
+	fullscreen_transition_source_id = -1;
+	return FALSE;
 }/*}}}*/
-void window_state_out_of_fullscreen_actions() {/*{{{*/
+gboolean window_state_out_of_fullscreen_actions(gpointer user_data) {/*{{{*/
 	current_shift_x = 0;
 	current_shift_y = 0;
 
@@ -6224,6 +6555,9 @@ void window_state_out_of_fullscreen_actions() {/*{{{*/
 	}
 	invalidate_current_scaled_image_surface();
 	window_show_cursor();
+	update_info_text(NULL);
+	fullscreen_transition_source_id = -1;
+	return FALSE;
 }/*}}}*/
 gboolean window_state_callback(GtkWidget *widget, GdkEventWindowState *event, gpointer user_data) {/*{{{*/
 	/*
@@ -6243,13 +6577,11 @@ gboolean window_state_callback(GtkWidget *widget, GdkEventWindowState *event, gp
 		main_window_in_fullscreen = new_in_fs_state;
 
 		if(main_window_in_fullscreen) {
-			window_state_into_fullscreen_actions();
+			fullscreen_transition_source_id = g_timeout_add(500, window_state_into_fullscreen_actions, NULL);
 		}
 		else {
-			window_state_out_of_fullscreen_actions();
+			fullscreen_transition_source_id = g_timeout_add(500, window_state_out_of_fullscreen_actions, NULL);
 		}
-
-		update_info_text(NULL);
 	}
 
 	return FALSE;
@@ -6284,10 +6616,12 @@ void window_screen_window_manager_changed_callback(gpointer user_data) {/*{{{*/
 			if(GDK_IS_X11_SCREEN(screen)) {
 				wm_supports_fullscreen = gdk_x11_screen_supports_net_wm_hint(screen, gdk_x11_xatom_to_atom(gdk_x11_get_xatom_by_name("_NET_WM_STATE_FULLSCREEN")));
 				wm_supports_moveresize = gdk_x11_screen_supports_net_wm_hint(screen, gdk_x11_xatom_to_atom(gdk_x11_get_xatom_by_name("_NET_MOVERESIZE_WINDOW")));
+				wm_supports_framedrawn = gdk_x11_screen_supports_net_wm_hint(screen, gdk_x11_xatom_to_atom(gdk_x11_get_xatom_by_name("_NET_WM_FRAME_DRAWN")));
 			}
 		#else
 			wm_supports_fullscreen = gdk_x11_screen_supports_net_wm_hint(screen, gdk_x11_xatom_to_atom(gdk_x11_get_xatom_by_name("_NET_WM_STATE_FULLSCREEN")));
 			wm_supports_moveresize = gdk_x11_screen_supports_net_wm_hint(screen, gdk_x11_xatom_to_atom(gdk_x11_get_xatom_by_name("_NET_MOVERESIZE_WINDOW")));
+			wm_supports_framedrawn = gdk_x11_screen_supports_net_wm_hint(screen, gdk_x11_xatom_to_atom(gdk_x11_get_xatom_by_name("_NET_WM_FRAME_DRAWN")));
 		#endif
 	#endif
 }/*}}}*/
@@ -6366,6 +6700,18 @@ void window_realize_callback(GtkWidget *widget, gpointer user_data) {/*{{{*/
 	#if GTK_MAJOR_VERSION < 3 && !defined(_WIN32)
 		gdk_property_change(gtk_widget_get_window(GTK_WIDGET(main_window)), gdk_atom_intern("_GTK_THEME_VARIANT", FALSE), (GdkAtom)XA_STRING, 8, GDK_PROP_MODE_REPLACE, (guchar *)"dark", 4);
 	#endif
+
+	if(!option_transparent_background) {
+		// Ensure that extra pixels (shown e.g. while resizing the window) are black
+		#if GTK_MAJOR_VERSION >= 3
+			GdkRGBA black = { 0., 0., 0., 1. };
+			gdk_window_set_background_rgba(gtk_widget_get_window(GTK_WIDGET(main_window)), &black);
+		#else
+			GdkColor black = { 0, 0, 0, 0 };
+			gdk_rgb_find_color(gtk_widget_get_colormap(GTK_WIDGET(main_window)), &black);
+			gdk_window_set_background(gtk_widget_get_window(GTK_WIDGET(main_window)), &black);
+		#endif
+	}
 }/*}}}*/
 void create_window() { /*{{{*/
 	if(main_window != NULL) {
