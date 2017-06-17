@@ -135,7 +135,7 @@ Known bugs
 Changelog
 ---------
 
-pqiv 2.9 (wip)
+pqiv 2.9 (rc1)
  * Added a montage/image grid mode (bound to `m` by default)
  * Added a WebP backend (by @john0312)
  * Added the means to skip over "logical" directories, such as archive files
