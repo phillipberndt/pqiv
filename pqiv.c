@@ -2047,7 +2047,7 @@ void main_window_adjust_for_image() {/*{{{*/
 #endif
 	}
 
-	if(main_window_width >= 0 && (main_window_width != new_window_width || main_window_height != new_window_height)) {
+	if(main_window_width >= 0 && (main_window_width != new_window_width || main_window_height != new_window_height || requested_main_window_width != -1)) {
 		if(option_recreate_window && main_window_visible) {
 			recreate_window();
 		}
