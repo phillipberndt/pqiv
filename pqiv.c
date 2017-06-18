@@ -2088,6 +2088,7 @@ void main_window_adjust_for_image() {/*{{{*/
 			if(option_enforce_window_aspect_ratio) {
 				gtk_window_set_geometry_hints(main_window, NULL, &hints, GDK_HINT_ASPECT);
 			}
+
 			gtk_window_resize(main_window, new_window_width / screen_scale_factor, new_window_height / screen_scale_factor);
 #if GTK_MAJOR_VERSION < 3
 			if(option_enforce_window_aspect_ratio) {
@@ -2186,7 +2187,8 @@ gboolean image_loaded_handler(gconstpointer node) {/*{{{*/
 	// Reset rotation
 	cairo_matrix_init_identity(&current_transformation);
 
-	// Adjust scale level, resize, set aspect ratio and place window
+	// Adjust scale level, resize, set aspect ratio and place window,
+	// but only if not currently in the process of changing state
 	if(!current_image_drawn) {
 		scale_override = FALSE;
 	}
@@ -3946,6 +3948,8 @@ void window_fullscreen() {/*{{{*/
 		window_clear_background_pixmap();
 		window_show_background_pixmap_cb(NULL);
 	}
+
+	fullscreen_transition_source_id = -2;
 	gtk_window_fullscreen(main_window);
 }/*}}}*/
 void window_unfullscreen() {/*{{{*/
@@ -3972,6 +3976,7 @@ void window_unfullscreen() {/*{{{*/
 		window_show_background_pixmap_cb(NULL);
 	}
 
+	fullscreen_transition_source_id = -2;
 	gtk_window_unfullscreen(main_window);
 }/*}}}*/
 inline void queue_draw() {/*{{{*/
@@ -4683,6 +4688,12 @@ void window_prerender_background_pixmap(int window_width, int window_height, dou
 		#else
 			unsigned long window_xid = GDK_WINDOW_XID(window);
 		#endif
+
+		if(fullscreen_transition_source_id != -1) {
+			// In progress of transitioning fullscreen state. Do nothing.
+			XSetWindowBackground(display, window_xid, 0);
+			return;
+		}
 
 		if(main_window_width == window_width && main_window_height == window_height) {
 			// There will be no tearing, do nothing.
