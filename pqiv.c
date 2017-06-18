@@ -2189,14 +2189,16 @@ gboolean image_loaded_handler(gconstpointer node) {/*{{{*/
 
 	// Adjust scale level, resize, set aspect ratio and place window,
 	// but only if not currently in the process of changing state
-	if(!current_image_drawn) {
-		scale_override = FALSE;
+	if(fullscreen_transition_source_id < 0) {
+		if(!current_image_drawn) {
+			scale_override = FALSE;
+		}
+		invalidate_current_scaled_image_surface();
+		set_scale_level_for_screen();
+		main_window_adjust_for_image();
+		current_image_drawn = FALSE;
+		queue_draw();
 	}
-	invalidate_current_scaled_image_surface();
-	set_scale_level_for_screen();
-	main_window_adjust_for_image();
-	current_image_drawn = FALSE;
-	queue_draw();
 
 	// Show window, if not visible yet
 	if(!main_window_visible) {
@@ -3916,6 +3918,10 @@ void do_jump_dialog() { /* {{{ */
 #endif
 // }}}
 /* Main window functions {{{ */
+gboolean window_fullscreen_helper_reset_transition_id() {/*{{{*/
+	fullscreen_transition_source_id = -1;
+	return FALSE;
+}/*}}}*/
 void window_fullscreen() {/*{{{*/
 	if(is_current_file_loaded()) {
 		main_window_in_fullscreen = TRUE;
@@ -3949,7 +3955,7 @@ void window_fullscreen() {/*{{{*/
 		window_show_background_pixmap_cb(NULL);
 	}
 
-	fullscreen_transition_source_id = -2;
+	fullscreen_transition_source_id = g_timeout_add(500, window_fullscreen_helper_reset_transition_id, NULL);
 	gtk_window_fullscreen(main_window);
 }/*}}}*/
 void window_unfullscreen() {/*{{{*/
@@ -6604,6 +6610,9 @@ gboolean window_state_callback(GtkWidget *widget, GdkEventWindowState *event, gp
 		}
 		main_window_in_fullscreen = new_in_fs_state;
 
+		if(fullscreen_transition_source_id >= 0) {
+			g_source_remove(fullscreen_transition_source_id);
+		}
 		if(main_window_in_fullscreen) {
 			fullscreen_transition_source_id = g_timeout_add(500, window_state_into_fullscreen_actions, NULL);
 		}
