@@ -3955,6 +3955,9 @@ void window_fullscreen() {/*{{{*/
 		window_show_background_pixmap_cb(NULL);
 	}
 
+	if(fullscreen_transition_source_id >= 0) {
+		g_source_remove(fullscreen_transition_source_id);
+	}
 	fullscreen_transition_source_id = g_timeout_add(500, window_fullscreen_helper_reset_transition_id, NULL);
 	gtk_window_fullscreen(main_window);
 }/*}}}*/
@@ -3982,7 +3985,10 @@ void window_unfullscreen() {/*{{{*/
 		window_show_background_pixmap_cb(NULL);
 	}
 
-	fullscreen_transition_source_id = -2;
+	if(fullscreen_transition_source_id >= 0) {
+		g_source_remove(fullscreen_transition_source_id);
+	}
+	fullscreen_transition_source_id = g_timeout_add(500, window_fullscreen_helper_reset_transition_id, NULL);
 	gtk_window_unfullscreen(main_window);
 }/*}}}*/
 inline void queue_draw() {/*{{{*/
@@ -6614,9 +6620,11 @@ gboolean window_state_callback(GtkWidget *widget, GdkEventWindowState *event, gp
 			g_source_remove(fullscreen_transition_source_id);
 		}
 		if(main_window_in_fullscreen) {
+			window_state_into_fullscreen_actions(NULL);
 			fullscreen_transition_source_id = g_timeout_add(500, window_state_into_fullscreen_actions, NULL);
 		}
 		else {
+			window_state_out_of_fullscreen_actions(NULL);
 			fullscreen_transition_source_id = g_timeout_add(500, window_state_out_of_fullscreen_actions, NULL);
 		}
 	}
