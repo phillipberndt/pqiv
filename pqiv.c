@@ -622,7 +622,7 @@ const struct pqiv_action_descriptor {
 	{ "toggle_shuffle_mode", PARAMETER_INT },
 	{ "reload", PARAMETER_NONE },
 	{ "reset_scale_level", PARAMETER_NONE },
-	{ "toggle_fullscreen", PARAMETER_NONE },
+	{ "toggle_fullscreen", PARAMETER_INT },
 	{ "flip_horizontally", PARAMETER_NONE },
 	{ "flip_vertically", PARAMETER_NONE },
 	{ "rotate_left", PARAMETER_NONE },
@@ -3919,6 +3919,7 @@ void do_jump_dialog() { /* {{{ */
 // }}}
 /* Main window functions {{{ */
 gboolean window_fullscreen_helper_reset_transition_id() {/*{{{*/
+	unblock_active_input_event_action_chain();
 	fullscreen_transition_source_id = -1;
 	return FALSE;
 }/*}}}*/
@@ -3959,6 +3960,7 @@ void window_fullscreen() {/*{{{*/
 		g_source_remove(fullscreen_transition_source_id);
 	}
 	fullscreen_transition_source_id = g_timeout_add(500, window_fullscreen_helper_reset_transition_id, NULL);
+	block_active_input_event_action_chain();
 	gtk_window_fullscreen(main_window);
 }/*}}}*/
 void window_unfullscreen() {/*{{{*/
@@ -3988,6 +3990,7 @@ void window_unfullscreen() {/*{{{*/
 	if(fullscreen_transition_source_id >= 0) {
 		g_source_remove(fullscreen_transition_source_id);
 	}
+	block_active_input_event_action_chain();
 	fullscreen_transition_source_id = g_timeout_add(500, window_fullscreen_helper_reset_transition_id, NULL);
 	gtk_window_unfullscreen(main_window);
 }/*}}}*/
@@ -5379,7 +5382,7 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 			break;
 
 		case ACTION_TOGGLE_FULLSCREEN:
-			if(main_window_in_fullscreen == FALSE) {
+			if(parameter.pint == 1 || (parameter.pint == 0 && main_window_in_fullscreen == FALSE)) {
 				window_fullscreen();
 			}
 			else {
@@ -6298,10 +6301,10 @@ gboolean window_configure_callback(GtkWidget *widget, GdkEventConfigure *event, 
 		if(fullscreen_transition_source_id >= 0) {
 			g_source_remove(fullscreen_transition_source_id);
 			if(main_window_in_fullscreen) {
-				window_state_into_fullscreen_actions(NULL);
+				window_state_into_fullscreen_actions(main_window);
 			}
 			else {
-				window_state_out_of_fullscreen_actions(NULL);
+				window_state_out_of_fullscreen_actions(main_window);
 			}
 		}
 
@@ -6564,10 +6567,12 @@ void window_show_cursor() {/*{{{*/
 	gdk_window_set_cursor(window, NULL);
 }/*}}}*/
 gboolean window_state_into_fullscreen_actions(gpointer user_data) {/*{{{*/
-	current_shift_x = 0;
-	current_shift_y = 0;
-
-	window_hide_cursor();
+	if(user_data == NULL) {
+		current_shift_x = 0;
+		current_shift_y = 0;
+		window_hide_cursor();
+		update_info_text(NULL);
+	}
 
 	main_window_width = screen_geometry.width;
 	main_window_height = screen_geometry.height;
@@ -6577,13 +6582,17 @@ gboolean window_state_into_fullscreen_actions(gpointer user_data) {/*{{{*/
 	#if GTK_MAJOR_VERSION < 3
 		gtk_widget_queue_draw(GTK_WIDGET(main_window));
 	#endif
-	update_info_text(NULL);
 	fullscreen_transition_source_id = -1;
+	unblock_active_input_event_action_chain();
 	return FALSE;
 }/*}}}*/
 gboolean window_state_out_of_fullscreen_actions(gpointer user_data) {/*{{{*/
-	current_shift_x = 0;
-	current_shift_y = 0;
+	if(user_data == NULL) {
+		current_shift_x = 0;
+		current_shift_y = 0;
+		window_show_cursor();
+		update_info_text(NULL);
+	}
 
 	// If the fullscreen state is left, readjust image placement/size/..
 	scale_override = FALSE;
@@ -6594,9 +6603,8 @@ gboolean window_state_out_of_fullscreen_actions(gpointer user_data) {/*{{{*/
 		gtk_widget_show_all(GTK_WIDGET(main_window));
 	}
 	invalidate_current_scaled_image_surface();
-	window_show_cursor();
-	update_info_text(NULL);
 	fullscreen_transition_source_id = -1;
+	unblock_active_input_event_action_chain();
 	return FALSE;
 }/*}}}*/
 gboolean window_state_callback(GtkWidget *widget, GdkEventWindowState *event, gpointer user_data) {/*{{{*/
@@ -6621,11 +6629,11 @@ gboolean window_state_callback(GtkWidget *widget, GdkEventWindowState *event, gp
 		}
 		if(main_window_in_fullscreen) {
 			window_state_into_fullscreen_actions(NULL);
-			fullscreen_transition_source_id = g_timeout_add(500, window_state_into_fullscreen_actions, NULL);
+			fullscreen_transition_source_id = g_timeout_add(500, window_state_into_fullscreen_actions, main_window);
 		}
 		else {
 			window_state_out_of_fullscreen_actions(NULL);
-			fullscreen_transition_source_id = g_timeout_add(500, window_state_out_of_fullscreen_actions, NULL);
+			fullscreen_transition_source_id = g_timeout_add(500, window_state_out_of_fullscreen_actions, main_window);
 		}
 	}
 
