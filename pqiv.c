@@ -3956,6 +3956,14 @@ void window_fullscreen() {/*{{{*/
 		gtk_window_set_geometry_hints(main_window, NULL, NULL, 0);
 	}
 
+	// Required to avoid tearing
+	if(is_current_file_loaded() && main_window_visible) {
+		// This calls only the 2nd part of window_show_background_pixmap, which
+		// blanks the window.
+		window_clear_background_pixmap();
+		window_show_background_pixmap_cb(NULL);
+	}
+
 	#ifndef _WIN32
 		if(!wm_supports_fullscreen) {
 			// WM does not support _NET_WM_ACTION_FULLSCREEN or no WM present
@@ -3968,14 +3976,6 @@ void window_fullscreen() {/*{{{*/
 			return;
 		}
 	#endif
-
-	// Required to avoid tearing
-	if(is_current_file_loaded() && main_window_visible) {
-		// This calls only the 2nd part of window_show_background_pixmap, which
-		// blanks the window.
-		window_clear_background_pixmap();
-		window_show_background_pixmap_cb(NULL);
-	}
 
 	if(fullscreen_transition_source_id >= 0) {
 		g_source_remove(fullscreen_transition_source_id);
@@ -3991,6 +3991,23 @@ void window_unfullscreen() {/*{{{*/
 		main_window_in_fullscreen = TRUE;
 	}
 
+	// Required to avoid tearing
+	if(is_current_file_loaded() && main_window_visible) {
+		// This calls only the 2nd part of window_show_background_pixmap, which
+		// blanks the window.
+		window_clear_background_pixmap();
+		window_show_background_pixmap_cb(NULL);
+	}
+
+	// Ensure that the unfullscreened window will be centered again
+	if(option_window_position.x != -1) {
+		gtk_window_set_position(main_window, GTK_WIN_POS_CENTER_ALWAYS);
+		if(requested_main_window_resize_pos_callback_id > -1) {
+			g_source_remove(requested_main_window_resize_pos_callback_id);
+		}
+		requested_main_window_resize_pos_callback_id = g_timeout_add(500, main_window_reset_pos_callback, NULL);
+	}
+
 	#ifndef _WIN32
 		if(!wm_supports_fullscreen) {
 			// WM does not support _NET_WM_ACTION_FULLSCREEN or no WM present
@@ -3999,14 +4016,6 @@ void window_unfullscreen() {/*{{{*/
 			return;
 		}
 	#endif
-
-	// Required to avoid tearing
-	if(is_current_file_loaded() && main_window_visible) {
-		// This calls only the 2nd part of window_show_background_pixmap, which
-		// blanks the window.
-		window_clear_background_pixmap();
-		window_show_background_pixmap_cb(NULL);
-	}
 
 	if(fullscreen_transition_source_id >= 0) {
 		g_source_remove(fullscreen_transition_source_id);
