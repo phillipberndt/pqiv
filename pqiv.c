@@ -180,6 +180,7 @@ GtkWindow *main_window;
 gboolean main_window_visible = FALSE;
 
 // Detection of tiled WMs: They should ignore our resize events
+gint requested_main_window_resize_pos_callback_id = -1;
 gint requested_main_window_width = -1;
 gint requested_main_window_height = -1;
 gboolean wm_ignores_size_requests = FALSE;
@@ -2011,6 +2012,11 @@ gboolean main_window_calculate_ideal_size(int *new_window_width, int *new_window
 
 	return TRUE;
 }/*}}}*/
+gboolean main_window_reset_pos_callback(gpointer user_data) {/*{{{*/
+	gtk_window_set_position(main_window, GTK_WIN_POS_NONE);
+	requested_main_window_resize_pos_callback_id = -1;
+	return FALSE;
+}/*}}}*/
 void main_window_adjust_for_image() {/*{{{*/
 	if(!current_file_node) {
 		return;
@@ -2062,6 +2068,21 @@ void main_window_adjust_for_image() {/*{{{*/
 		else if(option_window_position.x != -1) {
 			// Tell the WM to center the window
 			gtk_window_set_position(main_window, GTK_WIN_POS_CENTER_ALWAYS);
+
+			// We need to reset the centering eventually to allow users to
+			// resize pqiv without having the window jumping around. But we
+			// cannot do that right after resizing, because resizing is
+			// actually not done *right* know, only when GTK returns to idle.
+			// Resetting on idle with very low priority does not work either,
+			// because resizing might be further delayed due to other pending
+			// configure events. This used to be done upon receiving the
+			// configure event. But that does not work at least with i3,
+			// unfortunately. See #92 in Github. Long story short, a resonable
+			// timeout seems to be the best idea right now.
+			if(requested_main_window_resize_pos_callback_id > -1) {
+				g_source_remove(requested_main_window_resize_pos_callback_id);
+			}
+			requested_main_window_resize_pos_callback_id = g_timeout_add(500, main_window_reset_pos_callback, NULL);
 		}
 		if(!main_window_visible) {
 			gtk_window_set_default_size(main_window, new_window_width / screen_scale_factor, new_window_height / screen_scale_factor);
@@ -6258,10 +6279,6 @@ gboolean window_configure_callback(GtkWidget *widget, GdkEventConfigure *event, 
 
 	static gint old_window_x, old_window_y;
 	if(old_window_x != event->x || old_window_y != event->y) {
-		// Window was moved. Reset automatic positioning to allow
-		// user-resizing without pain.
-		gtk_window_set_position(main_window, GTK_WIN_POS_NONE);
-
 		old_window_x = event->x;
 		old_window_y = event->y;
 
