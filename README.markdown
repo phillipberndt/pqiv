@@ -149,6 +149,7 @@ pqiv 2.9 (rc1)
  * Added an auto scale mode that maintains window size
  * Bound Control+t to toggle to "maintain scale mode" by default
  * Bound Alt+t to toggle to "maintain window size" by default
+ * Added action `move_window()` to explicitly move pqiv's main window around
 
 pqiv 2.8.5
  * Fixed an issue where the checkerboard pattern sometimes was visible at image

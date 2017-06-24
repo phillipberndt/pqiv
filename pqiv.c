@@ -6260,13 +6260,15 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 #endif // without montage
 
 		case ACTION_MOVE_WINDOW:
-			if(parameter.p2short.p1 < 0) {
-				parameter.p2short.p1 = screen_geometry.x + (screen_geometry.width - main_window_width) / 2;
+			if(!main_window_in_fullscreen) {
+				if(parameter.p2short.p1 < 0) {
+					parameter.p2short.p1 = screen_geometry.x + (screen_geometry.width - main_window_width) / 2;
+				}
+				if(parameter.p2short.p2 < 0) {
+					parameter.p2short.p2 = screen_geometry.y + (screen_geometry.height - main_window_height) / 2;
+				}
+				gtk_window_move(main_window, parameter.p2short.p1, parameter.p2short.p2);
 			}
-			if(parameter.p2short.p2 < 0) {
-				parameter.p2short.p2 = screen_geometry.y + (screen_geometry.height - main_window_height) / 2;
-			}
-			gtk_window_move(main_window, parameter.p2short.p1, parameter.p2short.p2);
 			break;
 
 		default:
