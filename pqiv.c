@@ -675,6 +675,7 @@ const struct pqiv_action_descriptor {
 	{ "montage_mode_follow_proceed", PARAMETER_2SHORT },
 	{ "montage_mode_return_proceed", PARAMETER_NONE },
 	{ "montage_mode_return_cancel", PARAMETER_NONE },
+	{ "move_window", PARAMETER_2SHORT },
 	{ NULL, 0 }
 };
 /* }}} */
@@ -6257,6 +6258,16 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 			break;
 #endif // without actions
 #endif // without montage
+
+		case ACTION_MOVE_WINDOW:
+			if(parameter.p2short.p1 < 0) {
+				parameter.p2short.p1 = screen_geometry.x + (screen_geometry.width - main_window_width) / 2;
+			}
+			if(parameter.p2short.p2 < 0) {
+				parameter.p2short.p2 = screen_geometry.y + (screen_geometry.height - main_window_height) / 2;
+			}
+			gtk_window_move(main_window, parameter.p2short.p1, parameter.p2short.p2);
+			break;
 
 		default:
 			break;
