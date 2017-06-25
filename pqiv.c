@@ -1867,7 +1867,7 @@ void invalidate_current_scaled_image_surface() {/*{{{*/
 }/*}}}*/
 gboolean image_animation_timeout_callback(gpointer user_data) {/*{{{*/
 	D_LOCK(file_tree);
-	if((BOSNode *)user_data != current_file_node || FILE(current_file_node)->force_reload || !FILE(current_file_node)->is_loaded) {
+	if(!file_tree_valid || (BOSNode *)user_data != current_file_node || FILE(current_file_node)->force_reload || !FILE(current_file_node)->is_loaded) {
 		D_UNLOCK(file_tree);
 		current_image_animation_timeout_id = 0;
 		return FALSE;
@@ -7703,6 +7703,9 @@ int main(int argc, char *argv[]) {
 		unload_image(node);
 	}
 	D_LOCK(file_tree);
+	// Note: This still won't free all the data, because we hold weak
+	// references. But that doesn't matter, the unloading is the important
+	// thing as it removes any temporary files.
 	bostree_destroy(file_tree);
 	D_UNLOCK(file_tree);
 
