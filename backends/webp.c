@@ -1,7 +1,7 @@
 /**
  * pqiv
  *
- * Copyright (c) 2013-2014, Phillip Berndt
+ * Copyright (c) 2013-2017, Phillip Berndt
  * Copyright (c) 2017, Chen John L
  *
  * This program is free software: you can redistribute it and/or modify

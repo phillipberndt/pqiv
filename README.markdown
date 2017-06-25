@@ -135,9 +135,10 @@ Known bugs
 Changelog
 ---------
 
-pqiv 2.9 (rc1)
+pqiv 2.9
  * Added a montage/image grid mode (bound to `m` by default)
- * Added a WebP backend (by @john0312)
+ * Added a [WebP](https://developers.google.com/speed/webp/) backend
+   (by @john0312)
  * Added the means to skip over "logical" directories, such as archive files
    (bound to `ctrl+space` and `ctrl+backspace` by default)
  * Improved responsivity by caching pre-scaled copies of images
@@ -147,8 +148,8 @@ pqiv 2.9 (rc1)
  * It is now possible to view --help even if no display is available
  * Added --version
  * Added an auto scale mode that maintains window size
- * Bound Control+t to toggle to "maintain scale mode" by default
- * Bound Alt+t to toggle to "maintain window size" by default
+ * Bound `Control+t` to switch to "maintain scale level" by default
+ * Bound `Alt+t` to switch to "maintain window size" by default
  * Added action `move_window()` to explicitly move pqiv's main window around
 
 pqiv 2.8.5

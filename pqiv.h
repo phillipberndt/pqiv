@@ -1,7 +1,7 @@
 /**
  * pqiv
  *
- * Copyright (c) 2013-2014, Phillip Berndt
+ * Copyright (c) 2013-2017, Phillip Berndt
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -29,7 +29,7 @@
 #include "lib/bostree.h"
 
 #ifndef PQIV_VERSION
-#define PQIV_VERSION "2.9-rc1"
+#define PQIV_VERSION "2.9"
 #endif
 
 #define FILE_FLAGS_ANIMATION      (guint)(1)
