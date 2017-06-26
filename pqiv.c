@@ -691,8 +691,8 @@ GHashTable *active_directory_watches;
 void set_scale_level_to_fit();
 void set_scale_level_for_screen();
 #ifndef CONFIGURED_WITHOUT_INFO_TEXT
-void info_text_queue_redraw();
-void update_info_text(const char *);
+	void info_text_queue_redraw();
+	void update_info_text(const char *);
 	#define UPDATE_INFO_TEXT(fmt, ...) { \
 		gchar *_info_text = g_strdup_printf(fmt, __VA_ARGS__);\
 		update_info_text(_info_text); \
@@ -3533,6 +3533,7 @@ void hardlink_current_image() {/*{{{*/
 			else {
 				update_info_text("Failed to write to the .pqiv-select subdirectory");
 			}
+			info_text_queue_redraw();
 			cairo_surface_destroy(surface);
 		}
 
@@ -3548,7 +3549,7 @@ void hardlink_current_image() {/*{{{*/
 		g_free(link_target);
 		g_free(current_file_basename);
 		update_info_text("File already exists in .pqiv-select");
-		gtk_widget_queue_draw(GTK_WIDGET(main_window));
+		info_text_queue_redraw();
 		bostree_node_weak_unref(file_tree, the_file);
 		return;
 	}
@@ -3580,16 +3581,17 @@ void hardlink_current_image() {/*{{{*/
 				update_info_text("Failed to write to the .pqiv-select subdirectory");
 			}
 			cairo_surface_destroy(surface);
+			info_text_queue_redraw();
 		}
 		g_free(store_target);
 	}
 	else {
 		update_info_text("Created hard-link into .pqiv-select");
+		info_text_queue_redraw();
 	}
 	g_free(link_target);
 	g_free(current_file_basename);
 	bostree_node_weak_unref(file_tree, the_file);
-	gtk_widget_queue_draw(GTK_WIDGET(main_window));
 }/*}}}*/
 gboolean slideshow_timeout_callback(gpointer user_data) {/*{{{*/
 	// Always abort this source: The clock will run again as soon as the image has been loaded.
@@ -4036,7 +4038,7 @@ inline void info_text_queue_redraw() {/*{{{*/
 		gtk_widget_queue_draw_area(GTK_WIDGET(main_window),
 			current_info_text_bounding_box.x,
 			current_info_text_bounding_box.y,
-			current_info_text_bounding_box.width,
+			main_window_width - current_info_text_bounding_box.x,
 			current_info_text_bounding_box.height
 		);
 	}
@@ -5291,10 +5293,8 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 				g_source_remove(slideshow_timeout_id);
 				slideshow_timeout_id = gdk_threads_add_timeout(option_slideshow_interval * 1000, slideshow_timeout_callback, NULL);
 			}
-			gchar *info_text = g_strdup_printf("Slideshow interval set to %d seconds", (int)option_slideshow_interval);
-			update_info_text(info_text);
-			gtk_widget_queue_draw(GTK_WIDGET(main_window));
-			g_free(info_text);
+			UPDATE_INFO_TEXT("Slideshow interval set to %d seconds", (int)option_slideshow_interval);
+			info_text_queue_redraw();
 			break;
 
 		case ACTION_SET_SCALE_LEVEL_RELATIVE:
@@ -5387,13 +5387,14 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 			}
 			preload_adjacent_images();
 			update_info_text(option_shuffle ? "Shuffle mode enabled" : "Shuffle mode disabled");
-			gtk_widget_queue_draw(GTK_WIDGET(main_window));
+			info_text_queue_redraw();
 			break;
 
 		case ACTION_RELOAD:
 			if(!is_current_file_loaded()) return;
 			CURRENT_FILE->force_reload = TRUE;
 			update_info_text("Reloading image..");
+			info_text_queue_redraw();
 			D_LOCK(file_tree);
 			queue_image_load(bostree_node_weak_ref(relative_image_pointer(0)));
 			D_UNLOCK(file_tree);
@@ -5498,7 +5499,7 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 				slideshow_timeout_id = gdk_threads_add_timeout(option_slideshow_interval * 1000, slideshow_timeout_callback, NULL);
 				update_info_text("Slideshow enabled");
 			}
-			gtk_widget_queue_draw(GTK_WIDGET(main_window));
+			info_text_queue_redraw();
 			break;
 
 		case ACTION_HARDLINK_CURRENT_IMAGE:
@@ -5553,12 +5554,11 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 					|| ((CURRENT_FILE->file_flags & FILE_FLAGS_ANIMATION) != 0 && command[0] == '|')) {
 
 					update_info_text("Command incompatible with current file type");
-					gtk_widget_queue_draw(GTK_WIDGET(main_window));
+					info_text_queue_redraw();
 				}
 				else {
-					gchar *info = g_strdup_printf("Executing command %s", command);
-					update_info_text(info);
-					g_free(info);
+					UPDATE_INFO_TEXT("Executing command %s", command);
+					info_text_queue_redraw();
 					gtk_widget_queue_draw(GTK_WIDGET(main_window));
 
 					command = g_strdup(command);
@@ -5693,12 +5693,8 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 			invalidate_current_scaled_image_surface();
 			set_scale_level_for_screen();
 			main_window_adjust_for_image();
+			UPDATE_INFO_TEXT("Scale level adjusted to fit %dx%d px", scale_to_fit_size.width, scale_to_fit_size.height);
 			gtk_widget_queue_draw(GTK_WIDGET(main_window));
-			{
-				gchar info_text[255];
-				snprintf(info_text, 255, "Scale level adjusted to fit %dx%d px", scale_to_fit_size.width, scale_to_fit_size.height);
-				update_info_text(info_text);
-			}
 			break;
 
 		case ACTION_SET_SHIFT_X:
@@ -5846,11 +5842,8 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 				current_image_animation_speed_scale = 0;
 			}
 
-			{
-				gchar info_text[255];
-				snprintf(info_text, 255, "Animation speed adjusted to %03.1f%%", current_image_animation_speed_scale * 100.);
-				update_info_text(info_text);
-			}
+			UPDATE_INFO_TEXT("Animation speed adjusted to %03.1f%%", current_image_animation_speed_scale * 100.);
+			info_text_queue_redraw();
 			break;
 
 		case ACTION_ANIMATION_SET_SPEED_RELATIVE:
@@ -5862,11 +5855,8 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 				current_image_animation_speed_scale = 0;
 			}
 
-			{
-				gchar info_text[255];
-				snprintf(info_text, 255, "Animation speed adjusted to %03.1f%%", current_image_animation_speed_scale * 100.);
-				update_info_text(info_text);
-			}
+			UPDATE_INFO_TEXT("Animation speed adjusted to %03.1f%%", current_image_animation_speed_scale * 100.);
+			info_text_queue_redraw();
 			break;
 
 		case ACTION_GOTO_EARLIER_FILE:
@@ -5938,6 +5928,7 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 			else {
 				update_info_text("Thumbnail generation disabled");
 			}
+			info_text_queue_redraw();
 			break;
 
 		case ACTION_MONTAGE_MODE_ENTER:
