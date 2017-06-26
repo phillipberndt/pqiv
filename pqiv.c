@@ -5884,7 +5884,9 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 
 		case ACTION_SET_FADE_DURATION:
 			option_fading_duration = parameter.pdouble;
-			option_fading = fabs(option_fading_duration) <= 0;
+			option_fading = option_fading_duration > 0;
+			UPDATE_INFO_TEXT("Fade duration adjusted to %2.2f seconds", option_fading_duration);
+			info_text_queue_redraw();
 			break;
 
 		case ACTION_SET_KEYBOARD_TIMEOUT:
