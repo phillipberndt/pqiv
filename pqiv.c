@@ -1211,15 +1211,47 @@ void parse_configuration_file_callback(char *section, char *key, config_parser_v
 }
 void parse_configuration_file() {/*{{{*/
 	// Check for a configuration file
-	gchar *config_file_name = g_build_filename(g_getenv("HOME"), ".pqivrc", NULL);
-	if(!g_file_test(config_file_name, G_FILE_TEST_EXISTS)) {
-		g_free(config_file_name);
+	const gchar *env_config_file = g_getenv("PQIVRC_PATH");
+	if(env_config_file) {
+		if(g_file_test(env_config_file, G_FILE_TEST_EXISTS)) {
+			config_parser_parse_file(env_config_file, parse_configuration_file_callback);
+		}
 		return;
 	}
 
-	config_parser_parse_file(config_file_name, parse_configuration_file_callback);
+	GQueue *test_dirs = g_queue_new();
+	const gchar *config_dir = g_getenv("XDG_CONFIG_HOME");
+	if(!config_dir) {
+		g_queue_push_tail(test_dirs, g_build_filename(g_getenv("HOME"), ".config", "pqivrc", NULL));
+	}
+	else {
+		g_queue_push_tail(test_dirs, g_build_filename(config_dir, "pqivrc", NULL));
+	}
+	g_queue_push_tail(test_dirs, g_build_filename(g_getenv("HOME"), ".pqivrc", NULL));
+	const gchar *system_config_dirs = g_getenv("XDG_CONFIG_DIRS");
+	if(system_config_dirs) {
+		gchar **split_system_config_dirs = g_strsplit(system_config_dirs, ":", 0);
+		for(gchar **system_dir = split_system_config_dirs; *system_dir; system_dir++) {
+			g_queue_push_tail(test_dirs, g_build_filename(*system_dir, "pqivrc", NULL));
+		}
+		g_strfreev(split_system_config_dirs);
+	}
+	g_queue_push_tail(test_dirs, g_build_filename(G_DIR_SEPARATOR_S "etc", "pqivrc", NULL));
 
-	g_free(config_file_name);
+	gchar *config_file_name;
+	while((config_file_name = g_queue_pop_head(test_dirs))) {
+		if(g_file_test(config_file_name, G_FILE_TEST_EXISTS)) {
+			config_parser_parse_file(config_file_name, parse_configuration_file_callback);
+			g_free(config_file_name);
+			break;
+		}
+		g_free(config_file_name);
+	}
+
+	while((config_file_name = g_queue_pop_head(test_dirs))) {
+		g_free(config_file_name);
+	}
+	g_queue_free(test_dirs);
 }/*}}}*/
 void parse_command_line() {/*{{{*/
 	GOptionContext *parser = g_option_context_new("FILES");
