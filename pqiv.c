@@ -6788,14 +6788,7 @@ void window_realize_callback(GtkWidget *widget, gpointer user_data) {/*{{{*/
 
 	if(!option_transparent_background) {
 		// Ensure that extra pixels (shown e.g. while resizing the window) are black
-		#if GTK_MAJOR_VERSION >= 3
-			GdkRGBA black = { 0., 0., 0., 1. };
-			gdk_window_set_background_rgba(gtk_widget_get_window(GTK_WIDGET(main_window)), &black);
-		#else
-			GdkColor black = { 0, 0, 0, 0 };
-			gdk_rgb_find_color(gtk_widget_get_colormap(GTK_WIDGET(main_window)), &black);
-			gdk_window_set_background(gtk_widget_get_window(GTK_WIDGET(main_window)), &black);
-		#endif
+		window_clear_background_pixmap();
 	}
 }/*}}}*/
 void create_window() { /*{{{*/
