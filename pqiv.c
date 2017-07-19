@@ -324,7 +324,9 @@ gint64 fading_initial_time;
 const
 #endif
 enum { AUTO, FAST, GOOD, BEST } option_interpolation_quality = AUTO;
+enum { CHECKERBOARD, BLACK, WHITE } option_background_pattern = CHECKERBOARD;
 
+gboolean options_background_pattern_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error);
 #ifndef CONFIGURED_WITHOUT_ACTIONS
 gboolean options_bind_key_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error);
 char *key_binding_sequence_to_string(guint key_binding_value, gchar *prefix);
@@ -408,6 +410,9 @@ GOptionEntry options[] = {
 	{ "action", 0, 0, G_OPTION_ARG_CALLBACK, &option_action_callback, "Perform a given action", "ACTION" },
 	{ "actions-from-stdin", 0, 0, G_OPTION_ARG_NONE, &option_actions_from_stdin, "Read actions from stdin", NULL },
 	{ "allow-empty-window", 0, 0, G_OPTION_ARG_NONE, &option_allow_empty_window, "Show pqiv/do not quit even though no files are loaded", NULL },
+#endif
+	{ "background-pattern", 0, 0, G_OPTION_ARG_CALLBACK, &options_background_pattern_callback, "Set the background pattern to use for transparent images", "PATTERN" },
+#ifndef CONFIGURED_WITHOUT_ACTIONS
 	{ "bind-key", 0, 0, G_OPTION_ARG_CALLBACK, &options_bind_key_callback, "Rebind a key to another action, see manpage and --show-keybindings output for details.", "KEY BINDING" },
 #endif
 #if !defined(CONFIGURED_WITHOUT_INFO_TEXT) || !defined(CONFIGURED_WITHOUT_MONTAGE_MODE)
@@ -522,8 +527,9 @@ static const struct default_key_bindings_struct {
 	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_k                ), ACTION_ROTATE_RIGHT                    , { 0   }},
 	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_i                ), ACTION_TOGGLE_INFO_BOX                 , { 0   }},
 	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_j                ), ACTION_JUMP_DIALOG                     , { 0   }},
-	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_m                ), ACTION_MONTAGE_MODE_ENTER             , { 0   }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_m                ), ACTION_MONTAGE_MODE_ENTER              , { 0   }},
 	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_s                ), ACTION_TOGGLE_SLIDESHOW                , { 0   }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_b                ), ACTION_TOGGLE_BACKGROUND_PATTERN       , { 0   }},
 	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_a                ), ACTION_HARDLINK_CURRENT_IMAGE          , { 0   }},
 	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_period           ), ACTION_ANIMATION_STEP                  , { 1   }},
 	{ DEFAULT, KEY_BINDING_VALUE(0 , GDK_CONTROL_MASK , GDK_KEY_period           ), ACTION_ANIMATION_CONTINUE              , { 0   }},
@@ -676,6 +682,7 @@ const struct pqiv_action_descriptor {
 	{ "montage_mode_return_proceed", PARAMETER_NONE },
 	{ "montage_mode_return_cancel", PARAMETER_NONE },
 	{ "move_window", PARAMETER_2SHORT },
+	{ "toggle_background_pattern", PARAMETER_INT },
 	{ NULL, 0 }
 };
 /* }}} */
@@ -776,6 +783,23 @@ gboolean strv_contains(const gchar * const *strv, const gchar *str) {
 }
 /* }}} */
 /* Command line handling, creation of the image list {{{ */
+gboolean options_background_pattern_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error) {/*{{{*/
+	if(strcasecmp(value, "checkerboard") == 0) {
+		option_background_pattern = CHECKERBOARD;
+	}
+	else if(strcasecmp(value, "black") == 0) {
+		option_background_pattern = BLACK;
+	}
+	else if(strcasecmp(value, "white") == 0) {
+		option_background_pattern = WHITE;
+	}
+	else {
+		g_set_error(error, G_OPTION_ERROR, G_OPTION_ERROR_FAILED, "Unexpected argument value for the --background-pattern option. Allowed values are BLACK, WHITE and CHECKERBOARD.");
+		return FALSE;
+	}
+
+	return TRUE;
+}/*}}}*/
 #ifndef CONFIGURED_WITHOUT_ACTIONS /* option --without-actions: Do not include support for configurable key/mouse bindings and actions */
 gboolean options_bind_key_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error) {/*{{{*/
 	// Format for value:
@@ -4921,7 +4945,15 @@ gboolean window_draw_callback(GtkWidget *widget, cairo_t *cr_arg, gpointer user_
 			}
 			cairo_close_path(cr);
 			cairo_clip(cr);
-			cairo_set_source(cr, background_checkerboard_pattern);
+			if(option_background_pattern == CHECKERBOARD) {
+				cairo_set_source(cr, background_checkerboard_pattern);
+			}
+			else if(option_background_pattern == WHITE) {
+				cairo_set_source_rgba(cr, 1., 1., 1., 1.);
+			}
+			else {
+				cairo_set_source_rgba(cr, 0., 0., 0., 1.);
+			}
 			cairo_paint(cr);
 			cairo_restore(cr);
 		}
@@ -6262,6 +6294,19 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 				}
 				gtk_window_move(main_window, parameter.p2short.p1, parameter.p2short.p2);
 			}
+			break;
+
+		case ACTION_TOGGLE_BACKGROUND_PATTERN:
+			if(parameter.pint == 0) {
+				option_background_pattern++;
+			}
+			else {
+				option_background_pattern = parameter.pint - 1;
+			}
+			if(option_background_pattern > WHITE || option_background_pattern < CHECKERBOARD) {
+				option_background_pattern = CHECKERBOARD;
+			}
+			gtk_widget_queue_draw(GTK_WIDGET(main_window));
 			break;
 
 		default:

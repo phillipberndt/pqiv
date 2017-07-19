@@ -142,6 +142,12 @@ found, and quits when it cannot load any of the images anymore. With this
 option, both situations result in an empty \fBpqiv\fR window being shown.
 .\"
 .TP
+.BR \-\-background\-pattern=\fIPATTERN\fR
+\fBpqiv\fR draws a checkerboard as transparent images' background. Use this option
+to alternatively use a white or black background. Valid values are \fIcheckerboard\fR,
+\fIwhite\fR and \fIblack\fR.
+.\"
+.TP
 .BR \-\-bind\-key=\fIKEY\ BINDING\fR
 Rebind a key to an action. The syntax is
 .RS
@@ -596,6 +602,11 @@ Shift the current image in x direction.
 .TP
 .BR shift_y(INT)
 Shift the current image in y direction.
+.TP
+.BR toggle_background_pattern(INT)
+Toggle between the different background patterns: 0 to toggle, 1 for
+checkerboard pattern, 2 for black, 3 for white. (Toggling is bound to \fIb\fR
+by default.)
 .TP
 .BR toggle_fullscreen(INT)
 Toggle fullscreen mode: 0 to toggle, 1 to go to fullscreen, 2 to return to

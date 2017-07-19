@@ -135,6 +135,9 @@ Known bugs
 Changelog
 ---------
 
+ * Added `toggle_background_pattern()` (bound to `b`) and
+   `--background-pattern`.
+
 pqiv 2.9
  * Added a montage/image grid mode (bound to `m` by default)
  * Added a [WebP](https://developers.google.com/speed/webp/) backend
