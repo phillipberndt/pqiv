@@ -140,6 +140,8 @@ pqiv 2.10 (wip)
    `--background-pattern`.
  * Added support for alternate pqivrc paths, changed recommended location to
    ./.config/pqivrc.
+ * Sped up `--low-memory` mode (using native- instead of image-surfaces)
+ * Fixed graphical issues with fading mode and quick image transition
 
 pqiv 2.9
  * Added a montage/image grid mode (bound to `m` by default)

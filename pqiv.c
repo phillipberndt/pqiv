@@ -205,11 +205,14 @@ gboolean gui_initialized = FALSE;
 int global_argc;
 char **global_argv;
 
-// Those two surfaces are here to store scaled image versions (to reduce
+// Those surfaces are here to store scaled image versions (to reduce
 // processor load) and to store the last visible image to have something to
 // display while fading and while the (new) current image has not been loaded
 // yet.
-cairo_surface_t *last_visible_image_surface = NULL;
+int last_visible_surface_width = -1;
+int last_visible_surface_height = -1;
+cairo_surface_t *last_visible_surface = NULL;
+cairo_surface_t *fading_surface = NULL;
 cairo_surface_t *current_scaled_image_surface = NULL;
 
 #if !defined(CONFIGURED_WITHOUT_INFO_TEXT) || !defined(CONFIGURED_WITHOUT_MONTAGE_MODE)
@@ -2246,6 +2249,33 @@ gboolean image_loaded_handler(gconstpointer node) {/*{{{*/
 		return FALSE;
 	}
 
+	// Activate fading
+	if(option_fading) {
+		if(fading_surface) {
+			cairo_surface_destroy(fading_surface);
+			fading_surface = NULL;
+		}
+		if(last_visible_surface) {
+			fading_surface = cairo_surface_reference(last_visible_surface);
+		}
+
+		if(fading_current_alpha_stage > 0 && fading_current_alpha_stage < 1.) {
+			// If another fade was already active, don't start another one.
+			fading_current_alpha_stage = DBL_EPSILON;
+			fading_initial_time = -1;
+		}
+		else {
+			// It is important to initialize this variable with a positive,
+			// non-null value, as 0. is used to indicate that no fading currently
+			// takes place.
+			fading_current_alpha_stage = DBL_EPSILON;
+			// We start the clock after the first draw, because it could take some
+			// time to calculate the resized version of the image
+			fading_initial_time = -1;
+			gdk_threads_add_idle(fading_timeout_callback, NULL);
+		}
+	}
+
 	// Initialize animation timer if the image is animated
 	if((CURRENT_FILE->file_flags & FILE_FLAGS_ANIMATION) != 0 && CURRENT_FILE->file_type->animation_initialize_fn != NULL) {
 		current_image_animation_timeout_id = gdk_threads_add_timeout(
@@ -2451,9 +2481,9 @@ gboolean image_loader_load_single(BOSNode *node, gboolean called_from_main) {/*{
 				current_file_node = NULL;
 				earlier_file_node = NULL;
 				invalidate_current_scaled_image_surface();
-				if(last_visible_image_surface) {
-					cairo_surface_destroy(last_visible_image_surface);
-					last_visible_image_surface = NULL;
+				if(last_visible_surface) {
+					cairo_surface_destroy(last_visible_surface);
+					last_visible_surface = NULL;
 				}
 				current_image_drawn = FALSE;
 				update_info_text(NULL);
@@ -2890,6 +2920,9 @@ gboolean absolute_image_movement(BOSNode *ref) {/*{{{*/
 	}
 	earlier_file_node = current_file_node;
 	current_file_node = bostree_node_weak_ref(node);
+	if(current_file_node != earlier_file_node) {
+		invalidate_current_scaled_image_surface();
+	}
 
 	// Update the active key binding such that redraws of the old image do not
 	// continue an active action chain anymore
@@ -2916,18 +2949,6 @@ gboolean absolute_image_movement(BOSNode *ref) {/*{{{*/
 
 	// Preload the adjacent images
 	preload_adjacent_images();
-
-	// Activate fading
-	if(option_fading) {
-		// It is important to initialize this variable with a positive,
-		// non-null value, as 0. is used to indicate that no fading currently
-		// takes place.
-		fading_current_alpha_stage = DBL_EPSILON;
-		// We start the clock after the first draw, because it could take some
-		// time to calculate the resized version of the image
-		fading_initial_time = -1;
-		gdk_threads_add_idle(fading_timeout_callback, NULL);
-	}
 
 	// If there is an active slideshow, interrupt it until the image has been
 	// drawn
@@ -3663,11 +3684,22 @@ gboolean fading_timeout_callback(gpointer user_data) {/*{{{*/
 		return TRUE;
 	}
 
-	double new_stage = (g_get_monotonic_time() - fading_initial_time) / (1e6 * option_fading_duration);
-	new_stage = (new_stage < 0.) ? 0. : ((new_stage > 1.) ? 1. : new_stage);
-	fading_current_alpha_stage = new_stage;
+	if(fading_current_alpha_stage < 1.) {
+		double new_stage = (g_get_monotonic_time() - fading_initial_time) / (1e6 * option_fading_duration);
+		new_stage = (new_stage < 0.) ? 0. : ((new_stage > 1.) ? 1. : new_stage);
+		fading_current_alpha_stage = new_stage;
+	}
 	gtk_widget_queue_draw(GTK_WIDGET(main_window));
-	return (fading_current_alpha_stage < 1.); // FALSE aborts the source
+	if(fading_current_alpha_stage < 1.) {
+		return TRUE;
+	}
+	else {
+		if(fading_surface) {
+			cairo_surface_destroy(fading_surface);
+			fading_surface = NULL;
+		}
+		return FALSE;
+	}
 }/*}}}*/
 void calculate_current_image_transformed_size(int *image_width, int *image_height) {/*{{{*/
 	double transform_width = (double)CURRENT_FILE->width;
@@ -4918,30 +4950,26 @@ gboolean window_draw_callback(GtkWidget *widget, cairo_t *cr_arg, gpointer user_
 		apply_transformation.x0 *= current_scale_level;
 		apply_transformation.y0 *= current_scale_level;
 
-		// Create a temporary image surface to render to first.
+		// Create a temporary surface to render to first.
 		//
 		// We use this for fading and to display the last image if the current image is
 		// still unavailable
 		//
-		// The temporary image surface contains the image as it
-		// is displayed on the screen later, with all transformations applied.
+		// The temporary surface contains the image as it is displayed on the
+		// screen later, with all transformations applied.
 
-		#if CAIRO_VERSION >= CAIRO_VERSION_ENCODE(1, 12, 0)
-			cairo_surface_t *temporary_image_surface = cairo_surface_create_similar_image(cairo_get_target(cr_arg), CAIRO_FORMAT_ARGB32, main_window_width, main_window_height);
-		#else
-			cairo_surface_t *temporary_image_surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, main_window_width, main_window_height);
-		#endif
+		cairo_surface_t *temporary_surface = cairo_surface_create_similar(cairo_get_target(cr_arg), CAIRO_CONTENT_COLOR_ALPHA, main_window_width, main_window_height);
 		cairo_t *cr = NULL;
-		if(cairo_surface_status(temporary_image_surface) != CAIRO_STATUS_SUCCESS) {
+		if(cairo_surface_status(temporary_surface) != CAIRO_STATUS_SUCCESS) {
 			// This image is too large to be rendered into a temorary image surface
 			// As a best effort solution, render directly to the window instead
 			cairo_save(cr_arg);
 			cr = cr_arg;
-			cairo_surface_destroy(temporary_image_surface);
-			temporary_image_surface = NULL;
+			cairo_surface_destroy(temporary_surface);
+			temporary_surface = NULL;
 		}
 		else {
-			cr = cairo_create(temporary_image_surface);
+			cr = cairo_create(temporary_surface);
 		}
 
 		// Draw black background
@@ -5005,7 +5033,7 @@ gboolean window_draw_callback(GtkWidget *widget, cairo_t *cr_arg, gpointer user_
 		}
 		else {
 			// Elsewise, we cache a scaled copy in a separate image surface
-			// to speed up rotations on scaled images
+			// to speed up movement/redraws of scaled images
 			cairo_surface_t *temporary_scaled_image_surface = get_scaled_image_surface_for_current_image();
 			cairo_set_source_surface(cr, temporary_scaled_image_surface, 0, 0);
 			cairo_paint(cr);
@@ -5018,15 +5046,13 @@ gboolean window_draw_callback(GtkWidget *widget, cairo_t *cr_arg, gpointer user_
 			cairo_destroy(cr);
 
 			// If currently fading, draw the surface along with the old image
-			if(option_fading && fading_current_alpha_stage < 1. && fading_current_alpha_stage > 0. && last_visible_image_surface != NULL) {
-				cairo_set_source_surface(cr_arg, last_visible_image_surface, 0, 0);
+			if(option_fading && fading_current_alpha_stage < 1. && fading_current_alpha_stage > 0. && fading_surface != NULL) {
+				cairo_set_source_surface(cr_arg, fading_surface, 0, 0);
 				cairo_set_operator(cr_arg, CAIRO_OPERATOR_SOURCE);
 				cairo_paint(cr_arg);
 
-				cairo_set_source_surface(cr_arg, temporary_image_surface, 0, 0);
+				cairo_set_source_surface(cr_arg, temporary_surface, 0, 0);
 				cairo_paint_with_alpha(cr_arg, fading_current_alpha_stage);
-
-				cairo_surface_destroy(temporary_image_surface);
 
 				// If this was the first draw, start the fading clock
 				if(fading_initial_time < 0) {
@@ -5035,29 +5061,31 @@ gboolean window_draw_callback(GtkWidget *widget, cairo_t *cr_arg, gpointer user_
 			}
 			else {
 				// Draw the temporary surface to the screen
-				cairo_set_source_surface(cr_arg, temporary_image_surface, 0, 0);
+				cairo_set_source_surface(cr_arg, temporary_surface, 0, 0);
 				cairo_set_operator(cr_arg, CAIRO_OPERATOR_SOURCE);
 				cairo_paint(cr_arg);
+			}
 
-				// Store the surface, for fading and to have something to display if no
-				// image is loaded (see below)
-				if(last_visible_image_surface != NULL) {
-					cairo_surface_destroy(last_visible_image_surface);
-				}
-				if(!option_lowmem || option_fading) {
-					last_visible_image_surface = temporary_image_surface;
-				}
-				else {
-					cairo_surface_destroy(temporary_image_surface);
-					last_visible_image_surface = NULL;
-				}
+			// Store the surface, for fading and to have something to display if no
+			// image is loaded (see below)
+			if(last_visible_surface != NULL) {
+				cairo_surface_destroy(last_visible_surface);
+			}
+			if(!option_lowmem || option_fading) {
+				last_visible_surface = temporary_surface;
+				last_visible_surface_width = main_window_width;
+				last_visible_surface_height = main_window_height;
+			}
+			else {
+				cairo_surface_destroy(temporary_surface);
+				last_visible_surface = NULL;
 			}
 		}
 		else {
 			cairo_restore(cr_arg);
-			if(last_visible_image_surface) {
-				cairo_surface_destroy(last_visible_image_surface);
-				last_visible_image_surface = NULL;
+			if(last_visible_surface) {
+				cairo_surface_destroy(last_visible_surface);
+				last_visible_surface = NULL;
 			}
 		}
 
@@ -5071,18 +5099,18 @@ gboolean window_draw_callback(GtkWidget *widget, cairo_t *cr_arg, gpointer user_
 	else {
 		// The image has not yet been loaded. If available, draw from the
 		// temporary image surface from the last call
-		if(last_visible_image_surface != NULL) {
+		if(last_visible_surface != NULL) {
 			// But only do it if the window size hasn't changed. It looks weird
 			// to have an image drawn somewhere into the window.
 			// TODO An overall neater solution would be to have
-			// last_visible_image_surface store only the image part, and do the
+			// last_visible_surface store only the image part, and do the
 			// centering here.
-			if(cairo_image_surface_get_width(last_visible_image_surface) != main_window_width || cairo_image_surface_get_height(last_visible_image_surface) != main_window_height) {
-				cairo_surface_destroy(last_visible_image_surface);
-				last_visible_image_surface = NULL;
+			if(last_visible_surface_width != main_window_width || last_visible_surface_height != main_window_height) {
+				cairo_surface_destroy(last_visible_surface);
+				last_visible_surface = NULL;
 			}
 			else {
-				cairo_set_source_surface(cr_arg, last_visible_image_surface, 0, 0);
+				cairo_set_source_surface(cr_arg, last_visible_surface, 0, 0);
 				cairo_set_operator(cr_arg, CAIRO_OPERATOR_SOURCE);
 				cairo_paint(cr_arg);
 			}
@@ -6006,9 +6034,9 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 				g_source_remove(current_image_animation_timeout_id);
 				current_image_animation_timeout_id = 0;
 			}
-			if(last_visible_image_surface) {
-				cairo_surface_destroy(last_visible_image_surface);
-				last_visible_image_surface = NULL;
+			if(last_visible_surface) {
+				cairo_surface_destroy(last_visible_surface);
+				last_visible_surface = NULL;
 			}
 			invalidate_current_scaled_image_surface();
 
