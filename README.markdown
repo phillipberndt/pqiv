@@ -58,6 +58,7 @@ distribution packages are usually somewhat out of date:
  * [Gentoo ebuild](https://packages.gentoo.org/packages/media-gfx/pqiv)
  * [macOS brew](http://braumeister.org/formula/pqiv)
  * [NixOS package](https://github.com/NixOS/nixpkgs/blob/HEAD/pkgs/applications/graphics/pqiv/default.nix)
+ * [OpenBSD port](http://cvsweb.openbsd.org/cgi-bin/cvsweb/ports/graphics/pqiv/)
 
 If you'd like to compile pqiv manually, you'll need
 
@@ -142,6 +143,7 @@ pqiv 2.10 (wip)
    ./.config/pqivrc.
  * Sped up `--low-memory` mode (using native- instead of image-surfaces)
  * Fixed graphical issues with fading mode and quick image transition
+ * Fixed support for platforms with `sizeof(time_t) != sizeof(int)`
 
 pqiv 2.9
  * Added a montage/image grid mode (bound to `m` by default)
