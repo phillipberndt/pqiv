@@ -304,6 +304,7 @@ gboolean option_lowmem = FALSE;
 gboolean option_addl_from_stdin = FALSE;
 gboolean option_recreate_window = FALSE;
 gboolean option_enforce_window_aspect_ratio = FALSE;
+gboolean cursor_visible = TRUE;
 #ifndef CONFIGURED_WITHOUT_ACTIONS
 gboolean option_cursor_auto_hide = FALSE;
 int cursor_auto_hide_timer_id = 0;
@@ -586,6 +587,9 @@ static const struct default_key_bindings_struct {
 	{ MONTAGE, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_f                ), ACTION_TOGGLE_FULLSCREEN               , { 0   }},
 	{ MONTAGE, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_g                ), ACTION_MONTAGE_MODE_FOLLOW             , { .pcharptr = (char*)montage_mode_default_keys }},
 	{ MONTAGE, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_q                ), ACTION_QUIT                            , { 0   }},
+
+	{ MONTAGE, KEY_BINDING_VALUE(1 , 0                , (GDK_SCROLL_UP+1) << 2   ), ACTION_MONTAGE_MODE_SHIFT_Y_ROWS       , { 1   }},
+	{ MONTAGE, KEY_BINDING_VALUE(1 , 0                , (GDK_SCROLL_DOWN+1) << 2 ), ACTION_MONTAGE_MODE_SHIFT_Y_ROWS       , { -1  }},
 #endif
 
 	{ DEFAULT, 0, 0, { 0 } }
@@ -686,6 +690,7 @@ const struct pqiv_action_descriptor {
 	{ "montage_mode_return_cancel", PARAMETER_NONE },
 	{ "move_window", PARAMETER_2SHORT },
 	{ "toggle_background_pattern", PARAMETER_INT },
+	{ "montage_mode_shift_y_rows", PARAMETER_INT },
 	{ NULL, 0 }
 };
 /* }}} */
@@ -4701,11 +4706,22 @@ gboolean window_draw_thumbnail_montage(cairo_t *cr_arg) {/*{{{*/
 		}
 		file_t *thumb_file = FILE(thumb_node);
 
+		/*/ Debug: Draw a red box around the thumbnail box
+		cairo_save(cr_arg);
+		cairo_translate(cr_arg,
+			(main_window_width - n_thumbs_x * (option_thumbnails.width + 10)) / 2   + (draw_now % n_thumbs_x) * (option_thumbnails.width + 10),
+			(main_window_height - n_thumbs_y * (option_thumbnails.height + 10)) / 2 + (draw_now / n_thumbs_x) * (option_thumbnails.height + 10)
+		);
+		cairo_set_source_rgb(cr_arg, 1., 0, 0);
+		cairo_rectangle(cr_arg, 0, 0, option_thumbnails.width + 10, option_thumbnails.height + 10);
+		cairo_stroke(cr_arg);
+		cairo_restore(cr_arg);*/
+
 		if(thumb_file->thumbnail) {
 			cairo_save(cr_arg);
 			cairo_translate(cr_arg,
-				(main_window_width - n_thumbs_x * (option_thumbnails.width + 10)) / 2   + (draw_now % n_thumbs_x) * (option_thumbnails.width + 10)  + (option_thumbnails.width - cairo_image_surface_get_width(thumb_file->thumbnail))/2,
-				(main_window_height - n_thumbs_y * (option_thumbnails.height + 10)) / 2 + (draw_now / n_thumbs_x) * (option_thumbnails.height + 10) + (option_thumbnails.height - cairo_image_surface_get_height(thumb_file->thumbnail))/2
+				(main_window_width - n_thumbs_x * (option_thumbnails.width + 10)) / 2   + (draw_now % n_thumbs_x) * (option_thumbnails.width + 10)  + (option_thumbnails.width + 10 - cairo_image_surface_get_width(thumb_file->thumbnail))/2,
+				(main_window_height - n_thumbs_y * (option_thumbnails.height + 10)) / 2 + (draw_now / n_thumbs_x) * (option_thumbnails.height + 10) + (option_thumbnails.height + 10 - cairo_image_surface_get_height(thumb_file->thumbnail))/2
 			);
 			cairo_set_source_surface(cr_arg, thumb_file->thumbnail, 0, 0);
 			cairo_new_path(cr_arg);
@@ -6369,6 +6385,24 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 			gtk_widget_queue_draw(GTK_WIDGET(main_window));
 			break;
 
+#ifndef CONFIGURED_WITHOUT_MONTAGE_MODE
+		case ACTION_MONTAGE_MODE_SHIFT_Y_ROWS:
+			if(application_mode != MONTAGE) {
+				break;
+			}
+			D_LOCK(file_tree);
+			int old_scroll_y = montage_window_control.scroll_y;
+			montage_window_move_cursor(0, parameter.pint, 0);
+			montage_window_control.scroll_y = old_scroll_y + parameter.pint;
+			if(montage_window_control.scroll_y < 0) {
+				montage_window_control.scroll_y = 0;
+			}
+			montage_window_move_cursor(0, 0, 0);
+			D_UNLOCK(file_tree);
+			gtk_widget_queue_draw(GTK_WIDGET(main_window));
+			break;
+#endif // without montage
+
 		default:
 			break;
 	}
@@ -6621,7 +6655,7 @@ gboolean window_motion_notify_callback(GtkWidget *widget, GdkEventMotion *event,
 		return FALSE;
 	}
 
-	if(event->state & (GDK_BUTTON1_MASK | GDK_BUTTON2_MASK | GDK_BUTTON3_MASK)) {
+	if(application_mode == DEFAULT && event->state & (GDK_BUTTON1_MASK | GDK_BUTTON2_MASK | GDK_BUTTON3_MASK)) {
 		gdouble dev_x = screen_geometry.width / 2 + screen_geometry.x - event->x_root * screen_scale_factor;
 		gdouble dev_y = screen_geometry.height / 2 + screen_geometry.y - event->y_root * screen_scale_factor;
 
@@ -6652,11 +6686,34 @@ gboolean window_motion_notify_callback(GtkWidget *widget, GdkEventMotion *event,
 	return FALSE;
 }/*}}}*/
 gboolean window_button_press_callback(GtkWidget *widget, GdkEventButton *event, gpointer user_data) {/*{{{*/
-	if(event->time - last_button_press_time < 250) {
+	if(event->time - last_button_press_time < 250 && (application_mode != MONTAGE || event->type != GDK_2BUTTON_PRESS)) {
 		// GTK double-reported this. Ignore.
 		return FALSE;
 	}
 	last_button_press_time = event->time;
+
+	if(application_mode == MONTAGE && cursor_visible && event->button == 1) {
+		// In montage mode, the mouse may be used to select thumbnails
+
+		// Thumbnails are drawn such that the whole mosaique is centered. Undo
+		// that to find the correct index.
+		//
+		event->x -= (main_window_width % (option_thumbnails.width + 10)) / 2;
+		event->y -= (main_window_height % (option_thumbnails.height + 10)) / 2;
+		if(event->x < 0) event->x = 0;
+		if(event->y < 0) event->y = 0;
+
+		montage_window_set_cursor((int)(event->x / (option_thumbnails.width + 10)), (int)(event->y / (option_thumbnails.height + 10)));
+		gtk_widget_queue_draw(GTK_WIDGET(main_window));
+		if(event->type == GDK_2BUTTON_PRESS) {
+			pqiv_action_parameter_t empty_param;
+			action(ACTION_MONTAGE_MODE_RETURN_PROCEED, empty_param);
+			// Prevent the release handler from handling this event again
+			last_button_press_time = 0;
+		}
+
+		return FALSE;
+	}
 
 	if(main_window_in_fullscreen) {
 		window_center_mouse();
@@ -6698,10 +6755,12 @@ void window_hide_cursor() {/*{{{*/
 	#if GTK_MAJOR_VERSION >= 3
 		g_object_unref(cursor);
 	#endif
+	cursor_visible = FALSE;
 }/*}}}*/
 void window_show_cursor() {/*{{{*/
 	GdkWindow *window = gtk_widget_get_window(GTK_WIDGET(main_window));
 	gdk_window_set_cursor(window, NULL);
+	cursor_visible = TRUE;
 }/*}}}*/
 gboolean window_state_into_fullscreen_actions(gpointer user_data) {/*{{{*/
 	if(user_data == NULL) {
