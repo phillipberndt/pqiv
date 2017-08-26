@@ -237,6 +237,38 @@ ifeq ($(BACKENDS_BUILD), shared)
 	rmdir $(DESTDIR)$(LIBDIR)/pqiv
 endif
 
+# Rudimentary MacOS bundling
+# Only really useful for opening pqiv using "open pqiv.app --args ..." from the
+# command line right now, but that already has the benefit that the application
+# window will be visible right away
+pqiv.app: pqiv.app.tmp
+	rm -f ../$@
+	cd pqiv.app.tmp && zip -9r ../$@ .
+
+pqiv.app.tmp: pqiv.app.tmp/Contents/MacOS/pqiv pqiv.app.tmp/Contents/Info.plist pqiv.app.tmp/Contents/PkgInfo
+
+pqiv.app.tmp/Contents/MacOS/pqiv:
+	-mkdir -p pqiv.app.tmp/Contents/MacOS
+	install pqiv$(EXECUTABLE_EXTENSION) $@
+
+pqiv.app.tmp/Contents/PkgInfo:
+	-mkdir -p pqiv.app.tmp/Contents
+	$(SILENT_GEN) ( \
+		echo -n "APPL????"; \
+	) > $@
+
+pqiv.app.tmp/Contents/Info.plist: $(HEADERS)
+	-mkdir -p pqiv.app.tmp/Contents
+	$(SILENT_GEN) ( \
+		echo '<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">'; \
+		echo '<plist version="1.0"><dict><key>CFBundleName</key><string>pqiv</string><key>CFBundleDisplayName</key><string>pqiv</string>'; \
+		echo '<key>CFBundleIdentifier</key><string>com.pberndt.pqiv</string><key>CFBundleVersion</key><string>$(PQIV_VERSION_STRING)</string>'; \
+		echo '<key>CFBundlePackageType</key><string>APPL</string><key>CFBundleExecutable</key><string>pqiv</string><key>LSMinimumSystemVersion</key>'; \
+		echo '<string>10.4</string><key>CFBundleDocumentTypes</key><array><dict><key>CFBundleTypeMIMETypes</key><array>'; \
+		cat $(foreach BACKEND, $(sort $(BACKENDS)), $(SOURCEDIR)backends/$(BACKEND).mime) /dev/null | sort | uniq | awk '{print "<string>" $$0 "</string>"}'; \
+		echo '</array></dict></array></dict></plist>'; \
+	) > $@
+
 clean:
 	rm -f pqiv$(EXECUTABLE_EXTENSION) *.o backends/*.o backends/*.so lib/*.o backends/initializer-*.c pqiv.desktop
 
