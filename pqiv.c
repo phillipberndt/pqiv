@@ -2411,7 +2411,7 @@ gboolean image_loader_load_single(BOSNode *node, gboolean called_from_main) {/*{
 
 	if(file->is_loaded) {
 		if(error_pointer) {
-			g_printerr("A recoverable error occoured: %s\n", error_pointer->message);
+			g_printerr("A recoverable error occurred: %s\n", error_pointer->message);
 			g_clear_error(&error_pointer);
 		}
 
