@@ -149,6 +149,7 @@ For some advanced uses of pqiv, take a look at these resouces:
 
 * [Play music while looking at specific images](https://github.com/phillipberndt/pqiv/issues/100#issuecomment-320651190)
 * <details><summary>Bind keys to cycle through panels of a 2x2 comic</summary>
+
   Store this in your `.pqivrc`:
   ```
   # Bind c to act as if "#c1" was typed
@@ -162,6 +163,7 @@ For some advanced uses of pqiv, take a look at these resouces:
   # The last binding closes the cycle by rebinding "c" to act as if "#c1" was typed
   <numbersign>c4 { set_shift_align_corner(SE); bind_key(c { send_keys(#c1\); }); }
   ```
+
   </details>
 
 
