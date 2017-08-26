@@ -84,6 +84,8 @@ shared version of the backends, for example for separate packaging of the
 binaries or to make the run-time dependencies optional, use the
 `--backends-build=shared` configure option.
 
+For macOS, have a look at the `pqiv.app` target of the Makefile, too.
+
 Thanks
 ------
 
@@ -133,6 +135,36 @@ Known bugs
   interfere with each other. Compile using `--backends-build=shared` to
   circumvent this issue.
 
+Examples
+--------
+
+Basic usage of pqiv is very straightforward, call
+
+    pqiv <files or directories>
+
+and then use space, backspace, `f` (for fullscreen), `q` (to quit), and `m` for
+the montage overview to navigate through your images.
+
+For some advanced uses of pqiv, take a look at these resouces:
+
+* [Play music while looking at specific images](https://github.com/phillipberndt/pqiv/issues/100#issuecomment-320651190)
+* <details><summary>Bind keys to cycle through panels of a 2x2 comic</summary>
+  Store this in your `.pqivrc`:
+  ```
+  # Bind c to act as if "#c1" was typed
+  c { send_keys(#c1); }
+  # If "#c1" is typed, shift the current image to it's north west corner, and
+  # rebind "c" to act as if "#c2" was typed
+  <numbersign>c1 { set_shift_align_corner(NW); bind_key(c { send_keys(#c2\); }); }
+  # ..etc..
+  <numbersign>c2 { set_shift_align_corner(NE); bind_key(c { send_keys(#c3\); }); }
+  <numbersign>c3 { set_shift_align_corner(SW); bind_key(c { send_keys(#c4\); }); }
+  # The last binding closes the cycle by rebinding "c" to act as if "#c1" was typed
+  <numbersign>c4 { set_shift_align_corner(SE); bind_key(c { send_keys(#c1\); }); }
+  ```
+  </details>
+
+
 Changelog
 ---------
 
@@ -161,6 +193,9 @@ pqiv 2.9
  * Bound `Control+t` to switch to "maintain scale level" by default
  * Bound `Alt+t` to switch to "maintain window size" by default
  * Added action `move_window()` to explicitly move pqiv's main window around
+
+<details>
+<summary>Click to expand changelog for old pqiv versions</summary>
 
 pqiv 2.8.5
  * Fixed an issue where the checkerboard pattern sometimes was visible at image
@@ -305,3 +340,5 @@ pqiv ≤ 1.0
 pqiv ≤ 0.3
  * See the old python release for information on that
    (in the **python** branch on github)
+
+</details>
