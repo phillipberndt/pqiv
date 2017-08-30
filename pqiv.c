@@ -6691,17 +6691,27 @@ gboolean window_scroll_callback(GtkWidget *widget, GdkEventScroll *event, gpoint
 	return FALSE;
 }/*}}}*/
 void window_hide_cursor() {/*{{{*/
+	if(!main_window_visible) {
+		return;
+	}
 	GdkDisplay *display = gtk_widget_get_display(GTK_WIDGET(main_window));
 	GdkCursor *cursor = gdk_cursor_new_for_display(display, GDK_BLANK_CURSOR);
 	GdkWindow *window = gtk_widget_get_window(GTK_WIDGET(main_window));
-	gdk_window_set_cursor(window, cursor);
+	if(window) {
+		gdk_window_set_cursor(window, cursor);
+	}
 	#if GTK_MAJOR_VERSION >= 3
 		g_object_unref(cursor);
 	#endif
 }/*}}}*/
 void window_show_cursor() {/*{{{*/
+	if(!main_window_visible) {
+		return;
+	}
 	GdkWindow *window = gtk_widget_get_window(GTK_WIDGET(main_window));
-	gdk_window_set_cursor(window, NULL);
+	if(window) {
+		gdk_window_set_cursor(window, NULL);
+	}
 }/*}}}*/
 gboolean window_state_into_fullscreen_actions(gpointer user_data) {/*{{{*/
 	if(user_data == NULL) {
