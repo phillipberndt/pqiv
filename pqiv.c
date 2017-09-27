@@ -6289,6 +6289,7 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 			active_key_binding.key_binding = NULL;
 			return;
 			break;
+#endif // without actions
 
 		case ACTION_MONTAGE_MODE_RETURN_PROCEED:
 		case ACTION_MONTAGE_MODE_RETURN_CANCEL:
@@ -6341,7 +6342,6 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 
 			update_info_text(NULL);
 			break;
-#endif // without actions
 #endif // without montage
 
 		case ACTION_MOVE_WINDOW:
