@@ -171,6 +171,8 @@ Changelog
 ---------
 
 pqiv 2.10 (wip)
+ * Enable cursor auto-hide by default
+ * Enable mouse navigation in montage mode
  * Added `toggle_background_pattern()` (bound to `b`) and
    `--background-pattern`.
  * Added support for alternate pqivrc paths, changed recommended location to

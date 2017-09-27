@@ -304,9 +304,10 @@ gboolean option_lowmem = FALSE;
 gboolean option_addl_from_stdin = FALSE;
 gboolean option_recreate_window = FALSE;
 gboolean option_enforce_window_aspect_ratio = FALSE;
-#ifndef CONFIGURED_WITHOUT_ACTIONS
-gboolean option_cursor_auto_hide = FALSE;
+gboolean cursor_visible = TRUE;
+gboolean cursor_auto_hide_mode_enabled = FALSE;
 int cursor_auto_hide_timer_id = 0;
+#ifndef CONFIGURED_WITHOUT_ACTIONS
 gboolean option_actions_from_stdin = FALSE;
 gboolean option_status_output = FALSE;
 #else
@@ -373,6 +374,11 @@ struct {
 
 enum { MONTAGE_MODE_WRAP_OFF, MONTAGE_MODE_WRAP_ROWS, MONTAGE_MODE_WRAP_FULL, _MONTAGE_MODE_WRAP_SENTINEL } option_montage_mode_wrap_mode = MONTAGE_MODE_WRAP_ROWS;
 #endif
+
+struct Point {
+	int x;
+	int y;
+};
 
 // The standard forbids casting object pointers to function pointers, but
 // GLib requires it in its GOptionEntry structure.
@@ -586,6 +592,9 @@ static const struct default_key_bindings_struct {
 	{ MONTAGE, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_f                ), ACTION_TOGGLE_FULLSCREEN               , { 0   }},
 	{ MONTAGE, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_g                ), ACTION_MONTAGE_MODE_FOLLOW             , { .pcharptr = (char*)montage_mode_default_keys }},
 	{ MONTAGE, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_q                ), ACTION_QUIT                            , { 0   }},
+
+	{ MONTAGE, KEY_BINDING_VALUE(1 , 0                , (GDK_SCROLL_UP+1) << 2   ), ACTION_MONTAGE_MODE_SHIFT_Y_ROWS       , { 1   }},
+	{ MONTAGE, KEY_BINDING_VALUE(1 , 0                , (GDK_SCROLL_DOWN+1) << 2 ), ACTION_MONTAGE_MODE_SHIFT_Y_ROWS       , { -1  }},
 #endif
 
 	{ DEFAULT, 0, 0, { 0 } }
@@ -686,6 +695,7 @@ const struct pqiv_action_descriptor {
 	{ "montage_mode_return_cancel", PARAMETER_NONE },
 	{ "move_window", PARAMETER_2SHORT },
 	{ "toggle_background_pattern", PARAMETER_INT },
+	{ "montage_mode_shift_y_rows", PARAMETER_INT },
 	{ NULL, 0 }
 };
 /* }}} */
@@ -761,8 +771,8 @@ static void continue_active_input_event_action_chain();
 static void UNUSED_FUNCTION block_active_input_event_action_chain();
 static void UNUSED_FUNCTION unblock_active_input_event_action_chain();
 void draw_current_image_to_context(cairo_t *cr);
-#ifndef CONFIGURED_WITHOUT_ACTIONS
 gboolean window_auto_hide_cursor_callback(gpointer user_data);
+#ifndef CONFIGURED_WITHOUT_ACTIONS
 gboolean handle_input_event_timeout_callback(gpointer user_data);
 #endif
 #ifndef CONFIGURED_WITHOUT_MONTAGE_MODE
@@ -4701,11 +4711,22 @@ gboolean window_draw_thumbnail_montage(cairo_t *cr_arg) {/*{{{*/
 		}
 		file_t *thumb_file = FILE(thumb_node);
 
+		/*/ Debug: Draw a red box around the thumbnail box
+		cairo_save(cr_arg);
+		cairo_translate(cr_arg,
+			(main_window_width - n_thumbs_x * (option_thumbnails.width + 10)) / 2   + (draw_now % n_thumbs_x) * (option_thumbnails.width + 10),
+			(main_window_height - n_thumbs_y * (option_thumbnails.height + 10)) / 2 + (draw_now / n_thumbs_x) * (option_thumbnails.height + 10)
+		);
+		cairo_set_source_rgb(cr_arg, 1., 0, 0);
+		cairo_rectangle(cr_arg, 0, 0, option_thumbnails.width + 10, option_thumbnails.height + 10);
+		cairo_stroke(cr_arg);
+		cairo_restore(cr_arg);*/
+
 		if(thumb_file->thumbnail) {
 			cairo_save(cr_arg);
 			cairo_translate(cr_arg,
-				(main_window_width - n_thumbs_x * (option_thumbnails.width + 10)) / 2   + (draw_now % n_thumbs_x) * (option_thumbnails.width + 10)  + (option_thumbnails.width - cairo_image_surface_get_width(thumb_file->thumbnail))/2,
-				(main_window_height - n_thumbs_y * (option_thumbnails.height + 10)) / 2 + (draw_now / n_thumbs_x) * (option_thumbnails.height + 10) + (option_thumbnails.height - cairo_image_surface_get_height(thumb_file->thumbnail))/2
+				(main_window_width - n_thumbs_x * (option_thumbnails.width + 10)) / 2   + (draw_now % n_thumbs_x) * (option_thumbnails.width + 10)  + (option_thumbnails.width + 10 - cairo_image_surface_get_width(thumb_file->thumbnail))/2,
+				(main_window_height - n_thumbs_y * (option_thumbnails.height + 10)) / 2 + (draw_now / n_thumbs_x) * (option_thumbnails.height + 10) + (option_thumbnails.height + 10 - cairo_image_surface_get_height(thumb_file->thumbnail))/2
 			);
 			cairo_set_source_surface(cr_arg, thumb_file->thumbnail, 0, 0);
 			cairo_new_path(cr_arg);
@@ -5327,6 +5348,36 @@ gboolean set_scale_level_to_fit_callback(gpointer user_data) {
 	return FALSE;
 }
 /*}}}*/
+void set_cursor_auto_hide_mode(int auto_hide) {/*{{{*/
+	cursor_auto_hide_mode_enabled = auto_hide;
+
+	// We only enable the motion mask when it is absolutely necessary, because
+	// communication with X11 becomes quite expensive when it is active: Every
+	// movement of the mouse will trigger an event. The callback disables the
+	// event once it is invoked - instead, a callback will query the mouse
+	// position some time later to see if it changed.
+	//
+	// In theory, there is GDK_POINTER_MOTION_HINT_MASK to achieve this.
+	// However, it is completely broken, according to my experiments and other
+	// people's reports from both the GTK mailing list and Bugzilla.
+	if(cursor_auto_hide_mode_enabled) {
+		gtk_widget_add_events(GTK_WIDGET(main_window), GDK_POINTER_MOTION_MASK);
+	}
+	else {
+		if(gtk_widget_get_realized(GTK_WIDGET(main_window))) {
+			GdkWindow *window = gtk_widget_get_window(GTK_WIDGET(main_window));
+			gdk_window_set_events(window, gdk_window_get_events(window) & ~GDK_POINTER_MOTION_MASK);
+		}
+		else {
+			gtk_widget_set_events(GTK_WIDGET(main_window), gtk_widget_get_events(GTK_WIDGET(main_window)) & ~GDK_POINTER_MOTION_MASK);
+		}
+	}
+
+	if(cursor_auto_hide_timer_id) {
+		g_source_remove(cursor_auto_hide_timer_id);
+	}
+	cursor_auto_hide_timer_id = g_idle_add(window_auto_hide_cursor_callback, NULL);
+}/*}}}*/
 #ifndef CONFIGURED_WITHOUT_ACTIONS
 key_binding_t *key_binding_t_duplicate(key_binding_t *binding) {/*{{{*/
 	key_binding_t *retval = g_slice_new(key_binding_t);
@@ -5958,20 +6009,7 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 			break;
 
 		case ACTION_SET_CURSOR_AUTO_HIDE:
-			option_cursor_auto_hide = !!parameter.pint;
-
-			if(option_cursor_auto_hide) {
-				gtk_widget_add_events(GTK_WIDGET(main_window), GDK_POINTER_MOTION_MASK);
-			}
-			else {
-				gtk_widget_add_events(GTK_WIDGET(main_window), gtk_widget_get_events(GTK_WIDGET(main_window)) & ~GDK_POINTER_MOTION_MASK);
-			}
-
-			window_show_cursor();
-			if(cursor_auto_hide_timer_id) {
-				g_source_remove(cursor_auto_hide_timer_id);
-			}
-			cursor_auto_hide_timer_id = gdk_threads_add_timeout(1000, window_auto_hide_cursor_callback, NULL);
+			set_cursor_auto_hide_mode(!!parameter.pint);
 			break;
 
 		case ACTION_SET_FADE_DURATION:
@@ -6051,6 +6089,7 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 			D_UNLOCK(file_tree);
 			update_info_text(NULL);
 			main_window_adjust_for_image();
+			set_cursor_auto_hide_mode(TRUE);
 
 			gtk_widget_queue_draw(GTK_WIDGET(main_window));
 			break;
@@ -6297,6 +6336,10 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 			active_key_binding_context = DEFAULT;
 			main_window_adjust_for_image();
 			gtk_widget_queue_draw(GTK_WIDGET(main_window));
+			if(main_window_in_fullscreen) {
+				window_hide_cursor();
+				set_cursor_auto_hide_mode(FALSE);
+			}
 
 			D_LOCK(file_tree);
 			BOSNode *target;
@@ -6368,6 +6411,24 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 			}
 			gtk_widget_queue_draw(GTK_WIDGET(main_window));
 			break;
+
+#ifndef CONFIGURED_WITHOUT_MONTAGE_MODE
+		case ACTION_MONTAGE_MODE_SHIFT_Y_ROWS:
+			if(application_mode != MONTAGE) {
+				break;
+			}
+			D_LOCK(file_tree);
+			int old_scroll_y = montage_window_control.scroll_y;
+			montage_window_move_cursor(0, parameter.pint, 0);
+			montage_window_control.scroll_y = old_scroll_y + parameter.pint;
+			if(montage_window_control.scroll_y < 0) {
+				montage_window_control.scroll_y = 0;
+			}
+			montage_window_move_cursor(0, 0, 0);
+			D_UNLOCK(file_tree);
+			gtk_widget_queue_draw(GTK_WIDGET(main_window));
+			break;
+#endif // without montage
 
 		default:
 			break;
@@ -6599,29 +6660,86 @@ void window_center_mouse() {/*{{{*/
 
 	#endif
 }/*}}}*/
-#ifndef CONFIGURED_WITHOUT_ACTIONS
 gboolean window_auto_hide_cursor_callback(gpointer user_data) {/*{{{*/
+	struct Point *cursor_pos = (struct Point *)user_data;
+
+	if(!main_window_visible) {
+		return FALSE;
+	}
+
+	gboolean default_retval = TRUE;
+	if(!cursor_pos) {
+		// This function has been called in an improper way. But on purpose:
+		// We are to allocate cursor_pos ourselves, and setup a timeout.
+		// Note that it'll always appear as if the cursor position changed below.
+		cursor_pos = g_malloc(sizeof(struct Point));
+		cursor_pos->x = -1;
+		cursor_pos->y = -1;
+		cursor_auto_hide_timer_id = g_timeout_add_full(G_PRIORITY_DEFAULT, 1000, window_auto_hide_cursor_callback, cursor_pos, g_free);
+		default_retval = FALSE;
+	}
+
+	// Get current mouse position
+	int x, y;
+	#if GTK_MAJOR_VERSION >= 3
+		GdkDisplay *display = gtk_widget_get_display(GTK_WIDGET(main_window));
+		#if GTK_MAJOR_VERSION == 3 && GTK_MINOR_VERSION < 20
+			GdkDevice *device = gdk_device_manager_get_client_pointer(gdk_display_get_device_manager(display));
+		#else
+			GdkDevice *device = gdk_seat_get_pointer(gdk_display_get_default_seat(display));
+		#endif
+		gdk_window_get_device_position(gtk_widget_get_window(GTK_WIDGET(main_window)), device, &x, &y, NULL);
+	#else
+		gdk_window_get_pointer(gtk_widget_get_window(GTK_WIDGET(main_window)), &x, &y, NULL);
+	#endif
+
+	// Check if the mouse has been moved. If it has, try again in 2s.
+	if(x != cursor_pos->x || y != cursor_pos->y) {
+		cursor_pos->x = x;
+		cursor_pos->y = y;
+		return default_retval;
+	}
+
+	// This source is going to be deleted, since we'll return FALSE
 	cursor_auto_hide_timer_id = 0;
+
+	// Hide the cursor
 	window_hide_cursor();
+
+	// Resubscripe to motion events
+	gtk_widget_add_events(GTK_WIDGET(main_window), GDK_POINTER_MOTION_MASK);
+
 	return FALSE;
 }/*}}}*/
-#endif
 gboolean window_motion_notify_callback(GtkWidget *widget, GdkEventMotion *event, gpointer user_data) {/*{{{*/
-#ifndef CONFIGURED_WITHOUT_ACTIONS
-	if(option_cursor_auto_hide) {
+	if(!(event->state & (GDK_BUTTON1_MASK | GDK_BUTTON2_MASK | GDK_BUTTON3_MASK))) {
+		// Receiving pointer motion events is expensive. We are really only interested in being
+		// informed when the user starts to move the mouse. So ask the display
+		// server to stop sending motion events.
+		// In theory, GDK_POINTER_MOTION_HINT_MASK could do this job, but, alas, it's broken.
+		GdkWindow *window = gtk_widget_get_window(GTK_WIDGET(main_window));
+		gdk_window_set_events(window, gdk_window_get_events(window) & ~GDK_POINTER_MOTION_MASK);
+	}
+
+	if(cursor_auto_hide_mode_enabled) {
+		// Show the cursor
 		window_show_cursor();
+
+		// Set up a callback to check whether the cursor has been moved in 2s
 		if(cursor_auto_hide_timer_id) {
 			g_source_remove(cursor_auto_hide_timer_id);
 		}
-		cursor_auto_hide_timer_id = gdk_threads_add_timeout(1000, window_auto_hide_cursor_callback, NULL);
+		struct Point *cursor_pos = g_malloc(sizeof(struct Point));
+		cursor_pos->x = event->x;
+		cursor_pos->y = event->y;
+		cursor_auto_hide_timer_id = g_timeout_add_full(G_PRIORITY_DEFAULT, 1000, window_auto_hide_cursor_callback, cursor_pos, g_free);
 	}
-#endif
 
 	if(!main_window_in_fullscreen) {
 		return FALSE;
 	}
 
-	if(event->state & (GDK_BUTTON1_MASK | GDK_BUTTON2_MASK | GDK_BUTTON3_MASK)) {
+	if(application_mode == DEFAULT && event->state & (GDK_BUTTON1_MASK | GDK_BUTTON2_MASK | GDK_BUTTON3_MASK)) {
 		gdouble dev_x = screen_geometry.width / 2 + screen_geometry.x - event->x_root * screen_scale_factor;
 		gdouble dev_y = screen_geometry.height / 2 + screen_geometry.y - event->y_root * screen_scale_factor;
 
@@ -6652,11 +6770,36 @@ gboolean window_motion_notify_callback(GtkWidget *widget, GdkEventMotion *event,
 	return FALSE;
 }/*}}}*/
 gboolean window_button_press_callback(GtkWidget *widget, GdkEventButton *event, gpointer user_data) {/*{{{*/
-	if(event->time - last_button_press_time < 250) {
+	if(event->time - last_button_press_time < 250 && (application_mode != MONTAGE || event->type != GDK_2BUTTON_PRESS)) {
 		// GTK double-reported this. Ignore.
 		return FALSE;
 	}
 	last_button_press_time = event->time;
+
+#ifndef CONFIGURED_WITHOUT_MONTAGE_MODE
+	if(application_mode == MONTAGE && cursor_visible && event->button == 1) {
+		// In montage mode, the mouse may be used to select thumbnails
+
+		// Thumbnails are drawn such that the whole mosaique is centered. Undo
+		// that to find the correct index.
+		//
+		event->x -= (main_window_width % (option_thumbnails.width + 10)) / 2;
+		event->y -= (main_window_height % (option_thumbnails.height + 10)) / 2;
+		if(event->x < 0) event->x = 0;
+		if(event->y < 0) event->y = 0;
+
+		montage_window_set_cursor((int)(event->x / (option_thumbnails.width + 10)), (int)(event->y / (option_thumbnails.height + 10)));
+		gtk_widget_queue_draw(GTK_WIDGET(main_window));
+		if(event->type == GDK_2BUTTON_PRESS) {
+			pqiv_action_parameter_t empty_param = { .pint = 0 };
+			action(ACTION_MONTAGE_MODE_RETURN_PROCEED, empty_param);
+			// Prevent the release handler from handling this event again
+			last_button_press_time = 0;
+		}
+
+		return FALSE;
+	}
+#endif // CONFIGURED_WITHOUT_MONTAGE_MODE
 
 	if(main_window_in_fullscreen) {
 		window_center_mouse();
@@ -6699,6 +6842,7 @@ void window_hide_cursor() {/*{{{*/
 	GdkWindow *window = gtk_widget_get_window(GTK_WIDGET(main_window));
 	if(window) {
 		gdk_window_set_cursor(window, cursor);
+		cursor_visible = FALSE;
 	}
 	#if GTK_MAJOR_VERSION >= 3
 		g_object_unref(cursor);
@@ -6711,6 +6855,7 @@ void window_show_cursor() {/*{{{*/
 	GdkWindow *window = gtk_widget_get_window(GTK_WIDGET(main_window));
 	if(window) {
 		gdk_window_set_cursor(window, NULL);
+		cursor_visible = TRUE;
 	}
 }/*}}}*/
 gboolean window_state_into_fullscreen_actions(gpointer user_data) {/*{{{*/
@@ -6718,6 +6863,7 @@ gboolean window_state_into_fullscreen_actions(gpointer user_data) {/*{{{*/
 		current_shift_x = 0;
 		current_shift_y = 0;
 		window_hide_cursor();
+		set_cursor_auto_hide_mode(FALSE);
 		update_info_text(NULL);
 	}
 
@@ -6738,6 +6884,7 @@ gboolean window_state_out_of_fullscreen_actions(gpointer user_data) {/*{{{*/
 		current_shift_x = 0;
 		current_shift_y = 0;
 		window_show_cursor();
+		set_cursor_auto_hide_mode(TRUE);
 		update_info_text(NULL);
 	}
 
@@ -6905,6 +7052,11 @@ void window_realize_callback(GtkWidget *widget, gpointer user_data) {/*{{{*/
 		// Ensure that extra pixels (shown e.g. while resizing the window) are black
 		window_clear_background_pixmap();
 	}
+
+	if(!main_window_in_fullscreen) {
+		// Start the timer to hide the cursor
+		set_cursor_auto_hide_mode(TRUE);
+	}
 }/*}}}*/
 void create_window() { /*{{{*/
 	if(main_window != NULL) {
@@ -6938,8 +7090,8 @@ void create_window() { /*{{{*/
 
 	gtk_widget_set_events(GTK_WIDGET(main_window),
 		GDK_EXPOSURE_MASK | GDK_SCROLL_MASK | GDK_BUTTON_MOTION_MASK |
-		GDK_BUTTON_PRESS_MASK | GDK_BUTTON_RELEASE_MASK | GDK_KEY_PRESS_MASK |
-		GDK_PROPERTY_CHANGE_MASK | GDK_KEY_RELEASE_MASK | GDK_STRUCTURE_MASK);
+		GDK_POINTER_MOTION_MASK | GDK_BUTTON_PRESS_MASK | GDK_BUTTON_RELEASE_MASK |
+		GDK_KEY_PRESS_MASK | GDK_PROPERTY_CHANGE_MASK | GDK_KEY_RELEASE_MASK | GDK_STRUCTURE_MASK);
 
 	// Initialize the screen geometry variable to the primary screen
 	// Useful if no WM is present
