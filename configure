@@ -29,7 +29,7 @@ DEBUG_DEFS=
 # Check if configure was called from another directory;
 # support for out-of-source-tree builds
 STARTUP_DIR="$(pwd)"
-SOURCE_DIR="$(readlink -f "$(dirname "$0")")"
+SOURCE_DIR="$( (cd "$(dirname "$0")"; pwd -P) )"
 cd "$SOURCE_DIR"
 
 # For development, you can set default settings here

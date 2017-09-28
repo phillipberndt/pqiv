@@ -140,7 +140,7 @@ backends/wand.o: CFLAGS_REAL+=-DWAND_VERSION=$(shell $(PKG_CONFIG) --modversion 
 endif
 
 # Add version information to builds from git
-PQIV_VERSION_STRING=$(shell [ -d $(SOURCEDIR).git ] && (which git 2>&1 >/dev/null) && git -C "$(SOURCEDIR)" describe --dirty --tags)
+PQIV_VERSION_STRING=$(shell [ -d $(SOURCEDIR).git ] && (which git 2>&1 >/dev/null) && git -C "$(SOURCEDIR)" describe --dirty --tags 2>/dev/null)
 ifneq ($(PQIV_VERSION_STRING),)
 	PQIV_VERSION_FLAG=-DPQIV_VERSION=\"$(PQIV_VERSION_STRING)\"
 endif
