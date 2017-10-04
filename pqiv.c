@@ -1695,7 +1695,12 @@ void load_images_handle_parameter(char *param, load_images_state_t state, gint d
 				// If we do not use directory watches then there is no use in
 				// maintaining the directory recursion stack. Remove the first
 				// entry (current directory) again.
+				g_free(recursion_folder_stack->data);
 				recursion_folder_stack = g_slist_delete_link(recursion_folder_stack, recursion_folder_stack);
+				// Since the net effect is that we didn't modify recursion_folder_stack,
+				// it is fine that the result of recursion_folder_stack is lost (and not passed back
+				// outside of this function)
+				(void)recursion_folder_stack;
 			}
 
 			if(original_parameter != NULL) {
