@@ -469,7 +469,7 @@ PQIV_ENABLE_PEDANTIC
 #define  KEY_BINDINGS_CONTEXT_SWITCH_SYMBOL            '@'
 
 #define KEY_BINDING_STATE_BITS 4
-#define KEY_BINDING_VALUE(is_mouse, state, keycode) ((guint)(((is_mouse & 1) << 31) | (((state & ((1 << KEY_BINDING_STATE_BITS) - 1)) << (31 - KEY_BINDING_STATE_BITS)) | (keycode & ((1 << (31 - KEY_BINDING_STATE_BITS)) - 1)))))
+#define KEY_BINDING_VALUE(is_mouse, state, keycode) ((guint)((((unsigned)is_mouse & 1u) << 31) | (((state & ((1u << KEY_BINDING_STATE_BITS) - 1)) << (31 - KEY_BINDING_STATE_BITS)) | (keycode & ((1u << (31 - KEY_BINDING_STATE_BITS)) - 1u)))))
 
 #define KEY_BINDING_CONTEXTS_COUNT 2
 #ifndef CONFIGURED_WITHOUT_ACTIONS
