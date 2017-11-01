@@ -39,6 +39,7 @@ struct buffered_file {
 };
 
 GHashTable *file_buffer_table = NULL;
+G_LOCK_DEFINE_STATIC(file_buffer_table);
 
 #ifdef HAS_MMAP
 extern GFile *gfile_for_commandline_arg(const char *);
@@ -57,6 +58,7 @@ static void buffered_file_mmap_free_helper(struct buffered_file_mmap_info *info)
 #endif
 
 GBytes *buffered_file_as_bytes(file_t *file, GInputStream *data, GError **error_pointer) {
+	G_LOCK(file_buffer_table);
 	if(!file_buffer_table) {
 		file_buffer_table = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, g_free);
 	}
@@ -73,6 +75,7 @@ GBytes *buffered_file_as_bytes(file_t *file, GInputStream *data, GError **error_
 			}
 
 			if(!data_bytes) {
+				G_UNLOCK(file_buffer_table);
 				return NULL;
 			}
 		}
@@ -86,6 +89,7 @@ GBytes *buffered_file_as_bytes(file_t *file, GInputStream *data, GError **error_
 				GFileInfo *file_info = g_file_query_info(input_file, G_FILE_ATTRIBUTE_STANDARD_SIZE, G_FILE_QUERY_INFO_NONE, NULL, error_pointer);
 				if(!file_info) {
 					g_object_unref(input_file);
+					G_UNLOCK(file_buffer_table);
 					return NULL;
 				}
 				goffset input_file_size = g_file_info_get_size(file_info);
@@ -113,6 +117,7 @@ GBytes *buffered_file_as_bytes(file_t *file, GInputStream *data, GError **error_
 			else if(!data) {
 				data = image_loader_stream_file(file, error_pointer);
 				if(!data) {
+					G_UNLOCK(file_buffer_table);
 					return NULL;
 				}
 				data_bytes = g_input_stream_read_completely(data, image_loader_cancellable, error_pointer);
@@ -123,6 +128,7 @@ GBytes *buffered_file_as_bytes(file_t *file, GInputStream *data, GError **error_
 			}
 
 			if(!data_bytes) {
+				G_UNLOCK(file_buffer_table);
 				return NULL;
 			}
 		}
@@ -131,16 +137,19 @@ GBytes *buffered_file_as_bytes(file_t *file, GInputStream *data, GError **error_
 		buffer->data = data_bytes;
 	}
 	buffer->ref_count++;
+	G_UNLOCK(file_buffer_table);
 	return buffer->data;
 }
 
 char *buffered_file_as_local_file(file_t *file, GInputStream *data, GError **error_pointer) {
+	G_LOCK(file_buffer_table);
 	if(!file_buffer_table) {
 		file_buffer_table = g_hash_table_new(g_str_hash, g_str_equal);
 	}
 	struct buffered_file *buffer = g_hash_table_lookup(file_buffer_table, file->file_name);
 	if(buffer) {
 		buffer->ref_count++;
+		G_UNLOCK(file_buffer_table);
 		return buffer->file_name;
 	}
 
@@ -163,6 +172,7 @@ char *buffered_file_as_local_file(file_t *file, GInputStream *data, GError **err
 			data = image_loader_stream_file(file, error_pointer);
 			if(!data) {
 				g_hash_table_remove(file_buffer_table, file->file_name);
+				G_UNLOCK(file_buffer_table);
 				return NULL;
 			}
 			local_data = TRUE;
@@ -185,6 +195,7 @@ char *buffered_file_as_local_file(file_t *file, GInputStream *data, GError **err
 				g_object_unref(data);
 			}
 			g_hash_table_remove(file_buffer_table, file->file_name);
+			G_UNLOCK(file_buffer_table);
 			return NULL;
 		}
 
@@ -193,6 +204,7 @@ char *buffered_file_as_local_file(file_t *file, GInputStream *data, GError **err
 			if(local_data) {
 				g_object_unref(data);
 			}
+			G_UNLOCK(file_buffer_table);
 			return NULL;
 		}
 
@@ -207,12 +219,15 @@ char *buffered_file_as_local_file(file_t *file, GInputStream *data, GError **err
 	}
 
 	buffer->ref_count++;
+	G_UNLOCK(file_buffer_table);
 	return buffer->file_name;
 }
 
 void buffered_file_unref(file_t *file) {
+	G_LOCK(file_buffer_table);
 	struct buffered_file *buffer = g_hash_table_lookup(file_buffer_table, file->file_name);
 	if(!buffer) {
+		G_UNLOCK(file_buffer_table);
 		return;
 	}
 	if(--buffer->ref_count == 0) {
@@ -227,4 +242,5 @@ void buffered_file_unref(file_t *file) {
 		}
 		g_hash_table_remove(file_buffer_table, file->file_name);
 	}
+	G_UNLOCK(file_buffer_table);
 }

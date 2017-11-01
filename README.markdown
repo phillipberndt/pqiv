@@ -180,6 +180,7 @@ pqiv 2.10 (wip)
  * Sped up `--low-memory` mode (using native- instead of image-surfaces)
  * Fixed graphical issues with fading mode and quick image transition
  * Fixed support for platforms with `sizeof(time_t) != sizeof(int)`
+ * Fixed a race condition in the file buffer map
 
 pqiv 2.9
  * Added a montage/image grid mode (bound to `m` by default)

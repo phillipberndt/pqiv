@@ -49,7 +49,7 @@ BOSNode *file_type_poppler_alloc(load_images_state_t state, file_t *file) {/*{{{
 		PopplerDocument *poppler_document = poppler_document_new_from_stream(data, -1, NULL, NULL, &error_pointer);
 	#else
 		GBytes *data_bytes = buffered_file_as_bytes(file, NULL, &error_pointer);
-		if(!data_bytes) {
+		if(!data_bytes || error_pointer) {
 			g_printerr("Failed to load PDF %s: %s\n", file->display_name, error_pointer->message);
 			g_clear_error(&error_pointer);
 			file_free(file);
@@ -103,6 +103,9 @@ void file_type_poppler_free(file_t *file) {/*{{{*/
 	g_slice_free(file_private_data_poppler_t, file->private);
 }/*}}}*/
 void file_type_poppler_load(file_t *file, GInputStream *data, GError **error_pointer) {/*{{{*/
+	if(error_pointer) {
+		*error_pointer = NULL;
+	}
 	file_private_data_poppler_t *private = file->private;
 
 	// We need to load the data into memory, because poppler has problems with serving from streams; see above
@@ -110,7 +113,7 @@ void file_type_poppler_load(file_t *file, GInputStream *data, GError **error_poi
 		PopplerDocument *document = poppler_document_new_from_stream(data, -1, NULL, image_loader_cancellable, error_pointer);
 	#else
 		GBytes *data_bytes = buffered_file_as_bytes(file, data, error_pointer);
-		if(!data_bytes) {
+		if(!data_bytes || (error_pointer && *error_pointer)) {
 			return;
 		}
 		gsize data_size;
