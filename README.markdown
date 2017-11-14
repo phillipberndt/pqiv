@@ -170,7 +170,7 @@ For some advanced uses of pqiv, take a look at these resouces:
 Changelog
 ---------
 
-pqiv 2.10 (wip)
+pqiv 2.10
  * Enable cursor auto-hide by default
  * Enable mouse navigation in montage mode
  * Added `toggle_background_pattern()` (bound to `b`) and
@@ -181,6 +181,9 @@ pqiv 2.10 (wip)
  * Fixed graphical issues with fading mode and quick image transition
  * Fixed support for platforms with `sizeof(time_t) != sizeof(int)`
  * Fixed a race condition in the file buffer map
+
+<details>
+<summary>Click to expand changelog for old pqiv versions</summary>
 
 pqiv 2.9
  * Added a montage/image grid mode (bound to `m` by default)
@@ -198,9 +201,6 @@ pqiv 2.9
  * Bound `Control+t` to switch to "maintain scale level" by default
  * Bound `Alt+t` to switch to "maintain window size" by default
  * Added action `move_window()` to explicitly move pqiv's main window around
-
-<details>
-<summary>Click to expand changelog for old pqiv versions</summary>
 
 pqiv 2.8.5
  * Fixed an issue where the checkerboard pattern sometimes was visible at image
