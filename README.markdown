@@ -64,7 +64,7 @@ If you'd like to compile pqiv manually, you'll need
 
  * gtk+ 3.0 *or* gtk+ 2.6
  * gdk-pixbuf 2.2 (included in gtk+)
- * glib 2.8 (with gvfs for opening URLs)
+ * glib 2.32 (with gvfs for opening URLs)
  * cairo 1.6
  * gio 2.0
  * gdk 2.8
