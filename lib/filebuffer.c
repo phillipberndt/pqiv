@@ -114,6 +114,9 @@ GBytes *buffered_file_as_bytes(file_t *file, GInputStream *data, GError **error_
 
 					data_bytes = g_bytes_new_with_free_func(input_file_data, input_file_size, (GDestroyNotify)buffered_file_mmap_free_helper, mmap_info);
 				}
+				else {
+					close(fd);
+				}
 			}
 			g_object_unref(input_file);
 #endif
