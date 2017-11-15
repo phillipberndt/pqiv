@@ -170,6 +170,9 @@ For some advanced uses of pqiv, take a look at these resouces:
 Changelog
 ---------
 
+pqiv 2.10.1
+ * Fix processing of dangling symlinks in the file buffer
+
 pqiv 2.10
  * Enable cursor auto-hide by default
  * Enable mouse navigation in montage mode

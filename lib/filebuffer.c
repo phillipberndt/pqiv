@@ -16,6 +16,7 @@
  *
  */
 #include "filebuffer.h"
+#include <errno.h>
 #include <string.h>
 #include <glib/gstdio.h>
 #include <gio/gio.h>
@@ -97,9 +98,15 @@ GBytes *buffered_file_as_bytes(file_t *file, GInputStream *data, GError **error_
 
 				int fd = open(input_file_abspath, O_RDONLY);
 				g_free(input_file_abspath);
+				if(fd < 0) {
+					g_object_unref(input_file);
+					g_rec_mutex_unlock(&file_buffer_table_mutex);
+					*error_pointer = g_error_new(g_quark_from_static_string("pqiv-filebuffer-error"), 1, "Opening the file failed with errno=%d: %s", errno, strerror(errno));
+					return NULL;
+				}
 				void *input_file_data = mmap(NULL, input_file_size, PROT_READ, MAP_SHARED, fd, 0);
 
-				if(input_file_data) {
+				if(input_file_data != MAP_FAILED) {
 					struct buffered_file_mmap_info *mmap_info = g_slice_new(struct buffered_file_mmap_info);
 					mmap_info->ptr = input_file_data;
 					mmap_info->fd = fd;
