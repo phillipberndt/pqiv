@@ -6867,8 +6867,10 @@ gboolean window_state_into_fullscreen_actions(gpointer user_data) {/*{{{*/
 	if(user_data == NULL) {
 		current_shift_x = 0;
 		current_shift_y = 0;
-		window_hide_cursor();
-		set_cursor_auto_hide_mode(FALSE);
+		if(application_mode == DEFAULT) {
+			window_hide_cursor();
+			set_cursor_auto_hide_mode(FALSE);
+		}
 		update_info_text(NULL);
 	}
 
