@@ -7842,6 +7842,7 @@ gpointer load_images_thread(gpointer user_data) {/*{{{*/
 #ifndef CONFIGURED_WITHOUT_INFO_TEXT
 	if(user_data != NULL) {
 		g_source_remove(event_source);
+		load_images_thread_update_info_text(NULL);
 	}
 #endif
 	return NULL;
