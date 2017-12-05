@@ -5956,7 +5956,9 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 			current_image_animation_speed_scale = 0;
 			D_LOCK(file_tree);
 			if(parameter.pint > 0 && CURRENT_FILE->file_type->animation_next_frame_fn != NULL) {
-				for(int i=0; i<parameter.pint; i++) {
+				// Skip all but one frame here, the last frame progression
+				// happens in image_animation_timeout_callback
+				for(int i = 0; i < parameter.pint - 1; i++) {
 					CURRENT_FILE->file_type->animation_next_frame_fn(CURRENT_FILE);
 				}
 			}
