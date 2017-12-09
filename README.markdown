@@ -171,7 +171,10 @@ For some advanced uses of pqiv, take a look at these resouces:
 Changelog
 ---------
 
-pqiv (dev)
+pqiv 2.11 (dev)
+ * Added negate (color inversion) mode (bound to `n`)
+
+pqiv 2.10.2 (dev)
  * Fix output of `montage_mode_shift_y_rows()` in key bindings
  * Update the info text when the background pattern is cycled
  * Prevent potential crashes in poppler backend for rapid image movements
