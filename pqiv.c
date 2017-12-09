@@ -6440,6 +6440,9 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 			if(option_background_pattern > WHITE || option_background_pattern < CHECKERBOARD) {
 				option_background_pattern = CHECKERBOARD;
 			}
+			UPDATE_INFO_TEXT("Background pattern set to %s", option_background_pattern == BLACK ? "black" :
+															 option_background_pattern == WHITE ? "white" :
+															 "checkerboard");
 			gtk_widget_queue_draw(GTK_WIDGET(main_window));
 			break;
 
