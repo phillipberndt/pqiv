@@ -306,6 +306,7 @@ gboolean option_recreate_window = FALSE;
 gboolean option_enforce_window_aspect_ratio = FALSE;
 gboolean cursor_visible = TRUE;
 gboolean cursor_auto_hide_mode_enabled = FALSE;
+gboolean option_negate = FALSE;
 int cursor_auto_hide_timer_id = 0;
 #ifndef CONFIGURED_WITHOUT_ACTIONS
 gboolean option_actions_from_stdin = FALSE;
@@ -539,6 +540,7 @@ static const struct default_key_bindings_struct {
 	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_m                ), ACTION_MONTAGE_MODE_ENTER              , { 0   }},
 	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_s                ), ACTION_TOGGLE_SLIDESHOW                , { 0   }},
 	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_b                ), ACTION_TOGGLE_BACKGROUND_PATTERN       , { 0   }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_n                ), ACTION_TOGGLE_NEGATE_MODE              , { 0   }},
 	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_a                ), ACTION_HARDLINK_CURRENT_IMAGE          , { 0   }},
 	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_period           ), ACTION_ANIMATION_STEP                  , { 1   }},
 	{ DEFAULT, KEY_BINDING_VALUE(0 , GDK_CONTROL_MASK , GDK_KEY_period           ), ACTION_ANIMATION_CONTINUE              , { 0   }},
@@ -696,6 +698,7 @@ const struct pqiv_action_descriptor {
 	{ "move_window", PARAMETER_2SHORT },
 	{ "toggle_background_pattern", PARAMETER_INT },
 	{ "montage_mode_shift_y_rows", PARAMETER_INT },
+	{ "toggle_negate_mode", PARAMETER_INT },
 	{ NULL, 0 }
 };
 /* }}} */
@@ -5045,7 +5048,30 @@ gboolean window_draw_callback(GtkWidget *widget, cairo_t *cr_arg, gpointer user_
 		}
 
 		// Draw the scaled image.
-		if(option_lowmem || cr == cr_arg) {
+		if(option_negate) {
+			// Negated color mode: The drawing operation is more complex; to do
+			// alpha channels correctly we _need_ to have a image surface copy
+			// of the image, regardless of lowmem mode. So this drawing mode comes
+			// before the option_lowmem special case.
+			cairo_surface_t *temporary_scaled_image_surface = get_scaled_image_surface_for_current_image();
+			cairo_save(cr);
+
+			// Draw white using the image's alpha channel as a mask.
+			// Note that cairo_mask_surface already paints, despite the name.
+			cairo_set_source_rgb(cr, 1., 1., 1.);
+			cairo_mask_surface(cr, temporary_scaled_image_surface, 0, 0);
+			cairo_restore(cr);
+
+			// Now take the difference to the image: This will invert the colors.
+			cairo_save(cr);
+			cairo_set_operator(cr, CAIRO_OPERATOR_DIFFERENCE);
+			cairo_set_source_surface(cr, temporary_scaled_image_surface, 0, 0);
+			cairo_paint(cr);
+			cairo_restore(cr);
+
+			cairo_surface_destroy(temporary_scaled_image_surface);
+		}
+		else if(option_lowmem || cr == cr_arg) {
 			// In low memory mode, we scale here and draw on the fly
 			// The other situation where we do this is if creating the temporary
 			// image surface failed, because if this failed creating the temporary
@@ -6414,6 +6440,17 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 			if(option_background_pattern > WHITE || option_background_pattern < CHECKERBOARD) {
 				option_background_pattern = CHECKERBOARD;
 			}
+			gtk_widget_queue_draw(GTK_WIDGET(main_window));
+			break;
+
+		case ACTION_TOGGLE_NEGATE_MODE:
+			if(parameter.pint == 0) {
+				option_negate = !option_negate;
+			}
+			else {
+				option_negate = parameter.pint - 2;
+			}
+			UPDATE_INFO_TEXT("Negate mode %s", option_negate ? "enabled" : "disabled");
 			gtk_widget_queue_draw(GTK_WIDGET(main_window));
 			break;
 

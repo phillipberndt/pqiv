@@ -170,6 +170,9 @@ For some advanced uses of pqiv, take a look at these resouces:
 Changelog
 ---------
 
+pqiv 2.11 (WIP)
+ * Added negate (color inversion) mode (bound to `n`)
+
 pqiv 2.10.1
  * Fix processing of dangling symlinks in the file buffer
 
