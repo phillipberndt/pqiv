@@ -690,6 +690,7 @@ const struct pqiv_action_descriptor {
 	{ "montage_mode_set_shift_y", PARAMETER_INT },
 	{ "montage_mode_set_wrap_mode", PARAMETER_INT },
 	{ "montage_mode_shift_y_pg", PARAMETER_INT },
+	{ "montage_mode_shift_y_rows", PARAMETER_INT },
 	{ "montage_mode_show_binding_overlays", PARAMETER_INT },
 	{ "montage_mode_follow", PARAMETER_CHARPTR },
 	{ "montage_mode_follow_proceed", PARAMETER_2SHORT },
@@ -697,7 +698,6 @@ const struct pqiv_action_descriptor {
 	{ "montage_mode_return_cancel", PARAMETER_NONE },
 	{ "move_window", PARAMETER_2SHORT },
 	{ "toggle_background_pattern", PARAMETER_INT },
-	{ "montage_mode_shift_y_rows", PARAMETER_INT },
 	{ "toggle_negate_mode", PARAMETER_INT },
 	{ NULL, 0 }
 };
