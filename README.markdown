@@ -171,6 +171,10 @@ For some advanced uses of pqiv, take a look at these resouces:
 Changelog
 ---------
 
+pqiv (dev)
+ * Fix output of `montage_mode_shift_y_rows()` in key bindings
+ * Update the info text when the background pattern is cycled
+
 pqiv 2.10.1
  * Fix processing of dangling symlinks in the file buffer
 
