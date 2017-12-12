@@ -422,7 +422,7 @@ GOptionEntry options[] = {
 #endif
 	{ "background-pattern", 0, 0, G_OPTION_ARG_CALLBACK, &options_background_pattern_callback, "Set the background pattern to use for transparent images", "PATTERN" },
 #ifndef CONFIGURED_WITHOUT_ACTIONS
-	{ "bind-key", 0, 0, G_OPTION_ARG_CALLBACK, &options_bind_key_callback, "Rebind a key to another action, see manpage and --show-keybindings output for details.", "KEY BINDING" },
+	{ "bind-key", 0, 0, G_OPTION_ARG_CALLBACK, &options_bind_key_callback, "Rebind a key to another action, see manpage and --show-bindings output for details.", "KEY BINDING" },
 #endif
 #if !defined(CONFIGURED_WITHOUT_INFO_TEXT) || !defined(CONFIGURED_WITHOUT_MONTAGE_MODE)
 	{ "box-colors", 0, 0, G_OPTION_ARG_CALLBACK, (gpointer)&option_box_colors_callback, "Set box colors", "TEXT:BACKGROUND" },
