@@ -171,12 +171,10 @@ For some advanced uses of pqiv, take a look at these resouces:
 Changelog
 ---------
 
-pqiv (dev)
+pqiv 2.10.2
  * Fix output of `montage_mode_shift_y_rows()` in key bindings
  * Update the info text when the background pattern is cycled
  * Prevent potential crashes in poppler backend for rapid image movements
-
-pqiv 2.10.1
  * Fix processing of dangling symlinks in the file buffer
 
 pqiv 2.10
