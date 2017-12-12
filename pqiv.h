@@ -96,6 +96,10 @@ struct _file {
 	cairo_surface_t *thumbnail;
 #endif
 
+	// Lock to prevent multiple threads from accessing the backend at the same
+	// time
+	GMutex lock;
+
 	// Default render, automatically unloaded with the image, not guaranteed to
 	// be present, not guaranteed to have the correct scale level.
 	cairo_surface_t *prerendered_view;

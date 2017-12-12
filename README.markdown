@@ -174,6 +174,7 @@ Changelog
 pqiv (dev)
  * Fix output of `montage_mode_shift_y_rows()` in key bindings
  * Update the info text when the background pattern is cycled
+ * Prevent potential crashes in poppler backend for rapid image movements
 
 pqiv 2.10.1
  * Fix processing of dangling symlinks in the file buffer

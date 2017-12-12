@@ -1521,6 +1521,7 @@ void load_images_handle_parameter(char *param, load_images_state_t state, gint d
 			file->sort_name = g_strdup("-");
 		}
 		file->file_name = g_strdup("-");
+		g_mutex_init(&file->lock);
 
 		GError *error_ptr = NULL;
 		#ifdef _WIN32
@@ -1713,6 +1714,7 @@ void load_images_handle_parameter(char *param, load_images_state_t state, gint d
 		file = g_slice_new0(file_t);
 		file->file_name = g_strdup(param);
 		file->display_name = g_filename_display_name(param);
+		g_mutex_init(&file->lock);
 		if(option_sort) {
 			if(option_sort_key == MTIME) {
 				// Prepend the modification time to the display name
@@ -1835,6 +1837,7 @@ void file_free(file_t *file) {/*{{{*/
 		file->thumbnail = NULL;
 	}
 #endif
+	g_mutex_clear(&file->lock);
 	g_slice_free(file_t, file);
 }/*}}}*/
 void file_tree_free_helper(BOSNode *node) {
@@ -1952,7 +1955,9 @@ gboolean image_animation_timeout_callback(gpointer user_data) {/*{{{*/
 		return FALSE;
 	}
 
+	g_mutex_lock(&CURRENT_FILE->lock);
 	double delay = (1./current_image_animation_speed_scale) * CURRENT_FILE->file_type->animation_next_frame_fn(CURRENT_FILE);
+	g_mutex_unlock(&CURRENT_FILE->lock);
 	D_UNLOCK(file_tree);
 
 	if(delay >= 0 && current_image_animation_speed_scale > 0) {
@@ -2293,10 +2298,12 @@ gboolean image_loaded_handler(gconstpointer node) {/*{{{*/
 
 	// Initialize animation timer if the image is animated
 	if((CURRENT_FILE->file_flags & FILE_FLAGS_ANIMATION) != 0 && CURRENT_FILE->file_type->animation_initialize_fn != NULL) {
+		g_mutex_lock(&CURRENT_FILE->lock);
 		current_image_animation_timeout_id = gdk_threads_add_timeout(
 			CURRENT_FILE->file_type->animation_initialize_fn(CURRENT_FILE),
 			image_animation_timeout_callback,
 			(gpointer)current_file_node);
+		g_mutex_unlock(&CURRENT_FILE->lock);
 		current_image_animation_speed_scale = 1.0;
 	}
 
@@ -2419,7 +2426,9 @@ gboolean image_loader_load_single(BOSNode *node, gboolean called_from_main) {/*{
 
 		if(data) {
 			// Let the file type handler handle the details
+			g_mutex_lock(&file->lock);
 			file->file_type->load_fn(file, data, &error_pointer);
+			g_mutex_unlock(&file->lock);
 			g_object_unref(data);
 		}
 	}
@@ -2565,7 +2574,9 @@ void image_loader_create_thumbnail(file_t *file) {/*{{{*/
 	cairo_rectangle(cr, 0, 0, file->width, file->height);
 	cairo_clip(cr);
 	if(file->file_type->draw_fn != NULL) {
+		g_mutex_lock(&file->lock);
 		file->file_type->draw_fn(file, cr);
+		g_mutex_unlock(&file->lock);
 	}
 
 	cairo_destroy(cr);
@@ -2606,7 +2617,9 @@ void image_generate_prerendered_view(file_t *file, gboolean force, double scale_
 			cairo_scale(cr, scale_level, scale_level);
 			cairo_set_operator(cr, CAIRO_OPERATOR_SOURCE);
 			if(file->file_type->draw_fn != NULL) {
+				g_mutex_lock(&file->lock);
 				file->file_type->draw_fn(file, cr);
+				g_mutex_unlock(&file->lock);
 			}
 			cairo_destroy(cr);
 			file->prerendered_view = cairo_surface_reference(prerendered_view);
@@ -2826,7 +2839,9 @@ void unload_image(BOSNode *node) {/*{{{*/
 	}
 	file_t *file = FILE(node);
 	if(file->file_type->unload_fn != NULL) {
+		g_mutex_lock(&file->lock);
 		file->file_type->unload_fn(file);
+		g_mutex_unlock(&file->lock);
 	}
 	if(file->prerendered_view) {
 		cairo_surface_destroy(file->prerendered_view);
@@ -3573,6 +3588,7 @@ void apply_external_image_filter(gchar *external_filter) {/*{{{*/
 					new_image->file_type = &file_type_handlers[0];
 					new_image->file_flags = FILE_FLAGS_MEMORY_IMAGE;
 					new_image->file_data = g_bytes_new_take(image_data, image_data_length);
+					g_mutex_init(&new_image->lock);
 
 					BOSNode *loaded_file = new_image->file_type->alloc_fn(FILTER_OUTPUT, new_image);
 					absolute_image_movement(bostree_node_weak_ref(loaded_file));
@@ -3746,7 +3762,9 @@ void apply_interpolation_quality(cairo_t *cr) {/*{{{*/
 }/*}}}*/
 void draw_current_image_to_context(cairo_t *cr) {/*{{{*/
 	if(CURRENT_FILE->file_type->draw_fn != NULL) {
+		g_mutex_lock(&CURRENT_FILE->lock);
 		CURRENT_FILE->file_type->draw_fn(CURRENT_FILE, cr);
+		g_mutex_unlock(&CURRENT_FILE->lock);
 	}
 }/*}}}*/
 void setup_checkerboard_pattern() {/*{{{*/
