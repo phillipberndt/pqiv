@@ -621,12 +621,15 @@ struct {
 	BOSNode *associated_image;
 	gint timeout_id;
 } active_key_binding = { NULL, NULL, -1 };
+GQueue action_queue = G_QUEUE_INIT;
+gint action_queue_idle_id = -1;
 
 #ifndef CONFIGURED_WITHOUT_MONTAGE_MODE
 key_binding_t follow_mode_key_binding = { ACTION_MONTAGE_MODE_FOLLOW_PROCEED, { .p2short = { -1, -1 } }, NULL, NULL };
 #endif
 
 #endif
+void UNUSED_FUNCTION action_done();
 
 const struct pqiv_action_descriptor {
 	const char *name;
@@ -771,9 +774,6 @@ gboolean read_commands_thread_helper(gpointer command);
 void recreate_window();
 static void status_output();
 void handle_input_event(guint key_binding_value);
-static void continue_active_input_event_action_chain();
-static void UNUSED_FUNCTION block_active_input_event_action_chain();
-static void UNUSED_FUNCTION unblock_active_input_event_action_chain();
 void draw_current_image_to_context(cairo_t *cr);
 gboolean window_auto_hide_cursor_callback(gpointer user_data);
 #ifndef CONFIGURED_WITHOUT_ACTIONS
@@ -2330,9 +2330,9 @@ gboolean image_loaded_handler(gconstpointer node) {/*{{{*/
 		invalidate_current_scaled_image_surface();
 		set_scale_level_for_screen();
 		main_window_adjust_for_image();
-		current_image_drawn = FALSE;
-		queue_draw();
 	}
+	current_image_drawn = FALSE;
+	queue_draw();
 
 	// Show window, if not visible yet
 	if(!main_window_visible) {
@@ -2957,10 +2957,6 @@ gboolean absolute_image_movement(BOSNode *ref) {/*{{{*/
 	if(current_file_node != earlier_file_node) {
 		invalidate_current_scaled_image_surface();
 	}
-
-	// Update the active key binding such that redraws of the old image do not
-	// continue an active action chain anymore
-	active_key_binding.associated_image = current_file_node;
 #else
 	if(current_file_node != NULL) {
 		bostree_node_weak_unref(file_tree, current_file_node);
@@ -3943,10 +3939,6 @@ void do_jump_dialog() { /* {{{ */
 	 */
 	GtkTreeIter search_list_iter;
 
-	// For the duration of the dialog, inhibit the input action chain from
-	// continuing
-	block_active_input_event_action_chain();
-
 	// If in fullscreen, show the cursor again
 	if(main_window_in_fullscreen) {
 		window_center_mouse();
@@ -4061,14 +4053,12 @@ void do_jump_dialog() { /* {{{ */
 	gtk_widget_destroy(dlg_window);
 	g_object_unref(search_list);
 	g_object_unref(search_list_filter);
-
-	unblock_active_input_event_action_chain();
 } /* }}} */
 #endif
 // }}}
 /* Main window functions {{{ */
 gboolean window_fullscreen_helper_reset_transition_id() {/*{{{*/
-	unblock_active_input_event_action_chain();
+	action_done();
 	fullscreen_transition_source_id = -1;
 	return FALSE;
 }/*}}}*/
@@ -4109,7 +4099,6 @@ void window_fullscreen() {/*{{{*/
 		g_source_remove(fullscreen_transition_source_id);
 	}
 	fullscreen_transition_source_id = g_timeout_add(500, window_fullscreen_helper_reset_transition_id, NULL);
-	block_active_input_event_action_chain();
 	gtk_window_fullscreen(main_window);
 }/*}}}*/
 void window_unfullscreen() {/*{{{*/
@@ -4148,7 +4137,6 @@ void window_unfullscreen() {/*{{{*/
 	if(fullscreen_transition_source_id >= 0) {
 		g_source_remove(fullscreen_transition_source_id);
 	}
-	block_active_input_event_action_chain();
 	fullscreen_transition_source_id = g_timeout_add(500, window_fullscreen_helper_reset_transition_id, NULL);
 	gtk_window_unfullscreen(main_window);
 }/*}}}*/
@@ -4322,6 +4310,10 @@ void montage_window_set_cursor(int pos_x, int pos_y) {/*{{{*/
 	const unsigned n_thumbs_x = main_window_width / (option_thumbnails.width + 10);
 	const unsigned n_thumbs_y = main_window_height / (option_thumbnails.height + 10);
 	const size_t number_of_images = (ptrdiff_t)bostree_node_count(file_tree);
+
+	if(!montage_window_control.selected_node) {
+		return;
+	}
 
 	BOSNode *selected_node = bostree_node_weak_unref(file_tree, montage_window_control.selected_node);
 	if(!selected_node) {
@@ -4956,20 +4948,9 @@ gboolean window_show_background_pixmap_cb(gpointer user_data) {/*{{{*/
 	return FALSE;
 }/*}}}*/
 gboolean window_draw_callback(GtkWidget *widget, cairo_t *cr_arg, gpointer user_data) {/*{{{*/
-	// Continue an action chain, if one exists The placement of this is a
-	// compromise: What we really want is to perform actions that follow an
-	// action that changes the current file only after the change has been
-	// performed. image_loaded_handler() is the natural place to do this. But
-	// the window hasn't been adjusted to its final size there, so any action
-	// that aligns the image would fail. The configure event would be the next
-	// obvious place, but tiling WMs never send one, because they do not honor
-	// the resize request. Hence this place: The new image will always be drawn
-	// eventually. Performing the action inline here rather than just adding
-	// it as an idle callback is to prevent the image from flickering in its
-	// initial position.
-	if(is_current_file_loaded()) {
-		continue_active_input_event_action_chain();
-	}
+	// Drawing can generally mean that we succeeded in performing some action.
+	// Resume the action queue
+	action_done();
 
 	// We have different drawing modes. The default, below, is to draw a single
 	// image.
@@ -5454,13 +5435,54 @@ void key_binding_t_destroy_callback(gpointer data) {/*{{{*/
 	}
 	g_slice_free(key_binding_t, binding);
 }/*}}}*/
+gboolean queue_action_callback(gpointer user_data) {/*{{{*/
+	key_binding_t *binding = g_queue_pop_head(&action_queue);
+	if(!binding) {
+		action_queue_idle_id = -1;
+		return FALSE;
+	}
+
+	action(binding->action, binding->parameter);
+
+	key_binding_t_destroy_callback(binding);
+
+	/* TODO Or return TRUE? */
+	action_queue_idle_id = -1;
+	return FALSE;
+}/*}}}*/
+void queue_action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
+	key_binding_t temporary_binding = {
+		.action = action_id,
+		.parameter = parameter,
+		.next_action = NULL,
+		.next_key_bindings = NULL
+	};
+	g_queue_push_tail(&action_queue, key_binding_t_duplicate(&temporary_binding));
+	if(action_queue_idle_id == -1) {
+		action_queue_idle_id = g_idle_add(queue_action_callback, NULL);
+	}
+}/*}}}*/
+void queue_action_from_binding(key_binding_t *binding) {/*{{{*/
+	while(binding) {
+		queue_action(binding->action, binding->parameter);
+		binding = binding->next_action;
+	}
+}/*}}}*/
 #endif
+void UNUSED_FUNCTION action_done() {/*{{{*/
+#ifndef CONFIGURED_WITHOUT_ACTIONS
+	if(!g_queue_is_empty(&action_queue) && action_queue_idle_id == -1) {
+		action_queue_idle_id = g_idle_add(queue_action_callback, NULL);
+	}
+#endif
+}/*}}}*/
 void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 	switch(action_id) {
 		case ACTION_NOP:
 			break;
 
 		case ACTION_SHIFT_Y:
+			if(!main_window_visible) return;
 			if(!is_current_file_loaded()) return;
 			current_shift_y += parameter.pint;
 			gtk_widget_queue_draw(GTK_WIDGET(main_window));
@@ -6149,6 +6171,7 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 			set_cursor_auto_hide_mode(TRUE);
 
 			gtk_widget_queue_draw(GTK_WIDGET(main_window));
+			return;
 			break;
 
 		case ACTION_MONTAGE_MODE_SHIFT_X:
@@ -6212,6 +6235,9 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 
 #ifndef CONFIGURED_WITHOUT_ACTIONS
 		case ACTION_MONTAGE_MODE_FOLLOW:
+			if(application_mode != MONTAGE) {
+				break;
+			}
 			if(parameter.pcharptr[0] == 0 || parameter.pcharptr[1] == 0) {
 				g_printerr("Error: montage_mode_follow requires at least two characters to work with.\n");
 				break;
@@ -6367,17 +6393,15 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 			break;
 
 		case ACTION_MONTAGE_MODE_FOLLOW_PROCEED:
+			if(application_mode != MONTAGE) {
+				break;
+			}
 			option_keyboard_timeout = .5;
 			montage_window_control.show_binding_overlays = 0;
 			if(parameter.p2short.p1 >= 0 || parameter.p2short.p2 >= 0) {
 				montage_window_set_cursor(parameter.p2short.p1, parameter.p2short.p2);
 			}
 			gtk_widget_queue_draw(GTK_WIDGET(main_window));
-			// If we have an action chain to continue, do that *now*, because we will
-			// unreference the pointer in the next line.
-			while(active_key_binding.key_binding) {
-				continue_active_input_event_action_chain();
-			}
 			if(follow_mode_key_binding.next_key_bindings) {
 				g_hash_table_unref(follow_mode_key_binding.next_key_bindings);
 				follow_mode_key_binding.next_key_bindings = NULL;
@@ -6389,6 +6413,9 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 
 		case ACTION_MONTAGE_MODE_RETURN_PROCEED:
 		case ACTION_MONTAGE_MODE_RETURN_CANCEL:
+			if(application_mode != MONTAGE) {
+				break;
+			}
 			application_mode = DEFAULT;
 			active_key_binding_context = DEFAULT;
 			main_window_adjust_for_image();
@@ -6441,6 +6468,7 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 			}
 
 			update_info_text(NULL);
+			return;
 			break;
 #endif // without montage
 
@@ -6505,9 +6533,9 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 			break;
 	}
 
-	// By default execute the next action from a chain of actions bound to a key
-	// immediately; unless an action explicitly return'ed above.
-	continue_active_input_event_action_chain();
+	// The current action is done, and the function wasn't explicitly returned
+	// from. Issue the next action, if one's in the queue, to be run.
+	action_done();
 }/*}}}*/
 gboolean window_configure_callback(GtkWidget *widget, GdkEventConfigure *event, gpointer user_data) {/*{{{*/
 	/*
@@ -6608,29 +6636,6 @@ gboolean handle_input_event_timeout_callback(gpointer user_data) {/*{{{*/
 	return FALSE;
 }/*}}}*/
 #endif
-static void continue_active_input_event_action_chain() {/*{{{*/
-#ifndef CONFIGURED_WITHOUT_ACTIONS
-	if(active_key_binding.timeout_id == -1 && active_key_binding.key_binding && (active_key_binding.associated_image == current_file_node || !active_key_binding.associated_image)) {
-		key_binding_t *binding = active_key_binding.key_binding;
-		active_key_binding.key_binding = binding->next_action;
-		action(binding->action, binding->parameter);
-	}
-#endif
-}/*}}}*/
-static void UNUSED_FUNCTION block_active_input_event_action_chain() {/*{{{*/
-#ifndef CONFIGURED_WITHOUT_ACTIONS
-	if(active_key_binding.timeout_id == -1 && active_key_binding.key_binding) {
-		active_key_binding.timeout_id = -2;
-	}
-#endif
-}/*}}}*/
-static void UNUSED_FUNCTION unblock_active_input_event_action_chain() {/*{{{*/
-#ifndef CONFIGURED_WITHOUT_ACTIONS
-	if(active_key_binding.timeout_id == -2 && active_key_binding.key_binding) {
-		active_key_binding.timeout_id = -1;
-	}
-#endif
-}/*}}}*/
 void handle_input_event(guint key_binding_value) {/*{{{*/
 	/* Debug
 	char *debug_keybinding = key_binding_sequence_to_string(key_binding_value, NULL);
@@ -6664,7 +6669,7 @@ void handle_input_event(guint key_binding_value) {/*{{{*/
 		if(!binding) {
 			key_binding_t *binding = active_key_binding.key_binding;
 			active_key_binding.key_binding = binding->next_action;
-			action(binding->action, binding->parameter);
+			queue_action_from_binding(binding);
 			return;
 		}
 		active_key_binding.key_binding = NULL;
@@ -6698,7 +6703,7 @@ void handle_input_event(guint key_binding_value) {/*{{{*/
 		else {
 			active_key_binding.key_binding = binding->next_action;
 			active_key_binding.associated_image = current_file_node;
-			action(binding->action, binding->parameter);
+			queue_action_from_binding(binding);
 		}
 	}
 
@@ -6863,7 +6868,11 @@ gboolean window_button_press_callback(GtkWidget *widget, GdkEventButton *event, 
 		gtk_widget_queue_draw(GTK_WIDGET(main_window));
 		if(event->type == GDK_2BUTTON_PRESS) {
 			pqiv_action_parameter_t empty_param = { .pint = 0 };
+#ifndef CONFIGURED_WITHOUT_ACTIONS
+			queue_action(ACTION_MONTAGE_MODE_RETURN_PROCEED, empty_param);
+#else
 			action(ACTION_MONTAGE_MODE_RETURN_PROCEED, empty_param);
+#endif
 			// Prevent the release handler from handling this event again
 			last_button_press_time = 0;
 		}
@@ -6949,7 +6958,7 @@ gboolean window_state_into_fullscreen_actions(gpointer user_data) {/*{{{*/
 		gtk_widget_queue_draw(GTK_WIDGET(main_window));
 	#endif
 	fullscreen_transition_source_id = -1;
-	unblock_active_input_event_action_chain();
+	action_done();
 	return FALSE;
 }/*}}}*/
 gboolean window_state_out_of_fullscreen_actions(gpointer user_data) {/*{{{*/
@@ -6971,7 +6980,7 @@ gboolean window_state_out_of_fullscreen_actions(gpointer user_data) {/*{{{*/
 	}
 	invalidate_current_scaled_image_surface();
 	fullscreen_transition_source_id = -1;
-	unblock_active_input_event_action_chain();
+	action_done();
 	return FALSE;
 }/*}}}*/
 gboolean window_state_callback(GtkWidget *widget, GdkEventWindowState *event, gpointer user_data) {/*{{{*/
@@ -7776,7 +7785,7 @@ gboolean perform_string_action(const gchar *string_action) {/*{{{*/
 					break;
 			}
 
-			action(action_id, parsed_parameter);
+			queue_action(action_id, parsed_parameter);
 			g_free(parameter);
 		}
 		action_id++;
@@ -7928,6 +7937,12 @@ gboolean inner_main(void *user_data) {/*{{{*/
 		}
 	}
 
+#ifndef CONFIGURED_WITHOUT_ACTIONS
+	if(option_actions_from_stdin) {
+		g_thread_new("command-reader", read_commands_thread, NULL);
+	}
+#endif
+
 	return FALSE;
 }/*}}}*/
 int main(int argc, char *argv[]) {
@@ -7988,6 +8003,11 @@ int main(int argc, char *argv[]) {
 		g_printerr("Warning: --actions-from-stdin with no files given implies --wait-for-images-to-appear.\n");
 		option_wait_for_images_to_appear = TRUE;
 	}
+
+	if(option_actions_from_stdin && option_addl_from_stdin) {
+			g_printerr("Error: --additional-from-stdin conflicts with --actions-from-stdin.\n");
+			exit(1);
+	}
 #endif
 
 	if(option_wait_for_images_to_appear) {
@@ -8000,16 +8020,6 @@ int main(int argc, char *argv[]) {
 			option_lazy_load = TRUE;
 		}
 	}
-
-#ifndef CONFIGURED_WITHOUT_ACTIONS
-	if(option_actions_from_stdin) {
-		if(option_addl_from_stdin) {
-			g_printerr("Error: --additional-from-stdin conflicts with --actions-from-stdin.\n");
-			exit(1);
-		}
-		g_thread_new("command-reader", read_commands_thread, NULL);
-	}
-#endif
 
 	// Start image loader & show window inside main loop, in order to have
 	// gtk_main_quit() available.
