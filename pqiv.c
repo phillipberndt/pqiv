@@ -1286,7 +1286,7 @@ void parse_command_line() {/*{{{*/
 
 	// User didn't specify any files to load; perhaps some help on how to use
 	// pqiv would be useful...
-	if (global_argc == 1 && !option_addl_from_stdin) {
+	if (global_argc == 1 && !option_addl_from_stdin && !option_actions_from_stdin) {
 		g_printerr("%s", g_option_context_get_help(parser, TRUE, NULL));
 		exit(0);
 	}
@@ -7788,9 +7788,6 @@ gboolean perform_string_action(const gchar *string_action) {/*{{{*/
 	return TRUE;
 }/*}}}*/
 gboolean read_commands_thread_helper(gpointer command) {/*{{{*/
-	if(!main_window_visible) {
-		return TRUE;
-	}
 	perform_string_action((gchar *)command);
 	g_free(command);
 	return FALSE;
@@ -7980,6 +7977,13 @@ int main(int argc, char *argv[]) {
 	if(option_fading_duration > option_slideshow_interval) {
 		g_printerr("Warning: Fade durations larger than the slideslow interval won't work as expected.\n");
 	}
+
+#ifndef CONFIGURED_WITHOUT_ACTIONS
+	if(option_actions_from_stdin && global_argc == 1 && !option_wait_for_images_to_appear) {
+		g_printerr("Warning: --actions-from-stdin with no files given implies --wait-for-images-to-appear.\n");
+		option_wait_for_images_to_appear = TRUE;
+	}
+#endif
 
 	if(option_wait_for_images_to_appear) {
 		if(!option_watch_directories) {
