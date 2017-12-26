@@ -5717,7 +5717,12 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 			break;
 
 		case ACTION_QUIT:
-			gtk_widget_destroy(GTK_WIDGET(main_window));
+			if(!main_window_visible) {
+				gtk_main_quit();
+			}
+			else {
+				gtk_widget_destroy(GTK_WIDGET(main_window));
+			}
 			return;
 			break;
 
