@@ -5697,7 +5697,7 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 #ifndef CONFIGURED_WITHOUT_EXTERNAL_COMMANDS
 		case ACTION_NUMERIC_COMMAND:
 			{
-				if(parameter.pint < 1 || parameter.pint > 8) {
+				if(parameter.pint < 1 || parameter.pint > 9) {
 					g_printerr("Only commands 1..9 are supported.\n");
 					return;
 				}
