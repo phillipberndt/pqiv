@@ -2123,6 +2123,10 @@ void main_window_adjust_for_image() {/*{{{*/
 		return;
 	}
 
+
+	// Add space for the info bar
+	new_window_height += 24;
+
 	GdkGeometry hints;
 	if(option_enforce_window_aspect_ratio) {
 #if GTK_MAJOR_VERSION >= 3
@@ -4994,6 +4998,7 @@ gboolean window_draw_callback(GtkWidget *widget, cairo_t *cr_arg, gpointer user_
 		// Calculate where to draw the image and the transformation matrix to use
 		int image_transform_width, image_transform_height;
 		calculate_base_draw_pos_and_size(&image_transform_width, &image_transform_height, &x, &y);
+		y -= 12;
 		cairo_matrix_t apply_transformation = current_transformation;
 		apply_transformation.x0 *= current_scale_level;
 		apply_transformation.y0 *= current_scale_level;
@@ -5216,14 +5221,16 @@ gboolean window_draw_callback(GtkWidget *widget, cairo_t *cr_arg, gpointer user_
 		for(; font_size > 6; font_size--) {
 			cairo_set_font_size(cr_arg, font_size);
 
+			/*
 			if(main_window_in_fullscreen == FALSE) {
 				// Tiling WMs, at least i3, react weird on our window size changing.
 				// Drawing the info box on the image helps to avoid users noticing that.
 				cairo_translate(cr_arg, x < 0 ? 0 : x, y < 0 ? 0 : y);
 			}
+			*/
 
 			cairo_set_source_rgb(cr_arg, option_box_colors.bg_red, option_box_colors.bg_green, option_box_colors.bg_blue);
-			cairo_translate(cr_arg, 10 * screen_scale_factor, 20 * screen_scale_factor);
+			cairo_translate(cr_arg, 10, (main_window_height - 7) * screen_scale_factor);
 			cairo_text_path(cr_arg, current_info_text);
 			cairo_path_extents(cr_arg, &x1, &y1, &x2, &y2);
 
@@ -5237,7 +5244,7 @@ gboolean window_draw_callback(GtkWidget *widget, cairo_t *cr_arg, gpointer user_
 			current_info_text_cached_font_size = font_size;
 			cairo_path_t *text_path = cairo_copy_path(cr_arg);
 			cairo_new_path(cr_arg);
-			cairo_rectangle(cr_arg, -5, -(y2 - y1) - 2, x2 - x1 + 10, y2 - y1 + 8);
+			cairo_rectangle(cr_arg, -10, -(y2 - y1) - 2, main_window_width, y2 - y1 + 10);
 			cairo_close_path(cr_arg);
 			cairo_fill(cr_arg);
 			cairo_set_source_rgb(cr_arg, option_box_colors.fg_red, option_box_colors.fg_green, option_box_colors.fg_blue);
