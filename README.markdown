@@ -173,6 +173,7 @@ Changelog
 
 pqiv 2.11 (dev)
  * Added negate (color inversion) mode (bound to `n`, `--negate`)
+ * Fixed --command-9
 
 pqiv 2.10.2
  * Fix output of `montage_mode_shift_y_rows()` in key bindings
