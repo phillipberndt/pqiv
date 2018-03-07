@@ -171,6 +171,8 @@ For some advanced uses of pqiv, take a look at these resouces:
 Changelog
 ---------
 
+ * Rebound `a` (hardlink image) to `c-a` by default (See #124)
+
 pqiv 2.11 (dev)
  * Added negate (color inversion) mode (bound to `n`, `--negate`)
  * Fixed --command-9

@@ -542,7 +542,7 @@ static const struct default_key_bindings_struct {
 	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_s                ), ACTION_TOGGLE_SLIDESHOW                , { 0   }},
 	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_b                ), ACTION_TOGGLE_BACKGROUND_PATTERN       , { 0   }},
 	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_n                ), ACTION_TOGGLE_NEGATE_MODE              , { 0   }},
-	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_a                ), ACTION_HARDLINK_CURRENT_IMAGE          , { 0   }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , GDK_CONTROL_MASK , GDK_KEY_a                ), ACTION_HARDLINK_CURRENT_IMAGE          , { 0   }},
 	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_period           ), ACTION_ANIMATION_STEP                  , { 1   }},
 	{ DEFAULT, KEY_BINDING_VALUE(0 , GDK_CONTROL_MASK , GDK_KEY_period           ), ACTION_ANIMATION_CONTINUE              , { 0   }},
 	{ DEFAULT, KEY_BINDING_VALUE(0 , GDK_CONTROL_MASK , GDK_KEY_BackSpace        ), ACTION_GOTO_LOGICAL_DIRECTORY_RELATIVE , { -1  }},
