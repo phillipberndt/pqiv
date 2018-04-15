@@ -171,11 +171,12 @@ For some advanced uses of pqiv, take a look at these resouces:
 Changelog
 ---------
 
-pqiv 2.10.2
+pqiv 2.10.3
  * Fix output of `montage_mode_shift_y_rows()` in key bindings
  * Update the info text when the background pattern is cycled
  * Prevent potential crashes in poppler backend for rapid image movements
  * Fix processing of dangling symlinks in the file buffer
+ * Removed possible deadlock in ImageMagick wand backend
 
 pqiv 2.10
  * Enable cursor auto-hide by default

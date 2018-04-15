@@ -139,12 +139,17 @@ BOSNode *file_type_wand_alloc(load_images_state_t state, file_t *file) {/*{{{*/
 			new_file->private = g_slice_new0(file_private_data_wand_t);
 			((file_private_data_wand_t *)new_file->private)->page_number = n + 1;
 
+			// Temporarily give up lock to do this: Otherwise we might see a deadlock
+			// if another thread holding the file tree's lock is waiting for the wand
+			// lock for another operation.
+			G_UNLOCK(magick_wand_global_lock);
 			if(n == 0) {
 				first_node = load_images_handle_parameter_add_file(state, new_file);
 			}
 			else {
 				load_images_handle_parameter_add_file(state, new_file);
 			}
+			G_LOCK(magick_wand_global_lock);
 		}
 
 		if(first_node) {
