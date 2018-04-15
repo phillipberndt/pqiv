@@ -177,6 +177,7 @@ pqiv 2.10.3
  * Prevent potential crashes in poppler backend for rapid image movements
  * Fix processing of dangling symlinks in the file buffer
  * Removed possible deadlock in ImageMagick wand backend
+ * Fix --command-9 shortcut
 
 pqiv 2.10
  * Enable cursor auto-hide by default
