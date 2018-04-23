@@ -174,7 +174,7 @@ backends/%.o: CFLAGS_REAL+=$(BACKENDS_BUILD_CFLAGS_$(notdir $*)) $(EXTRA_CFLAGS_
 
 $(SHARED_OBJECTS): backends/pqiv-backend-%.so: backends/%.o
 	@[ -d backends ] || mkdir -p backends || true
-	$(SILENT_CCLD) $(CROSS)$(CC) -shared $(CPPFLAGS) $(EXTRA_CFLAGS_SHARED_OBJECTS) -o $@ $+ $(LDLIBS_REAL) $(LDFLAGS_REAL) $(BACKENDS_BUILD_LDLIBS_$*) $(EXTRA_LDFLAGS_SHARED_OBJECTS)
+	$(SILENT_CCLD) $(CROSS)$(CC) $(CPPFLAGS) $(EXTRA_CFLAGS_SHARED_OBJECTS) -o $@ $+ $(LDLIBS_REAL) $(LDFLAGS_REAL) $(BACKENDS_BUILD_LDLIBS_$*) $(EXTRA_LDFLAGS_SHARED_OBJECTS) -shared
 endif
 
 $(filter-out $(BACKENDS_INITIALIZER).o, $(OBJECTS)) $(HELPER_OBJECTS): %.o: $(SOURCEDIR)%.c $(HEADERS)
