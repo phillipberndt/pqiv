@@ -53,7 +53,7 @@ distribution packages are usually somewhat out of date:
  * [Arch AUR package](https://aur.archlinux.org/packages/pqiv/)
    ([Git version](https://aur.archlinux.org/packages/pqiv-git/))
  * [CRUX port](https://crux.nu/portdb/?a=search&q=pqiv)
- * ~~[Debian package](https://packages.debian.org/en/sid/pqiv)~~ -- not recommended, [severely outdated / unmaintained](https://bugs.debian.org/cgi-bin/bugreport.cgi?bug=856166).
+ * [Debian package](https://packages.debian.org/en/sid/pqiv)
  * [FreeBSD port](https://www.freshports.org/graphics/pqiv/)
  * [Gentoo ebuild](https://packages.gentoo.org/packages/media-gfx/pqiv)
  * [macOS brew](http://braumeister.org/formula/pqiv)
