@@ -379,15 +379,12 @@ Add a file or directory.
 .TP
 .BR animation_step(INT)
 Stop an animation, and advance by the given number of frames plus one.
-(This is by default bound to the \fIPeriod\fR key.)
 .TP
 .BR animation_continue()
 Continue a stopped animation.
-(This is by default bound to \fIControl+Period\fR.)
 .TP
 .BR animation_set_speed_relative(DOUBLE)
 Scale the animation's display speed.
-(This is by default bound to \fIAlt+Plus/Minus\fR.)
 .TP
 .BR animation_set_speed_absolute(DOUBLE)
 Set the animation's display speed scale level to an absolute value. 1.0 is the
@@ -412,8 +409,7 @@ Flip the current image vertically.
 Jump to the \fIn\fR'th next or previous directory.
 .TP
 .BR goto_earlier_file()
-Return to the image that was opened before the current one. (This is by default
-bound to \fIControl+r\fR.)
+Return to the image that was opened before the current one.
 .TP
 .BR goto_file_byindex(INT)
 Jump to a file given by its number.
@@ -431,7 +427,7 @@ Directories within archive files, recognizable by a slash in the archive
 member's file name, are regarded as directories too. Basically, the rule is
 that two images are in the same logical directory if no character following
 the common prefix of their file names in either name is a slash or a hash
-symbol. (This is by default bound to \fIControl+(Back-)Space\fR.)
+symbol.
 .TP
 .BR hardlink_current_image()
 Hardlink the current image to \fI./.pqiv-select/\fR, or copy it if hardlinking
@@ -583,7 +579,6 @@ Set the slideshow interval to the parameter value, in seconds.
 .BR set_slideshow_interval_relative(DOUBLE)
 Adjust the slideshow interval additively by the parameter value. See also
 \fB\-\-slideshow\-interval\fR.
-(This is by default bound to \fIControl+Plus/Minus\fR.)
 .TP
 .BR set_status_output(INT)
 Set this to non-zero to make pqiv print status information for scripts to
@@ -610,8 +605,7 @@ Shift the current image in y direction.
 .TP
 .BR toggle_background_pattern(INT)
 Toggle between the different background patterns: 0 to toggle, 1 for
-checkerboard pattern, 2 for black, 3 for white. (Toggling is bound to \fIb\fR
-by default.)
+checkerboard pattern, 2 for black, 3 for white.
 .TP
 .BR toggle_fullscreen(INT)
 Toggle fullscreen mode: 0 to toggle, 1 to go to fullscreen, 2 to return to
@@ -622,15 +616,12 @@ Toggle the visibility of the info box.
 .TP
 .BR toggle_negate_mode(INT)
 Toggle negate (color inversion) mode: 0 to toggle, 1 to enable, 2 to disable.
-(By default \fIn\fR is bound to toggle negate mode.)
 .TP
 .BR toggle_scale_mode(INT)
 Change the scale mode: Use 1 to disable scaling, 2 for automated scaledown
 (default), 3 to always scale images up, 4 to maintain the user-set zoom
 level, and 5 to maintain the window's size.
-0 cycles through modes 1\-3. (By default, \fIControl+t\fR is bound to
-set the scale mode to 4, \fIAlt+t\fR to mode 5, and \fIt\fR is bound to cycle
-through 1\-3.)
+0 cycles through modes 1\-3.
 .TP
 .BR toggle_shuffle_mode(INT)
 Toggle shuffle mode. Use 0 to cycle through the possible values, 1 to enable shuffle, and any other value to disable it.
@@ -639,10 +630,8 @@ Toggle shuffle mode. Use 0 to cycle through the possible values, 1 to enable shu
 Toggle slideshow mode.
 .\"
 .SH DEFAULT KEY BINDINGS
-.IP Space 20
-Next file.
-.IP Backspace
-Previous file.
+.IP Backspace/Space 25
+Previous/Next file.
 .IP ctrl-a
 Link the current image to \fI./.pqiv-select/\fR, or copy it if hardlinking is not possible.
 .IP f
@@ -667,8 +656,26 @@ Reload the current image.
 Toggle slideshow mode.
 .IP t
 Toggle the scale mode; cycle between scaling all images up, scaling large images down and no scaling at all.
-.IP Plus/minus
+.IP ctrl-t
+Maintain user-set scale level.
+.IP mod-t
+Maintain the window's size.
+.IP Plus/Minus
 Zoom.
+.IP "Period, ctrl-Period"
+Stop, single-step and continue animated images.
+.IP "mod-Plus, mod-Minus"
+Alter animation speed.
+.IP ctrl-r
+Go to the image viewed before the current one.
+.IP "ctrl-Space, ctrl-Backspace"
+Go to the next/previous logical directory.
+.IP "ctrl-Plus, ctrl-Minus"
+Alter slideshow interval.
+.IP b
+Toggle background pattern for transparent images.
+.IP n
+Toggle negate ("negative") mode.
 .IP "Mouse buttons (fullscreen)"
 Goto the next and previous files.
 .IP "Mouse drag (fullscreen)"

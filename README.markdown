@@ -144,7 +144,9 @@ Basic usage of pqiv is very straightforward, call
     pqiv <files or directories>
 
 and then use space, backspace, `f` (for fullscreen), `q` (to quit), and `m` for
-the montage overview to navigate through your images.
+the montage overview to navigate through your images. To see all key bindings,
+see the `DEFAULT KEY BINDINGS` section of the man-page, or run
+`pqiv --show-bindings`.
 
 For some advanced uses of pqiv, take a look at these resouces:
 
@@ -174,6 +176,7 @@ Changelog
 pqiv 2.11 (dev)
  * Added negate (color inversion) mode (bound to `n`, `--negate`)
  * Rebound `a` (hardlink image) to `c-a` by default (See #124)
+ * Improved key bindings documentation (See #127)
 
 pqiv 2.10.4
  * Fix output of `montage_mode_shift_y_rows()` in key bindings
