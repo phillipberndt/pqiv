@@ -190,6 +190,7 @@ gint main_window_height = 10;
 gboolean main_window_in_fullscreen = FALSE;
 int fullscreen_transition_source_id = -1;
 GdkRectangle screen_geometry = { 0, 0, 0, 0 };
+gdouble screen_resolution = 96.;
 gint screen_scale_factor = 1;
 gboolean wm_supports_fullscreen = TRUE;
 
@@ -2092,6 +2093,13 @@ gboolean main_window_resize_callback(gpointer user_data) {/*{{{*/
 	int new_window_width = current_scale_level * image_width;
 	int new_window_height = current_scale_level * image_height;
 
+	#ifndef CONFIGURED_WITHOUT_INFO_TEXT
+		if((option_box_placement == BOX_PLACEMENT_N || option_box_placement == BOX_PLACEMENT_S) && !option_hide_info_box) {
+			int reserved_in_height_for_font = (int)(12. /* pt */ * (1. / 72.) /* DTP to inch */ * screen_resolution /* DPI */ + 10);
+			new_window_height += reserved_in_height_for_font;
+		}
+	#endif
+
 	// Resize if this has not worked before, but accept a slight deviation (might be round-off error)
 	if(main_window_width >= 0 && abs(main_window_width - new_window_width) + abs(main_window_height - new_window_height) > 1) {
 		requested_main_window_width = new_window_width;
@@ -2130,6 +2138,13 @@ gboolean main_window_calculate_ideal_size(int *new_window_width, int *new_window
 	else {
 		*new_window_width = *new_window_height = 0;
 	}
+
+	#ifndef CONFIGURED_WITHOUT_INFO_TEXT
+		if((option_box_placement == BOX_PLACEMENT_N || option_box_placement == BOX_PLACEMENT_S) && !option_hide_info_box) {
+			int reserved_in_height_for_font = (int)(12. /* pt */ * (1. / 72.) /* DTP to inch */ * screen_resolution /* DPI */ + 10);
+			*new_window_height += reserved_in_height_for_font;
+		}
+	#endif
 
 	if(*new_window_height <= 0) {
 		*new_window_height = 1;
@@ -4350,15 +4365,29 @@ gboolean window_close_callback(GtkWidget *object, gpointer user_data) {/*{{{*/
 	return FALSE;
 }/*}}}*/
 void calculate_base_draw_pos_and_size(int *image_transform_width, int *image_transform_height, int *x, int *y) {/*{{{*/
+	int usable_height = main_window_height;
+	int add_to_final_y = 0;
+	#ifndef CONFIGURED_WITHOUT_INFO_TEXT
+		if((option_box_placement == BOX_PLACEMENT_N || option_box_placement == BOX_PLACEMENT_S) && !option_hide_info_box) {
+			int reserved_in_height_for_font = (int)(12. /* pt */ * (1. / 72.) /* DTP to inch */ * screen_resolution /* DPI */ + 10);
+			usable_height -= reserved_in_height_for_font;
+
+			if(option_box_placement == BOX_PLACEMENT_N) {
+				add_to_final_y = reserved_in_height_for_font;
+			}
+		}
+	#endif
+
 	calculate_current_image_transformed_size(image_transform_width, image_transform_height);
 	if(option_scale != NO_SCALING || main_window_in_fullscreen) {
 		*x = (main_window_width - current_scale_level * *image_transform_width) / 2;
-		*y = (main_window_height - current_scale_level * *image_transform_height) / 2;
+		*y = (usable_height - current_scale_level * *image_transform_height) / 2 + add_to_final_y;
 	}
 	else {
 		// When scaling is disabled always use the upper left corder to avoid
 		// problems with window managers ignoring the large window size request.
-		*x = *y = 0;
+		*x = 0;
+		*y = add_to_final_y;
 	}
 }/*}}}*/
 #ifndef CONFIGURED_WITHOUT_MONTAGE_MODE
@@ -5280,7 +5309,8 @@ gboolean window_draw_callback(GtkWidget *widget, cairo_t *cr_arg, gpointer user_
 			switch(option_box_placement) {
 				case BOX_PLACEMENT_N:
 					if(!main_window_in_fullscreen) {
-						cairo_translate(cr_arg, x > 0 ? x : 0, y > 0 ? y : 0);
+						int reserved_in_height_for_font = (int)(12. /* pt */ * (1. / 72.) /* DTP to inch */ * screen_resolution /* DPI */ + 10);
+						cairo_translate(cr_arg, x > 0 ? x : 0, (y > 0 ? y : 0) - reserved_in_height_for_font);
 					}
 					cairo_translate(cr_arg, x1 + 5, -y1 + 5);
 					break;
@@ -5289,7 +5319,7 @@ gboolean window_draw_callback(GtkWidget *widget, cairo_t *cr_arg, gpointer user_
 					if(!main_window_in_fullscreen) {
 						cairo_translate(cr_arg,
 								(x > 0 ? x : 0),
-								(y > 0 ? y : 0) + image_transform_height * current_scale_level - (y2 - y1));
+								(y > 0 ? y : 0) + image_transform_height * current_scale_level + (y2 - y1));
 					}
 					else {
 						cairo_translate(cr_arg,
@@ -5353,7 +5383,7 @@ gboolean window_draw_callback(GtkWidget *widget, cairo_t *cr_arg, gpointer user_
 			cairo_text_path(cr_arg, current_info_text);
 			cairo_path_extents(cr_arg, &x1, &y1, &x2, &y2);
 
-			if(option_box_placement == BOX_PLACEMENT_N || option_box_placement == BOX_PLACEMENT_S) {
+			if((option_box_placement == BOX_PLACEMENT_N || option_box_placement == BOX_PLACEMENT_S) && !option_hide_info_box) {
 				if(!main_window_in_fullscreen) {
 					x2 = image_transform_width * current_scale_level;
 				}
@@ -5375,12 +5405,12 @@ gboolean window_draw_callback(GtkWidget *widget, cairo_t *cr_arg, gpointer user_
 			cairo_path_destroy(text_path);
 
 			// Store where the box was drawn to allow for partial updates of the screen
-			current_info_text_bounding_box.x = x1 > 5 ? x1 - 5 : 0;
-			current_info_text_bounding_box.y = y2 > 10 ? y2 - 10 : 0;
+			current_info_text_bounding_box.x = MAX(0., x1 - ((option_box_placement == BOX_PLACEMENT_NE || option_box_placement == BOX_PLACEMENT_SE) ? 5. : 30.));
+			current_info_text_bounding_box.y = MAX(0., y1 - 10.);;
 
 			 // Redraw some extra pixels to make sure a wider new box would be covered:
 			current_info_text_bounding_box.width = x2 - x1 + 10 + 30;
-			current_info_text_bounding_box.height = y2 - y1 + 8;
+			current_info_text_bounding_box.height = y2 - y1 + 10;
 		}
 		else {
 			current_info_text_bounding_box = (cairo_rectangle_int_t){ 0, 0, 0, 0 };
@@ -5413,6 +5443,17 @@ double calculate_scale_level_to_fit(int image_width, int image_height, int windo
 	// Calculate display width/heights with rotation, but without scaling, applied
 	gdouble scale_level = 1.0;
 
+	// Respect reserved pixels for info bar
+	int usable_height = window_height;
+	int scale_to_fit_size_height = scale_to_fit_size.height;
+	#ifndef CONFIGURED_WITHOUT_INFO_TEXT
+		if((option_box_placement == BOX_PLACEMENT_N || option_box_placement == BOX_PLACEMENT_S) && !option_hide_info_box) {
+			int reserved_in_height_for_font = (int)(12. /* pt */ * (1. / 72.) /* DTP to inch */ * screen_resolution /* DPI */ + 10);
+			usable_height -= reserved_in_height_for_font;
+			scale_to_fit_size_height -= reserved_in_height_for_font;
+		}
+	#endif
+
 	// Only scale if scaling is not disabled. The alternative is to also
 	// scale for no-scaling mode if (!main_window_in_fullscreen). This
 	// effectively disables the no-scaling mode in non-fullscreen. I
@@ -5425,23 +5466,23 @@ double calculate_scale_level_to_fit(int image_width, int image_height, int windo
 			}
 
 			if(image_height * scale_level < window_height) {
-				scale_level = window_height * 1.0 / image_height;
+				scale_level = usable_height * 1.0 / image_height;
 			}
 		}
 
 		// Scale down
 		if(window_height < scale_level * image_height) {
-			scale_level = window_height * 1.0 / image_height;
+			scale_level = usable_height * 1.0 / image_height;
 		}
 		if(window_width < scale_level * image_width) {
 			scale_level = window_width * 1.0 / image_width;
 		}
 	}
 	else if(option_scale == SCALE_TO_FIT_PX) {
-		scale_level = fmin(scale_to_fit_size.width * 1. / image_width, scale_to_fit_size.height * 1. / image_height);
+		scale_level = fmin(scale_to_fit_size.width * 1. / image_width, scale_to_fit_size_height * 1. / image_height);
 	}
 	else if(option_scale == SCALE_TO_FIT_WINDOW) {
-		scale_level = fmin(window_width * 1. / image_width, window_height * 1. / image_height);
+		scale_level = fmin(window_width * 1. / image_width, usable_height * 1. / image_height);
 	}
 
 	return scale_level;
@@ -5449,11 +5490,18 @@ double calculate_scale_level_to_fit(int image_width, int image_height, int windo
 double calculate_auto_scale_level_for_screen(int image_width, int image_height) {/*{{{*/
 	double scale_level = current_scale_level;
 
-	if(!main_window_in_fullscreen) {
-		const int screen_width = screen_geometry.width;
-		const int screen_height = screen_geometry.height;
+	int screen_width = screen_geometry.width;
+	int screen_height = screen_geometry.height;
 
+	if(!main_window_in_fullscreen) {
 		if(option_scale != FIXED_SCALE && !scale_override) {
+			#ifndef CONFIGURED_WITHOUT_INFO_TEXT
+				if((option_box_placement == BOX_PLACEMENT_N || option_box_placement == BOX_PLACEMENT_S) && !option_hide_info_box) {
+					int reserved_in_height_for_font = (int)(12. /* pt */ * (1. / 72.) /* DTP to inch */ * screen_resolution /* DPI */ + 10);
+					screen_height -= reserved_in_height_for_font;
+				}
+			#endif
+
 			scale_level = 1.0;
 			if(option_scale == AUTO_SCALEUP) {
 				// Scale up to screen size
@@ -5476,7 +5524,7 @@ double calculate_auto_scale_level_for_screen(int image_width, int image_height) 
 		}
 	}
 	else {
-		scale_level = calculate_scale_level_to_fit(image_width, image_height, screen_geometry.width, screen_geometry.height);
+		scale_level = calculate_scale_level_to_fit(image_width, image_height, screen_width, screen_height);
 	}
 
 	return scale_level;
@@ -5644,10 +5692,17 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 				calculate_current_image_transformed_size(&image_width, &image_height);
 
 				// Required to avoid tearing
+				int add_to_height = 0;
+				#ifndef CONFIGURED_WITHOUT_INFO_TEXT
+					if((option_box_placement == BOX_PLACEMENT_N || option_box_placement == BOX_PLACEMENT_S) && !option_hide_info_box) {
+						int reserved_in_height_for_font = (int)(12. /* pt */ * (1. / 72.) /* DTP to inch */ * screen_resolution /* DPI */ + 10);
+						add_to_height = reserved_in_height_for_font;
+					}
+				#endif
 				requested_main_window_width = current_scale_level * image_width;
 				requested_main_window_height = current_scale_level * image_height;
 				window_prerender_background_pixmap(requested_main_window_width, requested_main_window_height, current_scale_level, main_window_in_fullscreen);
-				gtk_window_resize(main_window, current_scale_level * image_width / screen_scale_factor, current_scale_level * image_height / screen_scale_factor);
+				gtk_window_resize(main_window, current_scale_level * image_width / screen_scale_factor, (current_scale_level * image_height + add_to_height) / screen_scale_factor);
 				if(!wm_supports_moveresize) {
 					queue_draw();
 				}
@@ -5797,6 +5852,9 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 #ifndef CONFIGURED_WITHOUT_INFO_TEXT
 		case ACTION_TOGGLE_INFO_BOX:
 			option_hide_info_box = !option_hide_info_box;
+			if(option_box_placement == BOX_PLACEMENT_N || option_box_placement == BOX_PLACEMENT_S) {
+				action(ACTION_RESET_SCALE_LEVEL, (pqiv_action_parameter_t){ 0 });
+			}
 			update_info_text(NULL);
 			gtk_widget_queue_draw(GTK_WIDGET(main_window));
 			break;
@@ -6655,6 +6713,7 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 				g_printerr("Invalid info box placement `%s'.\n", parameter.pcharptr);
 				break;
 			}
+			action(ACTION_RESET_SCALE_LEVEL, (pqiv_action_parameter_t){ 0 });
 			update_info_text("Info box placement changed.");
 			gtk_widget_queue_draw(GTK_WIDGET(main_window));
 			break;
@@ -7218,6 +7277,8 @@ void window_screen_changed_callback(GtkWidget *widget, GdkScreen *previous_scree
 		#endif
 	#endif
 	window_screen_window_manager_changed_callback(screen);
+
+	screen_resolution = gdk_screen_get_resolution(screen);
 
 	#if GTK_CHECK_VERSION(3, 22, 0)
 		GdkDisplay *display = gdk_window_get_display(window);
