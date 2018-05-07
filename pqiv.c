@@ -224,6 +224,14 @@ struct {
 	double bg_green;
 	double bg_blue;
 } option_box_colors = { 0., 0., 0., 1., 1., 0. };
+enum {
+	BOX_PLACEMENT_NW = 0,
+	BOX_PLACEMENT_N,
+	BOX_PLACEMENT_NE,
+	BOX_PLACEMENT_SE,
+	BOX_PLACEMENT_S,
+	BOX_PLACEMENT_SW = 5,
+} option_box_placement = BOX_PLACEMENT_NW;
 #endif
 #ifndef CONFIGURED_WITHOUT_INFO_TEXT
 gint current_info_text_cached_font_size = -1;
@@ -342,6 +350,9 @@ gboolean option_window_position_callback(const gchar *option_name, const gchar *
 gboolean option_thumbnail_size_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error);
 gboolean option_thumbnail_preload_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error);
 gboolean option_scale_level_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error);
+#ifndef CONFIGURED_WITHOUT_INFO_TEXT
+gboolean option_info_box_placement_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error);
+#endif
 gboolean option_thumbnail_persistence_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error);
 gboolean option_end_of_files_action_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error);
 gboolean option_watch_files_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error);
@@ -434,6 +445,9 @@ GOptionEntry options[] = {
 	{ "end-of-files-action", 0, 0, G_OPTION_ARG_CALLBACK, &option_end_of_files_action_callback, "Action to take after all images have been viewed. (`quit', `wait', `wrap', `wrap-no-reshuffle')", "ACTION" },
 	{ "enforce-window-aspect-ratio", 0, 0, G_OPTION_ARG_NONE, &option_enforce_window_aspect_ratio, "Fix the aspect ratio of the window to match the current image's", NULL },
 	{ "fade-duration", 0, 0, G_OPTION_ARG_DOUBLE, &option_fading_duration, "Adjust fades' duration", "SECONDS" },
+#ifndef CONFIGURED_WITHOUT_INFO_TEXT
+	{ "info-box-placement", 0, 0, G_OPTION_ARG_CALLBACK, &option_info_box_placement_callback, "Where to place the info box (Default: NE)", "POS" },
+#endif
 	{ "low-memory", 0, 0, G_OPTION_ARG_NONE, &option_lowmem, "Try to keep memory usage to a minimum", NULL },
 	{ "max-depth", 0, 0, G_OPTION_ARG_INT, &option_max_depth, "Descend at most LEVELS levels of directories below the command line arguments", "LEVELS" },
 	{ "negate", 0, 0, G_OPTION_ARG_NONE, &option_negate, "Negate images: show negatives", NULL },
@@ -537,6 +551,7 @@ static const struct default_key_bindings_struct {
 	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_l                ), ACTION_ROTATE_LEFT                     , { 0   }},
 	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_k                ), ACTION_ROTATE_RIGHT                    , { 0   }},
 	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_i                ), ACTION_TOGGLE_INFO_BOX                 , { 0   }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , GDK_CONTROL_MASK , GDK_KEY_i                ), ACTION_SET_INFO_BOX_PLACEMENT          , { .pcharptr = (char*)"C" }},
 	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_j                ), ACTION_JUMP_DIALOG                     , { 0   }},
 	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_m                ), ACTION_MONTAGE_MODE_ENTER              , { 0   }},
 	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_s                ), ACTION_TOGGLE_SLIDESHOW                , { 0   }},
@@ -700,6 +715,7 @@ const struct pqiv_action_descriptor {
 	{ "move_window", PARAMETER_2SHORT },
 	{ "toggle_background_pattern", PARAMETER_INT },
 	{ "toggle_negate_mode", PARAMETER_INT },
+	{ "set_info_box_placement", PARAMETER_CHARPTR },
 	{ NULL, 0 }
 };
 /* }}} */
@@ -914,6 +930,34 @@ gboolean option_scale_level_callback(const gchar *option_name, const gchar *valu
 	}
 	return TRUE;
 }/*}}}*/
+#ifndef CONFIGURED_WITHOUT_INFO_TEXT
+gboolean option_info_box_placement_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error) {/*{{{*/
+	if(!strcmp(value, "N")) {
+		option_box_placement = BOX_PLACEMENT_N;
+	}
+	else if(!strcmp(value, "S")) {
+		option_box_placement = BOX_PLACEMENT_S;
+	}
+	else if(!strcmp(value, "NW")) {
+		option_box_placement = BOX_PLACEMENT_NW;
+	}
+	else if(!strcmp(value, "NE")) {
+		option_box_placement = BOX_PLACEMENT_NE;
+	}
+	else if(!strcmp(value, "SW")) {
+		option_box_placement = BOX_PLACEMENT_SW;
+	}
+	else if(!strcmp(value, "SE")) {
+		option_box_placement = BOX_PLACEMENT_SE;
+	}
+	else {
+		g_set_error(error, G_OPTION_ERROR, G_OPTION_ERROR_FAILED, "Unexpected argument value for the --info-box-placement option. Allowed values are: N, NE, NW, S, SE, SW.");
+		return FALSE;
+	}
+
+	return TRUE;
+}/*}}}*/
+#endif
 gboolean option_watch_files_callback(const gchar *option_name, const gchar *value, gpointer data, GError **error) {/*{{{*/
 	if(strcmp(value, "off") == 0) {
 		option_watch_files = OFF;
@@ -4980,6 +5024,8 @@ gboolean window_draw_callback(GtkWidget *widget, cairo_t *cr_arg, gpointer user_
 #endif
 
 	// Draw image
+	int image_transform_width = 0;
+	int image_transform_height = 0;
 	int x = 0;
 	int y = 0;
 	D_LOCK(file_tree);
@@ -4992,7 +5038,6 @@ gboolean window_draw_callback(GtkWidget *widget, cairo_t *cr_arg, gpointer user_
 
 	if(is_current_file_loaded()) {
 		// Calculate where to draw the image and the transformation matrix to use
-		int image_transform_width, image_transform_height;
 		calculate_base_draw_pos_and_size(&image_transform_width, &image_transform_height, &x, &y);
 		cairo_matrix_t apply_transformation = current_transformation;
 		apply_transformation.x0 *= current_scale_level;
@@ -5216,47 +5261,132 @@ gboolean window_draw_callback(GtkWidget *widget, cairo_t *cr_arg, gpointer user_
 		for(; font_size > 6; font_size--) {
 			cairo_set_font_size(cr_arg, font_size);
 
-			if(main_window_in_fullscreen == FALSE) {
-				// Tiling WMs, at least i3, react weird on our window size changing.
-				// Drawing the info box on the image helps to avoid users noticing that.
-				cairo_translate(cr_arg, x < 0 ? 0 : x, y < 0 ? 0 : y);
-			}
-
-			cairo_set_source_rgb(cr_arg, option_box_colors.bg_red, option_box_colors.bg_green, option_box_colors.bg_blue);
-			cairo_translate(cr_arg, 10 * screen_scale_factor, 20 * screen_scale_factor);
 			cairo_text_path(cr_arg, current_info_text);
 			cairo_path_extents(cr_arg, &x1, &y1, &x2, &y2);
 
-			if(x2 > main_window_width - 10 * screen_scale_factor && !main_window_in_fullscreen) {
-				cairo_new_path(cr_arg);
-				cairo_restore(cr_arg);
-				cairo_save(cr_arg);
-				continue;
+			cairo_new_path(cr_arg);
+			cairo_restore(cr_arg);
+			cairo_save(cr_arg);
+
+			if(x2 < main_window_width - 20 * screen_scale_factor || main_window_in_fullscreen) {
+				break;
+			}
+		}
+
+		if (font_size > 6) {
+			cairo_set_font_size(cr_arg, font_size);
+			cairo_set_source_rgb(cr_arg, option_box_colors.bg_red, option_box_colors.bg_green, option_box_colors.bg_blue);
+
+			switch(option_box_placement) {
+				case BOX_PLACEMENT_N:
+					if(!main_window_in_fullscreen) {
+						cairo_translate(cr_arg, x > 0 ? x : 0, y > 0 ? y : 0);
+					}
+					cairo_translate(cr_arg, x1 + 5, -y1 + 5);
+					break;
+
+				case BOX_PLACEMENT_S:
+					if(!main_window_in_fullscreen) {
+						cairo_translate(cr_arg,
+								(x > 0 ? x : 0),
+								(y > 0 ? y : 0) + image_transform_height * current_scale_level - (y2 - y1));
+					}
+					else {
+						cairo_translate(cr_arg,
+								0,
+								main_window_height - (y2 - y1));
+					}
+					cairo_translate(cr_arg, x1 + 5, -y1 - 5);
+					break;
+
+				case BOX_PLACEMENT_NW:
+					cairo_translate(cr_arg, 10 * screen_scale_factor, 20 * screen_scale_factor);
+					if(!main_window_in_fullscreen) {
+						cairo_translate(cr_arg, x > 0 ? x : 0, y > 0 ? y : 0);
+					}
+					break;
+
+				case BOX_PLACEMENT_NE:
+					if(!main_window_in_fullscreen && image_transform_width > 0) {
+						cairo_translate(cr_arg,
+								(x > 0 ? x : 0) + image_transform_width * current_scale_level - 10 * screen_scale_factor - (x2 - x1),
+								20 * screen_scale_factor);
+					}
+					else {
+						cairo_translate(cr_arg,
+								main_window_width - 10 * screen_scale_factor - (x2 - x1),
+								20 * screen_scale_factor);
+					}
+					break;
+
+				case BOX_PLACEMENT_SW:
+					if(!main_window_in_fullscreen && image_transform_width > 0) {
+						cairo_translate(cr_arg,
+								(x > 0 ? x : 0) + 10 * screen_scale_factor,
+								(y > 0 ? y : 0) + image_transform_height * current_scale_level - (y2 - y1));
+					}
+					else {
+						cairo_translate(cr_arg,
+								10 * screen_scale_factor,
+								main_window_height - (y2 - y1));
+					}
+					break;
+
+				case BOX_PLACEMENT_SE:
+					if(!main_window_in_fullscreen && image_transform_width > 0) {
+						cairo_translate(cr_arg,
+								(x > 0 ? x : 0) + image_transform_width * current_scale_level  - 10 * screen_scale_factor - (x2 - x1),
+								(y > 0 ? y : 0) + image_transform_height * current_scale_level - (y2 - y1));
+					}
+					else {
+						cairo_translate(cr_arg,
+								main_window_width  - 5 * screen_scale_factor - (x2 - x1) - 10 * screen_scale_factor,
+								main_window_height - 5 * screen_scale_factor - (y2 - y1));
+					}
+					break;
+
+				default:
+					break;
+
+			}
+
+			cairo_text_path(cr_arg, current_info_text);
+			cairo_path_extents(cr_arg, &x1, &y1, &x2, &y2);
+
+			if(option_box_placement == BOX_PLACEMENT_N || option_box_placement == BOX_PLACEMENT_S) {
+				if(!main_window_in_fullscreen) {
+					x2 = image_transform_width * current_scale_level;
+				}
+				else {
+					x2 = main_window_width;
+				}
 			}
 
 			current_info_text_cached_font_size = font_size;
 			cairo_path_t *text_path = cairo_copy_path(cr_arg);
 			cairo_new_path(cr_arg);
-			cairo_rectangle(cr_arg, -5, -(y2 - y1) - 2, x2 - x1 + 10, y2 - y1 + 8);
+			cairo_rectangle(cr_arg, x1 - 5, y1 - 5, x2 - x1 + 10, y2 - y1 + 10);
 			cairo_close_path(cr_arg);
 			cairo_fill(cr_arg);
+
 			cairo_set_source_rgb(cr_arg, option_box_colors.fg_red, option_box_colors.fg_green, option_box_colors.fg_blue);
 			cairo_append_path(cr_arg, text_path);
 			cairo_fill(cr_arg);
 			cairo_path_destroy(text_path);
 
-			break;
+			// Store where the box was drawn to allow for partial updates of the screen
+			current_info_text_bounding_box.x = x1 > 5 ? x1 - 5 : 0;
+			current_info_text_bounding_box.y = y2 > 10 ? y2 - 10 : 0;
+
+			 // Redraw some extra pixels to make sure a wider new box would be covered:
+			current_info_text_bounding_box.width = x2 - x1 + 10 + 30;
+			current_info_text_bounding_box.height = y2 - y1 + 8;
+		}
+		else {
+			current_info_text_bounding_box = (cairo_rectangle_int_t){ 0, 0, 0, 0 };
 		}
 
 		cairo_restore(cr_arg);
-
-		// Store where the box was drawn to allow for partial updates of the screen
-		current_info_text_bounding_box.x = (main_window_in_fullscreen == TRUE ? 0 : (x < 0 ? 0 : x)) + 10 - 5;
-		current_info_text_bounding_box.y = (main_window_in_fullscreen == TRUE ? 0 : (y < 0 ? 0 : y)) + 20 -(y2 - y1) - 2;
-
-		 // Redraw some extra pixels to make sure a wider new box would be covered:
-		current_info_text_bounding_box.width = x2 - x1 + 10 + 30;
-		current_info_text_bounding_box.height = y2 - y1 + 8;
 	}
 #endif
 
@@ -6495,6 +6625,40 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 			gtk_widget_queue_draw(GTK_WIDGET(main_window));
 			break;
 #endif // without montage
+
+#ifndef CONFIGURED_WITHOUT_INFO_TEXT
+		case ACTION_SET_INFO_BOX_PLACEMENT:
+			if(!strcmp(parameter.pcharptr, "N")) {
+				option_box_placement = BOX_PLACEMENT_N;
+			}
+			else if(!strcmp(parameter.pcharptr, "S")) {
+				option_box_placement = BOX_PLACEMENT_S;
+			}
+			else if(!strcmp(parameter.pcharptr, "NW")) {
+				option_box_placement = BOX_PLACEMENT_NW;
+			}
+			else if(!strcmp(parameter.pcharptr, "NE")) {
+				option_box_placement = BOX_PLACEMENT_NE;
+			}
+			else if(!strcmp(parameter.pcharptr, "SW")) {
+				option_box_placement = BOX_PLACEMENT_SW;
+			}
+			else if(!strcmp(parameter.pcharptr, "SE")) {
+				option_box_placement = BOX_PLACEMENT_SE;
+			}
+			else if(!strcmp(parameter.pcharptr, "C")) {
+				if(++option_box_placement > 5) {
+					option_box_placement = 0;
+				}
+			}
+			else {
+				g_printerr("Invalid info box placement `%s'.\n", parameter.pcharptr);
+				break;
+			}
+			update_info_text("Info box placement changed.");
+			gtk_widget_queue_draw(GTK_WIDGET(main_window));
+			break;
+#endif
 
 		default:
 			break;

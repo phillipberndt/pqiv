@@ -240,6 +240,12 @@ With \fB\-\-fade\fR, make each fade this long. Floating point values are
 accepted, e.g. 0.5 makes each fade take half a second.
 .\"
 .TP
+.BR \-\-info\-box\-placement=\fIPOS\fR
+Set the initial position of the info box. Allowed values are N, NE, NW, S, SE,
+SW. N and S will create an info bar instead of a box. The default
+is \fINW\fR, an info box in the north-west corner.
+.\"
+.TP
 .BR \-\-low\-memory
 Try to keep memory usage to a minimum. \fBpqiv\fR by default e.g. preloads the
 next and previous image to speed up navigation and caches scaled images to
@@ -533,6 +539,10 @@ Set the duration of fades between images. In contrast to the command line
 option, this action also implicitly enables fading. Set the duration to zero to
 disable the feature.
 .TP
+.BR set_info_box_placement(STRING)
+Set the position of the info box. Allowed values are N, NE, NW, S, SE, SW.
+Default is north west (NW).
+.TP
 .BR set_interpolation_quality(INT)
 Set the interpolation quality for resized images. Options are: 0 to cycle
 between the different modes, 1 for an automated choice based on the image size
@@ -642,6 +652,8 @@ Flip the image horizontally or vertically.
 Rotate the image right or left.
 .IP i
 Toggle visibility of the info box.
+.IP ctrl-i
+Move the info box around the screen.
 .IP j
 Show a dialog with a list of all files for quick selection.
 .IP m
