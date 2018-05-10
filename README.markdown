@@ -177,6 +177,8 @@ pqiv 2.11 (dev)
  * Added negate (color inversion) mode (bound to `n`, `--negate`)
  * Rebound `a` (hardlink image) to `c-a` by default (See #124)
  * Improved key bindings documentation (See #127)
+ * Add `--actions-from-stdin` and let it block until actions are completed
+   (See #118/#119)
 
 pqiv 2.10.4
  * Fix output of `montage_mode_shift_y_rows()` in key bindings
