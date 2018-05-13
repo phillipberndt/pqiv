@@ -7529,6 +7529,10 @@ void parse_key_bindings(const gchar *bindings) {/*{{{*/
 						for(const struct pqiv_action_descriptor *descriptor = pqiv_action_descriptors; descriptor->name; descriptor++) {
 							if((ptrdiff_t)strlen(descriptor->name) == identifier_length && g_ascii_strncasecmp(descriptor->name, identifier, identifier_length) == 0) {
 								binding->action = action_id;
+								if (binding->next_action) {
+									key_binding_t_destroy_callback(binding->next_action);
+									binding->next_action = NULL;
+								}
 								parameter_type = descriptor->parameter_type;
 								token_start = scan + 1;
 								state = 4;
