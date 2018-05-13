@@ -623,6 +623,7 @@ struct {
 } active_key_binding = { NULL, NULL, -1 };
 GQueue action_queue = G_QUEUE_INIT;
 gint action_queue_idle_id = -1;
+void help_show_single_action(key_binding_t *current_action);
 
 #ifndef CONFIGURED_WITHOUT_MONTAGE_MODE
 key_binding_t follow_mode_key_binding = { ACTION_MONTAGE_MODE_FOLLOW_PROCEED, { .p2short = { -1, -1 } }, NULL, NULL };
@@ -5443,8 +5444,9 @@ gboolean queue_action_callback(gpointer user_data) {/*{{{*/
 		return FALSE;
 	}
 
-	action(binding->action, binding->parameter);
+	// Debug: printf("Queue length is %d. Now at: ", g_queue_get_length(&action_queue) + 1); help_show_single_action(binding); printf("\n");
 
+	action(binding->action, binding->parameter);
 	key_binding_t_destroy_callback(binding);
 
 	return FALSE;
@@ -5457,6 +5459,9 @@ void queue_action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/
 		.next_key_bindings = NULL
 	};
 	g_queue_push_tail(&action_queue, key_binding_t_duplicate(&temporary_binding));
+
+	// Debug: printf("Queue length is %d after adding: ", g_queue_get_length(&action_queue)); help_show_single_action(&temporary_binding); printf("\n");
+
 	if(action_queue_idle_id == -1) {
 		action_queue_idle_id = g_idle_add(queue_action_callback, NULL);
 	}
@@ -7288,6 +7293,31 @@ char *key_binding_sequence_to_string(guint key_binding_value, gchar *prefix) {/*
 
 	return str_key;
 }/*}}}*/
+void help_show_single_action(key_binding_t *current_action) {/*{{{*/
+	g_print("%s%c", pqiv_action_descriptors[current_action->action].name, KEY_BINDINGS_COMMAND_PARAMETER_BEGIN_SYMBOL);
+	switch(pqiv_action_descriptors[current_action->action].parameter_type) {
+		case PARAMETER_NONE:
+			g_print("%c ", KEY_BINDINGS_COMMAND_PARAMETER_END_SYMBOL);
+			break;
+		case PARAMETER_INT:
+			g_print("%d%c ", current_action->parameter.pint, KEY_BINDINGS_COMMAND_PARAMETER_END_SYMBOL);
+			break;
+		case PARAMETER_DOUBLE:
+			g_print("%g%c ", current_action->parameter.pdouble, KEY_BINDINGS_COMMAND_PARAMETER_END_SYMBOL);
+			break;
+		case PARAMETER_CHARPTR:
+			for(const char *p = current_action->parameter.pcharptr; *p; p++) {
+				if(*p == KEY_BINDINGS_COMMAND_PARAMETER_END_SYMBOL || *p == '\\') {
+					g_print("\\");
+				}
+				g_print("%c", *p);
+			}
+			g_print("%c ", KEY_BINDINGS_COMMAND_PARAMETER_END_SYMBOL);
+			break;
+		case PARAMETER_2SHORT:
+			g_print("%d, %d%c ", current_action->parameter.p2short.p1, current_action->parameter.p2short.p2, KEY_BINDINGS_COMMAND_PARAMETER_END_SYMBOL);
+	}
+}/*}}}*/
 void help_show_key_bindings_helper(gpointer key, gpointer value, gpointer user_data) {/*{{{*/
 	guint key_binding_value = GPOINTER_TO_UINT(key);
 	key_binding_t *key_binding = (key_binding_t *)value;
@@ -7300,29 +7330,7 @@ void help_show_key_bindings_helper(gpointer key, gpointer value, gpointer user_d
 
 	g_print("%30s %c ", str_key, KEY_BINDINGS_COMMANDS_BEGIN_SYMBOL);
 	for(key_binding_t *current_action = key_binding; current_action; current_action = current_action->next_action) {
-		g_print("%s%c", pqiv_action_descriptors[current_action->action].name, KEY_BINDINGS_COMMAND_PARAMETER_BEGIN_SYMBOL);
-		switch(pqiv_action_descriptors[current_action->action].parameter_type) {
-			case PARAMETER_NONE:
-				g_print("%c ", KEY_BINDINGS_COMMAND_PARAMETER_END_SYMBOL);
-				break;
-			case PARAMETER_INT:
-				g_print("%d%c ", current_action->parameter.pint, KEY_BINDINGS_COMMAND_PARAMETER_END_SYMBOL);
-				break;
-			case PARAMETER_DOUBLE:
-				g_print("%g%c ", current_action->parameter.pdouble, KEY_BINDINGS_COMMAND_PARAMETER_END_SYMBOL);
-				break;
-			case PARAMETER_CHARPTR:
-				for(const char *p = current_action->parameter.pcharptr; *p; p++) {
-					if(*p == KEY_BINDINGS_COMMAND_PARAMETER_END_SYMBOL || *p == '\\') {
-						g_print("\\");
-					}
-					g_print("%c", *p);
-				}
-				g_print("%c ", KEY_BINDINGS_COMMAND_PARAMETER_END_SYMBOL);
-				break;
-			case PARAMETER_2SHORT:
-				g_print("%d, %d%c ", current_action->parameter.p2short.p1, current_action->parameter.p2short.p2, KEY_BINDINGS_COMMAND_PARAMETER_END_SYMBOL);
-		}
+		help_show_single_action(current_action);
 	}
 	g_print("%c \n", KEY_BINDINGS_COMMANDS_END_SYMBOL);
 
