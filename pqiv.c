@@ -5437,8 +5437,9 @@ void key_binding_t_destroy_callback(gpointer data) {/*{{{*/
 }/*}}}*/
 gboolean queue_action_callback(gpointer user_data) {/*{{{*/
 	key_binding_t *binding = g_queue_pop_head(&action_queue);
+	/* Reset action_queue_idle_id here because action() might want to add a new idle callback. */
+	action_queue_idle_id = -1;
 	if(!binding) {
-		action_queue_idle_id = -1;
 		return FALSE;
 	}
 
@@ -5446,8 +5447,6 @@ gboolean queue_action_callback(gpointer user_data) {/*{{{*/
 
 	key_binding_t_destroy_callback(binding);
 
-	/* TODO Or return TRUE? */
-	action_queue_idle_id = -1;
 	return FALSE;
 }/*}}}*/
 void queue_action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
