@@ -6610,7 +6610,9 @@ gboolean window_configure_callback(GtkWidget *widget, GdkEventConfigure *event, 
 		}
 
 		// Rescale the image
-		set_scale_level_to_fit();
+		if(main_window_width != event->width || main_window_height != event->height) {
+			set_scale_level_to_fit();
+		}
 		queue_draw();
 
 		// We need to redraw in old GTK versions to avoid artifacts

@@ -179,6 +179,7 @@ pqiv 2.11 (dev)
  * Improved key bindings documentation (See #127)
  * Add `--actions-from-stdin` and let it block until actions are completed
    (See #118/#119)
+ * Fix zooming on tiling WMs (See #129)
 
 pqiv 2.10.4
  * Fix output of `montage_mode_shift_y_rows()` in key bindings
