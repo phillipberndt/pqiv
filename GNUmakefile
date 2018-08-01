@@ -95,7 +95,7 @@ endif
 
 # We need X11 to workaround a bug, see http://stackoverflow.com/questions/18647475
 ifeq ($(filter x11, $(shell pkg-config --errors-to-stdout --variable=target gtk+-$(GTK_VERSION).0; pkg-config --errors-to-stdout --variable=targets gtk+-$(GTK_VERSION).0)), x11)
-	LIBS+=x11
+	LIBS+=x11 xext
 endif
 
 # Add backend-specific libraries and objects
