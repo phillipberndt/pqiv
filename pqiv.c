@@ -297,6 +297,7 @@ gboolean option_sort = FALSE;
 enum { NAME, MTIME } option_sort_key = NAME;
 gboolean option_shuffle = FALSE;
 gboolean option_transparent_background = FALSE;
+gboolean option_keep_above = FALSE;
 gboolean option_watch_directories = FALSE;
 gboolean option_wait_for_images_to_appear = FALSE;
 gboolean option_fading = FALSE;
@@ -391,6 +392,7 @@ PQIV_DISABLE_PEDANTIC
 // implemented for option parsing.
 GOptionEntry options[] = {
 	{ "transparent-background", 'c', 0, G_OPTION_ARG_NONE, &option_transparent_background, "Borderless transparent window", NULL },
+	{ "keep-above", 0,0, G_OPTION_ARG_NONE, &option_keep_above, "Keep window above others", NULL },
 	{ "slideshow-interval", 'd', 0, G_OPTION_ARG_DOUBLE, &option_slideshow_interval, "Set slideshow interval", "n" },
 	{ "fullscreen", 'f', 0, G_OPTION_ARG_NONE, &option_start_fullscreen, "Start in fullscreen mode", NULL },
 	{ "fade", 'F', 0, G_OPTION_ARG_NONE, (gpointer)&option_fading, "Fade between images", NULL },
@@ -6643,7 +6645,11 @@ gboolean window_configure_callback(GtkWidget *widget, GdkEventConfigure *event, 
 		XShapeCombineRegion(display, window_xid, ShapeInput, 0, 0, region, ShapeSet);
 		XDestroyRegion(region);	
 	}
-
+	
+	if(option_keep_above) {
+		gtk_window_set_keep_above(main_window, TRUE);
+	}
+	
 	return FALSE;
 }/*}}}*/
 void handle_input_event(guint key_binding_value);
@@ -6920,7 +6926,6 @@ gboolean window_button_release_callback(GtkWidget *widget, GdkEventButton *event
 		if(option_transparent_background) {
 			gtk_window_set_decorated(main_window, !gtk_window_get_decorated(main_window));
 		}
-
 		// All other bindings are only handled in fullscreen.
 		return FALSE;
 	}
