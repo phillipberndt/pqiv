@@ -404,13 +404,22 @@ static gboolean _is_ignored_extension(const char *extension) {/*{{{*/
 	return FALSE;
 }/*}}}*/
 void file_type_libav_initializer(file_type_handler_t *info) {/*{{{*/
+#ifndef FF_API_NEXT
     avcodec_register_all();
 	av_register_all();
+#else
+	void *opaque_iter = NULL;
+#endif
 	avformat_network_init();
 
 	// Register all file formats supported by libavformat
 	info->file_types_handled = gtk_file_filter_new();
-	for(AVInputFormat *iter = av_iformat_next(NULL); iter; iter = av_iformat_next(iter)) {
+#ifndef FF_API_NEXT
+	for(AVInputFormat *iter = av_iformat_next(NULL); iter; iter = av_iformat_next(iter))
+#else
+	for(const AVInputFormat *iter; (iter = av_demuxer_iterate(&opaque_iter)); /*nothing */)
+#endif
+	{
 		if(iter->name) {
 			gchar **fmts = g_strsplit(iter->name, ",", -1);
 			for(gchar **fmt = fmts; *fmt; fmt++) {
