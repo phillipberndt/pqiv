@@ -183,6 +183,7 @@ pqiv 2.11 (dev)
  * Support ffmpeg 4.0 API
  * Fix cross-compiling with X11 (Debian #913589)
  * Fix resizing in WMs without moveresize support (See #130)
+ * Work around GTK bug resulting in crash due to invalid free()
 
 pqiv 2.10.4
  * Fix output of `montage_mode_shift_y_rows()` in key bindings

@@ -6929,13 +6929,25 @@ void window_hide_cursor() {/*{{{*/
 		return;
 	}
 	GdkDisplay *display = gtk_widget_get_display(GTK_WIDGET(main_window));
+	#if GTK_CHECK_VERSION(3, 10, 0)
+	// The nice version for obtaining a blank cursor is this:
+	// GdkCursor *cursor = gdk_cursor_new_for_display(display, GDK_BLANK_CURSOR);
+	// But there's a bug somewhere where this can result in "free(): invalid pointer".
+	// So go the extra mile and create our own cursor.
+	static GdkCursor *cursor = NULL;
+	if(!cursor) {
+		cairo_surface_t *surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, 1, 1);
+		cursor = gdk_cursor_new_from_surface(display, surface, 0, 0);
+	}
+	#else
 	GdkCursor *cursor = gdk_cursor_new_for_display(display, GDK_BLANK_CURSOR);
+	#endif
 	GdkWindow *window = gtk_widget_get_window(GTK_WIDGET(main_window));
 	if(window) {
 		gdk_window_set_cursor(window, cursor);
 		cursor_visible = FALSE;
 	}
-	#if GTK_MAJOR_VERSION >= 3
+	#if GTK_MAJOR_VERSION >= 3 && !GTK_CHECK_VERSION(3, 10, 0)
 		g_object_unref(cursor);
 	#endif
 }/*}}}*/
