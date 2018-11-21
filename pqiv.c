@@ -56,6 +56,7 @@
 #ifdef GDK_WINDOWING_X11
 	#include <gdk/gdkx.h>
 	#include <X11/Xlib.h>
+	#include <X11/Xutil.h>
 	#include <cairo/cairo-xlib.h>
 
 	#if GTK_MAJOR_VERSION < 3
@@ -4883,7 +4884,11 @@ void window_prerender_background_pixmap(int window_width, int window_height, dou
 			// Failure, abort.
 			return;
 		}
-		Pixmap pixmap = XCreatePixmap(display, window_xid, window_width * screen_scale_factor, window_height * screen_scale_factor, window_attributes.visual->bits_per_rgb * (3 + !!option_transparent_background));
+		const Screen *xscreen = window_attributes.screen;
+		XVisualInfo visual_info_template = { .visualid = window_attributes.visual->visualid };
+		int visual_infos_found;
+		XVisualInfo *visual_info = XGetVisualInfo(display, VisualIDMask, &visual_info_template, &visual_infos_found);
+		Pixmap pixmap = XCreatePixmap(display, window_xid, window_width * screen_scale_factor, window_height * screen_scale_factor, visual_info ? visual_info->depth : xscreen->root_depth);
 		cairo_surface_t *pixmap_surface = cairo_xlib_surface_create(display, pixmap, window_attributes.visual, window_width * screen_scale_factor, window_height * screen_scale_factor);
 
 		int ow = main_window_width, oh = main_window_height;
