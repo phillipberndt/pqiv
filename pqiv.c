@@ -5388,6 +5388,10 @@ gboolean set_scale_level_to_fit_callback(gpointer user_data) {
 void set_cursor_auto_hide_mode(int auto_hide) {/*{{{*/
 	cursor_auto_hide_mode_enabled = auto_hide;
 
+	if(!main_window) {
+		return;
+	}
+
 	// We only enable the motion mask when it is absolutely necessary, because
 	// communication with X11 becomes quite expensive when it is active: Every
 	// movement of the mouse will trigger an event. The callback disables the
