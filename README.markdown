@@ -182,6 +182,7 @@ pqiv 2.11 (dev)
  * Fix zooming on tiling WMs (See #129)
  * Support ffmpeg 4.0 API
  * Fix cross-compiling with X11 (Debian #913589)
+ * Fix resizing in WMs without moveresize support (See #130)
 
 pqiv 2.10.4
  * Fix output of `montage_mode_shift_y_rows()` in key bindings
