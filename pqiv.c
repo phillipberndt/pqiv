@@ -7419,7 +7419,7 @@ void parse_key_bindings(const gchar *bindings) {/*{{{*/
 				}
 
 				current_command_start = scan;
-				// Missing break is intentional, fall through to case 1.
+				/* fall through */
 
 			case 1: // Expecting continuation of key description or start of command
 				switch(*scan) {
