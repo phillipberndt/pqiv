@@ -17,6 +17,7 @@ DESTDIR=
 GTK_VERSION=0
 CROSS=
 BINARY_EXTENSION=
+BINDIR=
 LIBDIR=
 MANDIR=
 BACKENDS=
@@ -139,6 +140,13 @@ while [ $# -gt 0 ]; do
 		--host)
 			CROSS=${VALUE}-
 			;;
+		--bindir)
+			BINDIR=${VALUE}
+			BINDIR="${BINDIR//\{/(}"
+			BINDIR="${BINDIR//\}/)}"
+			BINDIR="${BINDIR//prefix/PREFIX}"
+			echo "Use of autoconf option --bindir is discouraged, because support is incomplete. Rewrote \`$VALUE' to \`$BINDIR' and used that as the BINDIR Make variable." >&2
+			;;
 		--mandir)
 			MANDIR=${VALUE}
 			MANDIR="${MANDIR//\{/(}"
@@ -149,7 +157,7 @@ while [ $# -gt 0 ]; do
 		--disable-silent-rules)
 			VERBOSE=1
 			;;
-		--infodir | --sysconfdir | --includedir | --localstatedir | --libexecdir | --disable-maintainer-mode | --disable-dependency-tracking | --build)
+		--infodir | --sysconfdir | --includedir | --localstatedir | --libexecdir | --disable-maintainer-mode | --disable-dependency-tracking | --build | --sbindir | --includedir | --oldincludedir | --localedir | --docdir)
 			echo "autoconf option ${PARAMETER} ignored" >&2
 			;;
 		--no-sorting | --no-compositing | --no-fading | --no-commands | --no-config-file | --no-inotify | --no-animations | --binary-name)
@@ -350,6 +358,7 @@ ${LDFLAGS:+LDFLAGS=$LDFLAGS}
 ${CPPFLAGS:+CPPFLAGS=$CPPFLAGS}
 ${MANDIR:+MANDIR=$MANDIR}
 ${LIBDIR:+LIBDIR=$LIBDIR}
+${BINDIR:+BINDIR=$BINDIR}
 ${BACKENDS:+BACKENDS=$BACKENDS}
 ${CC:+CC=$CC}
 ${VERBOSE:+VERBOSE=$VERBOSE}

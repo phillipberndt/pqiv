@@ -11,6 +11,7 @@ LDLIBS=-lm
 PREFIX=/usr
 EPREFIX=$(PREFIX)
 LIBDIR=$(PREFIX)/lib
+BINDIR=$(PREFIX)/bin
 MANDIR=$(PREFIX)/share/man
 EXECUTABLE_EXTENSION=
 PKG_CONFIG=$(CROSS)pkg-config
@@ -217,8 +218,8 @@ pqiv.desktop: $(HEADERS)
 	) > $@
 
 install: all
-	mkdir -p $(DESTDIR)$(PREFIX)/bin
-	install pqiv$(EXECUTABLE_EXTENSION) $(DESTDIR)$(PREFIX)/bin/pqiv$(EXECUTABLE_EXTENSION)
+	mkdir -p $(DESTDIR)$(BINDIR)
+	install pqiv$(EXECUTABLE_EXTENSION) $(DESTDIR)$(BINDIR)/pqiv$(EXECUTABLE_EXTENSION)
 	-mkdir -p $(DESTDIR)$(MANDIR)/man1
 	-install -m 644 $(SOURCEDIR)pqiv.1 $(DESTDIR)$(MANDIR)/man1/pqiv.1
 	-mkdir -p $(DESTDIR)$(PREFIX)/share/applications
