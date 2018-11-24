@@ -7836,6 +7836,10 @@ gboolean perform_string_action(const gchar *string_action) {/*{{{*/
 	return TRUE;
 }/*}}}*/
 gboolean read_commands_thread_helper(gpointer command) {/*{{{*/
+	if(!main_window_visible) {
+		// TODO Properly defer this instead of short-circuiting the main loop
+		return TRUE;
+	}
 	perform_string_action((gchar *)command);
 	g_free(command);
 	return FALSE;
