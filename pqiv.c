@@ -2411,6 +2411,7 @@ file_t *image_loader_duplicate_file(file_t *file, gchar *custom_file_name, gchar
 	new_file->private = NULL;
 	new_file->file_monitor = NULL;
 	new_file->is_loaded = FALSE;
+	g_mutex_init(&new_file->lock);
 
 	return new_file;
 }/*}}}*/
@@ -2448,13 +2449,16 @@ gboolean image_loader_load_single(BOSNode *node, gboolean called_from_main) {/*{
 		if((file->file_flags & FILE_FLAGS_MEMORY_IMAGE) == 0) {
 			GFile *the_file = g_file_new_for_path(file->file_name);
 			if(the_file != NULL) {
+				g_mutex_lock(&file->lock);
 				file->file_monitor = g_file_monitor_file(the_file, G_FILE_MONITOR_NONE, NULL, NULL);
 				if(file->file_monitor != NULL) {
 					g_signal_connect(file->file_monitor, "changed", G_CALLBACK(image_file_updated_callback), (gpointer)node);
 				}
+				g_mutex_unlock(&file->lock);
 				g_object_unref(the_file);
 			}
 		}
+
 
 		// Mark the image as loaded for the GC
 		D_LOCK(file_tree);
@@ -2844,10 +2848,9 @@ void unload_image(BOSNode *node) {/*{{{*/
 		return;
 	}
 	file_t *file = FILE(node);
+	g_mutex_lock(&file->lock);
 	if(file->file_type->unload_fn != NULL) {
-		g_mutex_lock(&file->lock);
 		file->file_type->unload_fn(file);
-		g_mutex_unlock(&file->lock);
 	}
 	if(file->prerendered_view) {
 		cairo_surface_destroy(file->prerendered_view);
@@ -2862,6 +2865,7 @@ void unload_image(BOSNode *node) {/*{{{*/
 		}
 		file->file_monitor = NULL;
 	}
+	g_mutex_unlock(&file->lock);
 }/*}}}*/
 void remove_image(BOSNode *node) {/*{{{*/
 	D_LOCK(file_tree);
