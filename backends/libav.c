@@ -47,6 +47,10 @@
 #define AV_COMPAT_CODEC_DEPRECATED
 #endif
 
+#if LIBAVCODEC_VERSION_INT >= AV_VERSION_INT(58, 9, 100)
+#define AV_API_NEXT_CHANGES
+#endif
+
 // This is a list of extensions that are never handled by this backend
 // It is not a complete list of audio formats supported by ffmpeg,
 // only those I recognized right away.
@@ -404,7 +408,7 @@ static gboolean _is_ignored_extension(const char *extension) {/*{{{*/
 	return FALSE;
 }/*}}}*/
 void file_type_libav_initializer(file_type_handler_t *info) {/*{{{*/
-#ifndef FF_API_NEXT
+#ifndef AV_API_NEXT_CHANGES
     avcodec_register_all();
 	av_register_all();
 #else
@@ -414,7 +418,7 @@ void file_type_libav_initializer(file_type_handler_t *info) {/*{{{*/
 
 	// Register all file formats supported by libavformat
 	info->file_types_handled = gtk_file_filter_new();
-#ifndef FF_API_NEXT
+#ifndef AV_API_NEXT_CHANGES
 	for(AVInputFormat *iter = av_iformat_next(NULL); iter; iter = av_iformat_next(iter))
 #else
 	for(const AVInputFormat *iter; (iter = av_demuxer_iterate(&opaque_iter)); /*nothing */)
