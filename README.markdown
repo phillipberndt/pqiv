@@ -173,7 +173,7 @@ For some advanced uses of pqiv, take a look at these resouces:
 Changelog
 ---------
 
-pqiv 2.11 (dev)
+pqiv 2.11
  * Added negate (color inversion) mode (bound to `n`, `--negate`)
  * Rebound `a` (hardlink image) to `c-a` by default (See #124)
  * Improved key bindings documentation (See #127)
@@ -185,6 +185,9 @@ pqiv 2.11 (dev)
  * Fix resizing in WMs without moveresize support (See #130)
  * Work around GTK bug resulting in crash due to invalid free()
  * Improve autotools compatibility of the configure script (See #135)
+
+<details>
+<summary>Click to expand changelog for old pqiv versions</summary>
 
 pqiv 2.10.4
  * Fix output of `montage_mode_shift_y_rows()` in key bindings
@@ -206,9 +209,6 @@ pqiv 2.10
  * Fixed graphical issues with fading mode and quick image transition
  * Fixed support for platforms with `sizeof(time_t) != sizeof(int)`
  * Fixed a race condition in the file buffer map
-
-<details>
-<summary>Click to expand changelog for old pqiv versions</summary>
 
 pqiv 2.9
  * Added a montage/image grid mode (bound to `m` by default)
