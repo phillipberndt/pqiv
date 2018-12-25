@@ -59,6 +59,7 @@ options to select pqiv's backends:
                           archive_cbx (*.cb? comic book archive support),
                           libav (Video support, works with ffmpeg as well),
                           gdkpixbuf (images),
+                          gmwand (GraphicsMagick, various formats)
                           poppler (PDF),
                           spectre (PS/EPS),
                           wand (ImageMagick, various formats)
@@ -277,6 +278,11 @@ if [ -z "$BACKENDS" ]; then
 	echo -n "Checking for supported backends..             "
 	BACKENDS="$($MAKE get_available_backends ${PKG_CONFIG:+PKG_CONFIG="$PKG_CONFIG"} | awk '/^BACKENDS:/ {print substr($0, 11);}')"
 	echo "${BACKENDS:-(none)}"
+
+	if [ "${BACKENDS/gmwand/}" != "${BACKENDS}" -a "${BACKENDS/ wand/}" != "${BACKENDS}" ]; then
+		echo "INFO: Both ImageMagick and GraphicsMagick found. Preferring ImageMagick."
+		BACKENDS="${BACKENDS/gmwand /}"
+	fi
 fi
 
 # Disable explicitly disabled and enable explicitly enabled backends

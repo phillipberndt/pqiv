@@ -59,6 +59,7 @@ LIBS_libav=libavformat libavcodec libswscale libavutil
 LIBS_archive_cbx=libarchive gdk-pixbuf-2.0 >= 2.2
 LIBS_archive=libarchive
 LIBS_webp=libwebp
+LIBS_gmwand=GraphicsMagickWand
 
 # This might be required if you use mingw, and is required as of
 # Aug 2014 for mxe, but IMHO shouldn't be required / is a bug in
@@ -106,7 +107,7 @@ HELPER_OBJECTS=
 BACKENDS_INITIALIZER:=backends/initializer
 define handle-backend
 ifneq ($(origin LIBS_$(1)),undefined)
-	ifneq ($(findstring $(1), $(BACKENDS)),)
+	ifneq ($(filter $(1), $(BACKENDS)),)
 		ifeq ($(BACKENDS_BUILD), shared)
 			ifeq ($(shell $(PKG_CONFIG) --errors-to-stdout --print-errors "$(LIBS_$(1))" 2>&1), )
 				SHARED_OBJECTS+=backends/pqiv-backend-$(1).so
@@ -136,7 +137,7 @@ endif
 
 # MagickWand changed their directory structure with version 7, pass the version
 # to the build
-ifneq ($(findstring wand, $(BACKENDS)),)
+ifneq ($(filter wand, $(BACKENDS)),)
 backends/wand.o: CFLAGS_REAL+=-DWAND_VERSION=$(shell $(PKG_CONFIG) --modversion MagickWand | awk 'BEGIN { FS="." } { print $$1 }')
 endif
 
