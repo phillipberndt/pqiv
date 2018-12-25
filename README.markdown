@@ -173,6 +173,9 @@ For some advanced uses of pqiv, take a look at these resouces:
 Changelog
 ---------
 
+pqiv 2.12 (dev)
+ * Fix support for `best` interpolation quality (Fixes #139)
+
 pqiv 2.11
  * Added negate (color inversion) mode (bound to `n`, `--negate`)
  * Rebound `a` (hardlink image) to `c-a` by default (See #124)

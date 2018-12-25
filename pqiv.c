@@ -6003,7 +6003,7 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 			break;
 
 		case ACTION_SET_INTERPOLATION_QUALITY:
-			if(parameter.pint > BEST || parameter.pint < 0) {
+			if(parameter.pint > BEST + 1 || parameter.pint < 0) {
 				g_printerr("Interpolation quality `%d' not supported.\n", parameter.pint);
 			}
 			else if(parameter.pint == 0) {
