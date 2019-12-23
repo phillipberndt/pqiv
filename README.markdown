@@ -44,11 +44,7 @@ backends to build if invoked without parameters.
 You can also use precompiled and packaged versions of pqiv. Note that the
 distribution packages are usually somewhat out of date:
 
- * Statically linked
-   [nightly builds for Linux and Windows](https://intern.pberndt.com/pqiv_builds/)
-   ![Build status](https://intern.pberndt.com/pqiv_builds/ci.php)
- * Dynamically linked
-   [nightly builds for Debian, Ubuntu, SUSE and Fedora](https://build.opensuse.org/package/show/home:phillipberndt/pqiv)
+ * [Nightly builds for Debian, Ubuntu, SUSE and Fedora](https://build.opensuse.org/package/show/home:phillipberndt/pqiv)
    thanks to the OpenSUSE build service
  * [Arch AUR package](https://aur.archlinux.org/packages/pqiv/)
    ([Git version](https://aur.archlinux.org/packages/pqiv-git/))
@@ -86,12 +82,18 @@ binaries or to make the run-time dependencies optional, use the
 
 For macOS, have a look at the `pqiv.app` target of the Makefile, too.
 
+pqiv can be linked statically, though GTK only supports static linking in
+GTK 2.x; in early versions of GTK 3.x it was fairly simple to still link
+statically.
+
+Windows builds are supported and work in GTK 2.x, it is recommended to use
+[MXE](https://mxe.cc/) for cross-compiling.
+
 Thanks
 ------
 
 This program uses Martin Pool's natsort algorithm
 <https://www.github.com/sourcefrog/natsort/>.
-
 
 Contributors
 ------------
