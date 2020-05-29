@@ -8149,4 +8149,12 @@ int main(int argc, char *argv[]) {
 	return 0;
 }
 
+void clear_marks() {
+	D_LOCK(file_tree);
+	for(BOSNode *iter = bostree_select(file_tree, 0); iter; iter = bostree_next_node(iter)) {
+		iter->marked = -1;
+	}
+	D_UNLOCK(file_tree);
+}
+
 // vim:noet ts=4 sw=4 tw=0 fdm=marker
