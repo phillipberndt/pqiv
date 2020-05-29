@@ -1541,6 +1541,7 @@ void load_images_handle_parameter(char *param, load_images_state_t state, gint d
 	// Check for memory image
 	if(state == PARAMETER && g_strcmp0(param, "-") == 0) {
 		file = g_slice_new0(file_t);
+		file->marked = -1;
 		file->file_flags = FILE_FLAGS_MEMORY_IMAGE;
 		file->display_name = g_strdup("-");
 		if(option_sort) {
@@ -1736,6 +1737,11 @@ void load_images_handle_parameter(char *param, load_images_state_t state, gint d
 		file = g_slice_new0(file_t);
 		file->file_name = g_strdup(param);
 		file->display_name = g_filename_display_name(param);
+		printf("%s -> %s\n", file->file_name, file->display_name);
+		if(strcmp(file->file_name, "/home/kanon/Downloads/bDA2AnF.gif") == 0) {
+			file->marked = 1;
+		} else
+			file->marked = -1;
 		g_mutex_init(&file->lock);
 		if(option_sort) {
 			if(option_sort_key == MTIME) {
@@ -4717,6 +4723,8 @@ void window_draw_thumbnail_montage_show_binding_overlays_looper(gpointer key, gp
 }/*}}}*/
 #endif
 gboolean window_draw_thumbnail_montage(cairo_t *cr_arg) {/*{{{*/
+	int markx, marky;
+
 	D_LOCK(file_tree);
 
 	// Draw black background
@@ -4787,6 +4795,19 @@ gboolean window_draw_thumbnail_montage(cairo_t *cr_arg) {/*{{{*/
 				cairo_set_source_rgb(cr_arg, option_box_colors.bg_red, option_box_colors.bg_green, option_box_colors.bg_blue);
 				cairo_set_line_width(cr_arg, 8.);
 				cairo_stroke(cr_arg);
+			}
+
+			// Marks
+			if(thumb_file->marked == 1) {
+				// printf("%s is marked\n", thumb_file->display_name);
+				markx = cairo_image_surface_get_width(thumb_file->thumbnail);
+				marky = cairo_image_surface_get_height(thumb_file->thumbnail);
+				cairo_rectangle(cr_arg, markx - 5, marky - 5, markx + 1, marky + 1);
+				cairo_set_source_rgb(cr_arg, 0, 0, 0);
+				cairo_set_line_width(cr_arg, 1);
+				cairo_stroke_preserve(cr_arg);
+				cairo_set_source_rgb(cr_arg, 1, 1, 1);
+				cairo_fill(cr_arg);
 			}
 
 			cairo_restore(cr_arg);
