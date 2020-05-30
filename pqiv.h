@@ -288,12 +288,8 @@ typedef enum {
 	ACTION_MOVE_WINDOW,
 	ACTION_TOGGLE_BACKGROUND_PATTERN,
 	ACTION_TOGGLE_NEGATE_MODE,
-<<<<<<< HEAD
-=======
-	ACTION_TOGGLE_BACKGROUND_GRADIENT,
 	ACTION_TOGGLE_MARK,
 	ACTION_CLEAR_MARKS,
->>>>>>> bdf7686... Initial marks code working
 } pqiv_action_t;
 
 typedef union {
