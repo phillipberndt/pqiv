@@ -785,7 +785,9 @@ gboolean handle_input_event_timeout_callback(gpointer user_data);
 void toggle_mark(int id);
 void clear_marks();
 char *get_all_marked();
-FILE *open_memstream(char **ptr, size_t *sizeloc);  // Why not declared in .h file?
+#if defined (__GLIBC__)
+	FILE *open_memstream(char **ptr, size_t *sizeloc);
+#endif
 #endif
 #ifndef CONFIGURED_WITHOUT_MONTAGE_MODE
 gboolean montage_window_get_move_cursor_target(int, int, int, int*, int*, int*, BOSNode **);
