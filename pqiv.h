@@ -107,8 +107,8 @@ struct _file {
 	// File-type specific data, allocated and freed by the file type handlers
 	void *private;
 
-	// 1 = marked, -1 = unmarked
-	int marked;
+	// TRUE if file is marked
+	gboolean marked;
 };
 // }}}
 // Definition of the built-in file types {{{

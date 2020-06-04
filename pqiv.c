@@ -712,7 +712,7 @@ const struct pqiv_action_descriptor {
 	{ "move_window", PARAMETER_2SHORT },
 	{ "toggle_background_pattern", PARAMETER_INT },
 	{ "toggle_negate_mode", PARAMETER_INT },
-	{ "toggle_mark", PARAMETER_INT },
+	{ "toggle_mark", PARAMETER_NONE },
 	{ "clear_marks", PARAMETER_NONE },
 	{ NULL, 0 }
 };
@@ -790,9 +790,9 @@ gboolean window_auto_hide_cursor_callback(gpointer user_data);
 #ifndef CONFIGURED_WITHOUT_ACTIONS
 gboolean handle_input_event_timeout_callback(gpointer user_data);
 void queue_action(pqiv_action_t action_id, pqiv_action_parameter_t parameter);
-void toggle_mark(int id);
+void toggle_mark();
 void clear_marks();
-char *get_all_marked();
+GString *get_all_marked();
 #endif
 #ifndef CONFIGURED_WITHOUT_MONTAGE_MODE
 gboolean montage_window_get_move_cursor_target(int, int, int, int*, int*, int*, BOSNode **);
@@ -1547,7 +1547,6 @@ void load_images_handle_parameter(char *param, load_images_state_t state, gint d
 	// Check for memory image
 	if(state == PARAMETER && g_strcmp0(param, "-") == 0) {
 		file = g_slice_new0(file_t);
-		file->marked = -1;
 		file->file_flags = FILE_FLAGS_MEMORY_IMAGE;
 		file->display_name = g_strdup("-");
 		if(option_sort) {
@@ -1743,7 +1742,6 @@ void load_images_handle_parameter(char *param, load_images_state_t state, gint d
 		file = g_slice_new0(file_t);
 		file->file_name = g_strdup(param);
 		file->display_name = g_filename_display_name(param);
-		file->marked = -1;
 		g_mutex_init(&file->lock);
 		if(option_sort) {
 			if(option_sort_key == MTIME) {
@@ -3566,22 +3564,49 @@ void apply_external_image_filter(gchar *external_filter) {/*{{{*/
 		// Reminder: Do not free the others, they are string constants
 		g_free(argv[2]);
 	}
-	else if(external_filter[0] == '<') {
-		char *marklist = get_all_marked();
-		// argv[2] = apply_external_image_filter_prepare_command(external_filter + 1);
-		// printf("%s\n", argv[2]);
-		// This does it a different way, so rest of argv not used.
-		// if(g_spawn_async(NULL, argv, NULL, 0, NULL, NULL, NULL, &error_pointer) == FALSE) {  // For diff between this and popen, see: https://stackoverflow.com/questions/219138/get-command-output-in-pipe-c-for-linux
-		FILE *fp = popen(external_filter + 1, "w");
-		if(!fp) {
+	else if(external_filter[0] == '-') {
+		GString *marklist = get_all_marked();
+		argv[2] = external_filter + 1;
+		GPid child_pid;
+		gint child_stdin;
+		if(!g_spawn_async_with_pipes(NULL, argv, NULL,
+			// In win32, the G_SPAWN_DO_NOT_REAP_CHILD is required to get the process handle
+			#ifdef _WIN32
+				G_SPAWN_DO_NOT_REAP_CHILD,
+			#else
+				0,
+			#endif
+			NULL, NULL, &child_pid, &child_stdin, NULL, NULL, &error_pointer)
+		) {
 			g_printerr("Failed execute external command `%s': %s\n", argv[2], error_pointer->message);
 			g_clear_error(&error_pointer);
-		} else {
-			fprintf(fp, "%s", marklist);
-			pclose(fp);
 		}
-		// g_free(argv[2]);
-		free(marklist);
+		else {
+			if(write(child_stdin, marklist->str, marklist->len) == -1) {
+				g_printerr("Failed writing to stdin of %s\n", argv[2]);
+			}
+			close(child_stdin);
+			gint status = 0;  // When left uninitialized, external command reports exiting due to signal 95 (exit statuses have been 233, 201, 217). Why?
+			#ifdef _WIN32
+				WaitForSingleObject(child_pid, INFINITE);
+				DWORD exit_code = 0;
+				GetExitCodeProcess(child_pid, &exit_code);
+				status = (gint)exit_code;
+			#else
+				waitpid(child_pid, &status, 0);
+			#endif
+			g_spawn_close_pid(child_pid);
+
+			if (!WIFEXITED(status)) {
+				if (WIFSIGNALED(status)) {
+					g_printerr("External command exited due to signal %d (exit status: %d)\n", WTERMSIG(status), WEXITSTATUS(status));
+				}
+				else {
+					g_printerr("External command failed with exit status %d\n", WEXITSTATUS(status));
+				}
+			}
+		}
+		g_string_free(marklist, TRUE);
 	}
 	else if(external_filter[0] == '|') {
 		// Pipe image into program, read image from its stdout
@@ -4815,8 +4840,7 @@ gboolean window_draw_thumbnail_montage(cairo_t *cr_arg) {/*{{{*/
 			}
 
 			// Marks
-			if(thumb_file->marked == 1) {
-				// printf("%s is marked\n", thumb_file->display_name);
+			if(thumb_file->marked) {
 				int markx = cairo_image_surface_get_width(thumb_file->thumbnail);
 				int marky = cairo_image_surface_get_height(thumb_file->thumbnail);
 				cairo_rectangle(cr_arg, markx - 5, marky - 5, markx + 1, marky + 1);
@@ -6611,7 +6635,7 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 			break;
 #endif // without montage
 		case ACTION_TOGGLE_MARK:
-			toggle_mark(parameter.pint);
+			toggle_mark();
 			break;
 
 		case ACTION_CLEAR_MARKS:
@@ -8070,6 +8094,40 @@ gboolean inner_main(void *user_data) {/*{{{*/
 
 	return FALSE;
 }/*}}}*/
+
+/* Marks system functions {{{ */
+void clear_marks() {/*{{{*/
+	D_LOCK(file_tree);
+	for(BOSNode *iter = bostree_select(file_tree, 0); iter; iter = bostree_next_node(iter)) {
+		FILE(iter)->marked = FALSE;
+	}
+	D_UNLOCK(file_tree);
+}/*}}}*/
+void toggle_mark() {/*{{{*/
+	if(application_mode == DEFAULT) {
+		FILE(current_file_node)->marked = !FILE(current_file_node)->marked;
+	}
+	#ifndef CONFIGURED_WITHOUT_MONTAGE_MODE
+	else if(application_mode == MONTAGE) {
+		FILE(montage_window_control.selected_node)->marked = !FILE(montage_window_control.selected_node)->marked;
+	}
+	#endif
+}/*}}}*/
+GString *get_all_marked() {/*{{{*/
+	GString *result = g_string_new(NULL);
+
+	D_LOCK(file_tree);
+	for(BOSNode *iter = bostree_select(file_tree, 0); iter; iter = bostree_next_node(iter)) {
+		file_t *file = FILE(iter);
+		if(file->marked) {
+			g_string_append_printf(result, "%s\n", file->file_name);
+		}
+	}
+	D_UNLOCK(file_tree);
+	return result;
+}/*}}}*/
+// }}}
+
 int main(int argc, char *argv[]) {
 	#ifdef DEBUG
 		#ifndef _WIN32
@@ -8176,53 +8234,5 @@ int main(int argc, char *argv[]) {
 	D_UNLOCK(file_tree);
 
 	return 0;
-}
-
-void clear_marks() {
-	D_LOCK(file_tree);
-	printf("Clearing marks\n");
-	for(BOSNode *iter = bostree_select(file_tree, 0); iter; iter = bostree_next_node(iter)) {
-		FILE(iter)->marked = -1;
-	}
-	D_UNLOCK(file_tree);
-}
-
-void toggle_mark(int id) {
-	// Not using id for now. Just mark current.
-
-	if(application_mode == DEFAULT) {
-		if(FILE(current_file_node)->marked == 1) {
-			FILE(current_file_node)->marked = -1;
-		} else {
-			FILE(current_file_node)->marked = 1;
-		}
-	}
-	#ifndef CONFIGURED_WITHOUT_MONTAGE_MODE
-	else if(application_mode == MONTAGE) {
-		if(FILE(montage_window_control.selected_node)->marked == 1) {
-			FILE(montage_window_control.selected_node)->marked = -1;
-		} else {
-			FILE(montage_window_control.selected_node)->marked = 1;
-		}
-	}
-	#endif
-}
-
-char *get_all_marked() {
-	char* result = NULL;
-	size_t resultSize = 0;
-	FILE* stream = open_memstream(&result, &resultSize);
-
-	printf("Getting all marks\n");
-	D_LOCK(file_tree);
-	for(BOSNode *iter = bostree_select(file_tree, 0); iter; iter = bostree_next_node(iter)) {
-		file_t *file = FILE(iter);
-		if(file->marked == 1) {
-			fprintf(stream, "%s\n", file->file_name);
-		}
-	}
-	D_UNLOCK(file_tree);
-	fclose(stream);
-	return result;
 }
 // vim:noet ts=4 sw=4 tw=0 fdm=marker
