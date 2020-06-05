@@ -11,7 +11,7 @@ It is optimized to be quick and responsive.
 
 It comes with support for animations, slideshows, transparency, VIM-like key
 bindings, automated loading of new images as they appear, external image
-filters, image preloading, and much more.
+filters, marks, image preloading, and much more.
 
 pqiv started as a Python rewrite of qiv avoiding imlib, but evolved into a much
 more powerful tool. Today, pqiv stands for powerful quick image viewer.
@@ -33,6 +33,7 @@ Features
  * Comes with an interactive montage mode (a.k.a. "image grid")
  * Customizable key-bindings with support for VIM-like key sequences, action
    cycling and binding multiple actions to a single key
+ * Mark/unmark images and pipe the list of marked images to an external script
 
 Installation
 ------------
@@ -103,6 +104,7 @@ Contributors to pqiv 2.x are:
  * J. Paul Reed
  * Chen Jonh L
  * Anton Älgmyr
+ * Kanon Kubose
 
 Contributors to pqiv ≤ 1.0 were:
 
@@ -177,6 +179,7 @@ Changelog
 
 pqiv 2.12 (dev)
  * Fix support for `best` interpolation quality (Fixes #139)
+ * Add an sxiv-like marks system
 
 pqiv 2.11
  * Added negate (color inversion) mode (bound to `n`, `--negate`)
