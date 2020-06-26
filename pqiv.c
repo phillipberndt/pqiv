@@ -62,10 +62,6 @@
 	#if GTK_MAJOR_VERSION < 3
 		#include <X11/Xatom.h>
 	#endif
-#elif defined(__APPLE__)
-#include <objc/objc.h>
-#include <objc/message.h>
-extern id NSApp;
 #endif
 
 #ifdef DEBUG
@@ -8066,11 +8062,6 @@ int main(int argc, char *argv[]) {
 			option_lazy_load = TRUE;
 		}
 	}
-
-#ifdef __APPLE__
-	SEL activateIgnoringOtherAppsSel = sel_registerName("activateIgnoringOtherApps:");
-	((void (*)(id, SEL, BOOL))objc_msgSend)(NSApp, activateIgnoringOtherAppsSel, YES);
-#endif
 
 	// Start image loader & show window inside main loop, in order to have
 	// gtk_main_quit() available.

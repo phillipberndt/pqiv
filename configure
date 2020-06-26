@@ -230,8 +230,6 @@ if [ -n "$CROSS" -a -z "$CC" ]; then
 	else
 		echo "ok"
 	fi
-elif [ "$(uname -s)" = "Darwin" ]; then
-	LDFLAGS="$LDFLAGS -framework Cocoa"
 fi
 
 # Determine binary extension (for Windows)
