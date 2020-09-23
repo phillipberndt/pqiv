@@ -1229,7 +1229,7 @@ void parse_configuration_file_callback(char *section, char *key, config_parser_v
 #endif
 }
 
-static void parse_configuration_file_nolocale(gchar *config_file) {
+static void parse_configuration_file_nolocale(const gchar *config_file) {
 	gchar *old_locale = g_strdup(setlocale(LC_NUMERIC, NULL));
 	setlocale(LC_NUMERIC, "C");
 
