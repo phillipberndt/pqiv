@@ -1228,12 +1228,25 @@ void parse_configuration_file_callback(char *section, char *key, config_parser_v
 	}
 #endif
 }
+
+static void parse_configuration_file_nolocale(gchar *config_file) {
+	gchar *old_locale = g_strdup(setlocale(LC_NUMERIC, NULL));
+	setlocale(LC_NUMERIC, "C");
+
+	config_parser_parse_file(config_file, parse_configuration_file_callback);
+
+	setlocale(LC_NUMERIC, old_locale);
+	g_free(old_locale);
+
+	return;
+}
+
 void parse_configuration_file() {/*{{{*/
 	// Check for a configuration file
 	const gchar *env_config_file = g_getenv("PQIVRC_PATH");
 	if(env_config_file) {
 		if(g_file_test(env_config_file, G_FILE_TEST_EXISTS)) {
-			config_parser_parse_file(env_config_file, parse_configuration_file_callback);
+			parse_configuration_file_nolocale(env_config_file);
 		}
 		return;
 	}
@@ -1260,7 +1273,7 @@ void parse_configuration_file() {/*{{{*/
 	gchar *config_file_name;
 	while((config_file_name = g_queue_pop_head(test_dirs))) {
 		if(g_file_test(config_file_name, G_FILE_TEST_EXISTS)) {
-			config_parser_parse_file(config_file_name, parse_configuration_file_callback);
+			parse_configuration_file_nolocale(config_file_name);
 			g_free(config_file_name);
 			break;
 		}
