@@ -177,6 +177,7 @@ Changelog
 
 pqiv 2.12 (dev)
  * Fix support for `best` interpolation quality (Fixes #139)
+ * Fix wrap-around in shuffled image view (Fixes #176)
 
 pqiv 2.11
  * Added negate (color inversion) mode (bound to `n`, `--negate`)

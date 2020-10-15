@@ -3097,76 +3097,74 @@ BOSNode *relative_image_pointer(ptrdiff_t movement) {/*{{{*/
 		}
 
 		// The list isn't long enough to provide us with the desired image.
-		if(shuffled_images_list_length < bostree_node_count(file_tree)) {
-			// If not all images have been viewed, expand it
-			while(movement != 0) {
-				BOSNode *next_candidate, *chosen_candidate;
-				// We select one random list element and then choose the sequentially next
-				// until we find one that has not been chosen yet. Walking sequentially
-				// after chosing one random integer index still generates a
-				// equidistributed permutation.
-				// This is O(n^2), since we must in the worst case lookup n-1 elements
-				// in a list of already chosen ones, but I think that this still is a
-				// better choice than to store an additional boolean in each file_t,
-				// which would make this O(n).
-				next_candidate = chosen_candidate = bostree_select(file_tree, g_random_int_range(0, count));
+		// If not all images have been viewed, expand it
+		while(shuffled_images_list_length < bostree_node_count(file_tree) && movement != 0) {
+			BOSNode *next_candidate, *chosen_candidate;
+			// We select one random list element and then choose the sequentially next
+			// until we find one that has not been chosen yet. Walking sequentially
+			// after chosing one random integer index still generates a
+			// equidistributed permutation.
+			// This is O(n^2), since we must in the worst case lookup n-1 elements
+			// in a list of already chosen ones, but I think that this still is a
+			// better choice than to store an additional boolean in each file_t,
+			// which would make this O(n).
+			next_candidate = chosen_candidate = bostree_select(file_tree, g_random_int_range(0, count));
+			if(!next_candidate) {
+				// All images have gone.
+				return current_file_node;
+			}
+			while(g_list_find_custom(shuffled_images_list, next_candidate, (GCompareFunc)relative_image_pointer_shuffle_list_cmp)) {
+				next_candidate = bostree_next_node(next_candidate);
 				if(!next_candidate) {
-					// All images have gone.
-					return current_file_node;
+					next_candidate = bostree_select(file_tree, 0);
 				}
-				while(g_list_find_custom(shuffled_images_list, next_candidate, (GCompareFunc)relative_image_pointer_shuffle_list_cmp)) {
-					next_candidate = bostree_next_node(next_candidate);
-					if(!next_candidate) {
-						next_candidate = bostree_select(file_tree, 0);
-					}
-					if(next_candidate == chosen_candidate) {
-						// This ought not happen :/
-						g_warn_if_reached();
-						current_shuffled_image = NULL;
-						movement = 0;
-					}
-				}
-
-				// If this is the start of a cycle and the current image has
-				// been selected again by chance, jump one image ahead.
-				if((shuffled_images_list == NULL || shuffled_images_list->data == NULL) && next_candidate == current_file_node && bostree_node_count(file_tree) > 1) {
-					next_candidate = bostree_next_node(next_candidate);
-					if(!next_candidate) {
-						next_candidate = bostree_select(file_tree, 0);
-					}
-				}
-
-				if(movement > 0) {
-					shuffled_images_list = g_list_append(shuffled_images_list, relative_image_pointer_shuffle_list_create(next_candidate));
-					movement--;
-					shuffled_images_list_length++;
-					current_shuffled_image = g_list_last(shuffled_images_list);
-				}
-				else if(movement < 0) {
-					shuffled_images_list = g_list_prepend(shuffled_images_list, relative_image_pointer_shuffle_list_create(next_candidate));
-					movement++;
-					shuffled_images_list_length++;
-					current_shuffled_image = g_list_first(shuffled_images_list);
+				if(next_candidate == chosen_candidate) {
+					// This ought not happen :/
+					g_warn_if_reached();
+					current_shuffled_image = NULL;
+					movement = 0;
+					break;
 				}
 			}
-		}
-		else {
-			// If all images have been used, wrap around the list's end
-			while(movement) {
-				current_shuffled_image = movement > 0 ? g_list_first(shuffled_images_list) : g_list_last(shuffled_images_list);
-				movement = movement > 0 ? movement - 1 : movement + 1;
 
-				if(movement > 0) {
-					while(movement && g_list_next(current_shuffled_image)) {
-						current_shuffled_image = g_list_next(current_shuffled_image);
-						movement--;
-					}
+			// If this is the start of a cycle and the current image has
+			// been selected again by chance, jump one image ahead.
+			if((shuffled_images_list == NULL || shuffled_images_list->data == NULL) && next_candidate == current_file_node && bostree_node_count(file_tree) > 1) {
+				next_candidate = bostree_next_node(next_candidate);
+				if(!next_candidate) {
+					next_candidate = bostree_select(file_tree, 0);
 				}
-				else if(movement < 0) {
-					while(movement && g_list_previous(current_shuffled_image)) {
-						current_shuffled_image = g_list_previous(current_shuffled_image);
-						movement++;
-					}
+			}
+
+			if(movement > 0) {
+				shuffled_images_list = g_list_append(shuffled_images_list, relative_image_pointer_shuffle_list_create(next_candidate));
+				movement--;
+				shuffled_images_list_length++;
+				current_shuffled_image = g_list_last(shuffled_images_list);
+			}
+			else if(movement < 0) {
+				shuffled_images_list = g_list_prepend(shuffled_images_list, relative_image_pointer_shuffle_list_create(next_candidate));
+				movement++;
+				shuffled_images_list_length++;
+				current_shuffled_image = g_list_first(shuffled_images_list);
+			}
+		}
+
+		// If all images have been used, wrap around the list's end
+		while(movement) {
+			current_shuffled_image = movement > 0 ? g_list_first(shuffled_images_list) : g_list_last(shuffled_images_list);
+			movement = movement > 0 ? movement - 1 : movement + 1;
+
+			if(movement > 0) {
+				while(movement && g_list_next(current_shuffled_image)) {
+					current_shuffled_image = g_list_next(current_shuffled_image);
+					movement--;
+				}
+			}
+			else if(movement < 0) {
+				while(movement && g_list_previous(current_shuffled_image)) {
+					current_shuffled_image = g_list_previous(current_shuffled_image);
+					movement++;
 				}
 			}
 		}
