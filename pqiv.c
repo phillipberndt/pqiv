@@ -1590,10 +1590,6 @@ void load_images_handle_parameter(char *param, load_images_state_t state, gint d
 			// first (unless sorting is enabled)
 			load_images_handle_parameter(param, BROWSE_ORIGINAL_PARAMETER, 0, recursion_folder_stack);
 
-			// Decrease depth such that the following recursive invocations
-			// will again have depth 0 (this is the base directory, after all)
-			depth -= 1;
-
 			// Replace param with the containing directory's name
 			original_parameter = param;
 			param = g_path_get_dirname(param);
