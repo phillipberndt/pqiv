@@ -6675,7 +6675,6 @@ void handle_input_event(guint key_binding_value) {/*{{{*/
 
 	// Filter unwanted state variables out
 	state &= gtk_accelerator_get_default_mod_mask();
-	state &= ~GDK_SHIFT_MASK;
 	key_binding_value = KEY_BINDING_VALUE(is_mouse, state, keycode);
 
 #ifndef CONFIGURED_WITHOUT_ACTIONS
@@ -6743,7 +6742,12 @@ void handle_input_event(guint key_binding_value) {/*{{{*/
 #endif
 }/*}}}*/
 gboolean window_key_press_callback(GtkWidget *widget, GdkEventKey *event, gpointer user_data) {/*{{{*/
-	handle_input_event(KEY_BINDING_VALUE(0, event->state, event->keyval));
+	GdkKeymap *keymap = gdk_keymap_get_for_display(gtk_widget_get_display(GTK_WIDGET(main_window)));
+	guint keyval;
+	GdkModifierType consumed;
+
+	gdk_keymap_translate_keyboard_state(keymap, event->hardware_keycode, event->state, event->group, &keyval, NULL, NULL, &consumed);
+	handle_input_event(KEY_BINDING_VALUE(0, event->state & ~consumed, keyval));
 	return FALSE;
 }/*}}}*/
 void window_center_mouse() {/*{{{*/
@@ -7472,8 +7476,11 @@ void parse_key_bindings(const gchar *bindings) {/*{{{*/
 
 						guint keyval = *scan;
 						if(keyboard_state & GDK_SHIFT_MASK) {
-							keyval = gdk_keyval_to_upper(keyval);
-							keyboard_state &= ~GDK_SHIFT_MASK;
+							guint upper_keyval = gdk_keyval_to_upper(keyval);
+							if (upper_keyval != keyval) {
+								keyval = upper_keyval;
+								keyboard_state &= ~GDK_SHIFT_MASK;
+							}
 						}
 						keyboard_key_value = KEY_BINDING_VALUE(0, keyboard_state, keyval);
 						#define PARSE_KEY_BINDINGS_BIND(keyboard_key_value) \
@@ -7527,8 +7534,11 @@ void parse_key_bindings(const gchar *bindings) {/*{{{*/
 							break;
 						}
 						if(keyboard_state & GDK_SHIFT_MASK) {
-							keyval = gdk_keyval_to_upper(keyval);
-							keyboard_state &= ~GDK_SHIFT_MASK;
+							guint upper_keyval = gdk_keyval_to_upper(keyval);
+							if (upper_keyval != keyval) {
+								keyval = upper_keyval;
+								keyboard_state &= ~GDK_SHIFT_MASK;
+							}
 						}
 						keyboard_key_value = KEY_BINDING_VALUE(0, keyboard_state, keyval);
 						PARSE_KEY_BINDINGS_BIND(keyboard_key_value);
