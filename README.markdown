@@ -103,6 +103,7 @@ Contributors to pqiv 2.x are:
  * J. Paul Reed
  * Chen Jonh L
  * Anton Älgmyr
+ * Christian Garbs
 
 Contributors to pqiv ≤ 1.0 were:
 
@@ -179,6 +180,7 @@ pqiv 2.12 (dev)
  * Fix support for `best` interpolation quality (Fixes #139)
  * Fix wrap-around in shuffled image view (Fixes #176)
  * Fix max-depth behavior if the argument is a file (Fixes #170)
+ * Allow keybinding of special keys with shift modifier
 
 pqiv 2.11
  * Added negate (color inversion) mode (bound to `n`, `--negate`)
