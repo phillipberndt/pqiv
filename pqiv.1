@@ -198,8 +198,25 @@ Use this option to selectively disable some of \fBpqiv\fR's backends. You can
 supply a comma separated list of backends here. Non-available backends are
 silently ignored. Disabling backends you don't want will speed up recursive
 loading significantly, especially if you disable the archive backend.
-Available backends are archive, archive_cbx, libav, gdkpixbuf, poppler,
-spectre, webp and wand.
+Available backends are:
+.RS
+.IP archive 14
+generic archive file support
+.IP archive_cbx
+*.cb? comic book archive support
+.IP libav
+video support, works with ffmpeg as well
+.IP gdkpixbuf
+images
+.IP poppler
+PDF
+.IP spectre
+PS/EPS
+.IP wand
+ImageMagick, various formats, e.g. PSD
+.IP webp
+WebP format
+.RE
 .\"
 .TP
 .BR \-\-disable\-scaling
