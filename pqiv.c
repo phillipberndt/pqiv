@@ -312,6 +312,9 @@ int cursor_auto_hide_timer_id = 0;
 #ifndef CONFIGURED_WITHOUT_ACTIONS
 gboolean option_actions_from_stdin = FALSE;
 gboolean option_status_output = FALSE;
+#ifndef CONFIGURED_WITHOUT_MONTAGE_MODE
+gboolean option_auto_montage_mode = FALSE;
+#endif
 #else
 static const gboolean option_actions_from_stdin = FALSE;
 #endif
@@ -421,6 +424,9 @@ GOptionEntry options[] = {
 	{ "action", 0, 0, G_OPTION_ARG_CALLBACK, &option_action_callback, "Perform a given action", "ACTION" },
 	{ "actions-from-stdin", 0, 0, G_OPTION_ARG_NONE, &option_actions_from_stdin, "Read actions from stdin", NULL },
 	{ "allow-empty-window", 0, 0, G_OPTION_ARG_NONE, &option_allow_empty_window, "Show pqiv/do not quit even though no files are loaded", NULL },
+#ifndef CONFIGURED_WITHOUT_MONTAGE_MODE
+	{ "auto-montage-mode", 0, 0, G_OPTION_ARG_NONE, &option_auto_montage_mode, "Automatically enter montage mode if multiple images are opened", NULL },
+#endif
 #endif
 	{ "background-pattern", 0, 0, G_OPTION_ARG_CALLBACK, &options_background_pattern_callback, "Set the background pattern to use for transparent images", "PATTERN" },
 #ifndef CONFIGURED_WITHOUT_ACTIONS
@@ -780,6 +786,7 @@ void draw_current_image_to_context(cairo_t *cr);
 gboolean window_auto_hide_cursor_callback(gpointer user_data);
 #ifndef CONFIGURED_WITHOUT_ACTIONS
 gboolean handle_input_event_timeout_callback(gpointer user_data);
+void queue_action(pqiv_action_t action_id, pqiv_action_parameter_t parameter);
 #endif
 #ifndef CONFIGURED_WITHOUT_MONTAGE_MODE
 gboolean montage_window_get_move_cursor_target(int, int, int, int*, int*, int*, BOSNode **);
@@ -1757,6 +1764,14 @@ void load_images_handle_parameter(char *param, load_images_state_t state, gint d
 		// Check if one of the file type handlers can handle this file
 		BOSNode *new_node = load_images_handle_parameter_find_handler(param, state, file, load_images_file_filter_info);
 		if(new_node && new_node != FALSE_POINTER) {
+#if !defined(CONFIGURED_WITHOUT_MONTAGE_MODE) && !defined(CONFIGURED_WITHOUT_ACTIONS)
+			// Automatically enter montage mode
+			if(option_auto_montage_mode && bostree_node_count(file_tree) == 2) {
+				pqiv_action_parameter_t empty_param = { .pint = 0 };
+				queue_action(ACTION_MONTAGE_MODE_ENTER, empty_param);
+				option_auto_montage_mode = FALSE;
+			}
+#endif
 			if(!current_file_node && main_window_visible) {
 				current_file_node = bostree_node_weak_ref(new_node);
 				g_idle_add((GSourceFunc)absolute_image_movement, bostree_node_weak_ref(new_node));
@@ -7976,6 +7991,7 @@ gpointer load_images_thread(gpointer user_data) {/*{{{*/
 		load_images_thread_update_info_text(NULL);
 	}
 #endif
+
 	return NULL;
 }/*}}}*/
 gboolean inner_main(void *user_data) {/*{{{*/

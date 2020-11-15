@@ -181,6 +181,7 @@ pqiv 2.12 (dev)
  * Fix wrap-around in shuffled image view (Fixes #176)
  * Fix max-depth behavior if the argument is a file (Fixes #170)
  * Allow keybinding of special keys with shift modifier
+ * Add `--auto-montage-mode` (Fixes #181)
 
 pqiv 2.11
  * Added negate (color inversion) mode (bound to `n`, `--negate`)
