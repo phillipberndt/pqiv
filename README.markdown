@@ -177,6 +177,7 @@ Changelog
 ---------
 
 pqiv 2.12 (dev)
+ * Fix external image filters (Fixes #182)
  * Fix support for `best` interpolation quality (Fixes #139)
  * Fix wrap-around in shuffled image view (Fixes #176)
  * Fix max-depth behavior if the argument is a file (Fixes #170)

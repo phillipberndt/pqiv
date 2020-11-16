@@ -3559,13 +3559,7 @@ void apply_external_image_filter(gchar *external_filter) {/*{{{*/
 		gint child_stdin;
 		gint child_stdout;
 		BOSNode *current_file_node_at_start = bostree_node_weak_ref(current_file_node);
-		if(!g_spawn_async_with_pipes(NULL, argv, NULL,
-			// In win32, the G_SPAWN_DO_NOT_REAP_CHILD is required to get the process handle
-			#ifdef _WIN32
-				G_SPAWN_DO_NOT_REAP_CHILD,
-			#else
-				0,
-			#endif
+		if(!g_spawn_async_with_pipes(NULL, argv, NULL, G_SPAWN_DO_NOT_REAP_CHILD,
 			NULL, NULL, &child_pid, &child_stdin, &child_stdout, NULL, &error_pointer)
 		) {
 			g_printerr("Failed execute external command `%s': %s\n", argv[2], error_pointer->message);
