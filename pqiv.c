@@ -547,6 +547,10 @@ static const struct default_key_bindings_struct {
 	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_i                ), ACTION_TOGGLE_INFO_BOX                 , { 0   }},
 	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_j                ), ACTION_JUMP_DIALOG                     , { 0   }},
 	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_m                ), ACTION_MONTAGE_MODE_ENTER              , { 0   }},
+#ifndef CONFIGURED_WITHOUT_EXTERNAL_COMMANDS
+	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_o                ), ACTION_TOGGLE_MARK                     , { 0   }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , GDK_CONTROL_MASK , GDK_KEY_o                ), ACTION_CLEAR_MARKS                     , { 0   }},
+#endif
 	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_s                ), ACTION_TOGGLE_SLIDESHOW                , { 0   }},
 	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_b                ), ACTION_TOGGLE_BACKGROUND_PATTERN       , { 0   }},
 	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_n                ), ACTION_TOGGLE_NEGATE_MODE              , { 0   }},
@@ -599,6 +603,10 @@ static const struct default_key_bindings_struct {
 
 	{ MONTAGE, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_Return           ), ACTION_MONTAGE_MODE_RETURN_PROCEED     , { 0   }},
 	{ MONTAGE, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_Escape           ), ACTION_MONTAGE_MODE_RETURN_CANCEL      , { 0   }},
+#ifndef CONFIGURED_WITHOUT_EXTERNAL_COMMANDS
+	{ MONTAGE, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_o                ), ACTION_TOGGLE_MARK                     , { 0   }},
+	{ MONTAGE, KEY_BINDING_VALUE(0 , GDK_CONTROL_MASK , GDK_KEY_o                ), ACTION_CLEAR_MARKS                     , { 0   }},
+#endif
 	{ MONTAGE, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_m                ), ACTION_MONTAGE_MODE_RETURN_CANCEL      , { 0   }},
 	{ MONTAGE, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_f                ), ACTION_TOGGLE_FULLSCREEN               , { 0   }},
 	{ MONTAGE, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_g                ), ACTION_MONTAGE_MODE_FOLLOW             , { .pcharptr = (char*)montage_mode_default_keys }},
