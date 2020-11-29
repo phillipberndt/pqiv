@@ -183,6 +183,7 @@ pqiv 2.12 (dev)
  * Fix max-depth behavior if the argument is a file (Fixes #170)
  * Allow keybinding of special keys with shift modifier
  * Add `--auto-montage-mode` (Fixes #181)
+ * Replace GTimeVal with GDateTime for glib 2.62 support
 
 pqiv 2.11
  * Added negate (color inversion) mode (bound to `n`, `--negate`)

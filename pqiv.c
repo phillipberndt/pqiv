@@ -1744,10 +1744,16 @@ void load_images_handle_parameter(char *param, load_images_state_t state, gint d
 				if(param_file) {
 					GFileInfo *file_info = g_file_query_info(param_file, G_FILE_ATTRIBUTE_TIME_MODIFIED, G_FILE_QUERY_INFO_NONE, NULL, NULL);
 					if(file_info) {
+#if GLIB_CHECK_VERSION(2, 62, 0)
+						GDateTime *result = g_file_info_get_modification_date_time(file_info);
+						file->sort_name = g_strdup_printf("%zu;%s", g_date_time_to_unix(result), file->display_name);
+						g_date_time_unref(result);
+#else
 						GTimeVal result;
 						g_file_info_get_modification_time(file_info, &result);
-						g_object_unref(file_info);
 						file->sort_name = g_strdup_printf("%lu;%s", result.tv_sec, file->display_name);
+#endif
+						g_object_unref(file_info);
 					}
 					g_object_unref(param_file);
 				}

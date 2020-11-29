@@ -32,7 +32,16 @@ typedef struct {
 	// for the current, previous and next image.
 	GdkPixbufAnimation *pixbuf_animation;
 	GdkPixbufAnimationIter *animation_iter;
+
+#if GLIB_CHECK_VERSION(2, 62, 0)
+/* Glib 2.62 marks GTimeVal deprecated, but GdkPixbuf does not have an equivalent API
+ * for the replacement structure yet. */
+G_GNUC_BEGIN_IGNORE_DEPRECATIONS
+#endif
 	GTimeVal animation_time;
+#if GLIB_CHECK_VERSION(2, 62, 0)
+G_GNUC_END_IGNORE_DEPRECATIONS
+#endif
 } file_private_data_gdkpixbuf_t;
 
 BOSNode *file_type_gdkpixbuf_alloc(load_images_state_t state, file_t *file) {/*{{{*/
