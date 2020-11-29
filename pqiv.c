@@ -4304,12 +4304,13 @@ void update_info_text(const gchar *action) {/*{{{*/
 
 	// Update info text
 	if(!option_hide_info_box) {
-		current_info_text = g_strdup_printf("%s (%dx%d) %03.2f%% [%d/%d]", display_name,
+		current_info_text = g_strdup_printf("%s (%dx%d) %03.2f%% [%d/%d]%s", display_name,
 			CURRENT_FILE->width,
 			CURRENT_FILE->height,
 			current_scale_level * 100.,
 			(unsigned int)(bostree_rank(current_file_node) + 1),
-			(unsigned int)(bostree_node_count(file_tree)));
+			(unsigned int)(bostree_node_count(file_tree)),
+			CURRENT_FILE->marked ? " [m]" : "");
 
 		if(action != NULL) {
 			gchar *old_info_text = current_info_text;
