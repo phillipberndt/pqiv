@@ -16,7 +16,8 @@
  *
  */
 
-#define _XOPEN_SOURCE 600
+#define _XOPEN_SOURCE 700
+#define _GNU_SOURCE
 
 #include "pqiv.h"
 #include "lib/config_parser.h"
@@ -546,6 +547,10 @@ static const struct default_key_bindings_struct {
 	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_i                ), ACTION_TOGGLE_INFO_BOX                 , { 0   }},
 	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_j                ), ACTION_JUMP_DIALOG                     , { 0   }},
 	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_m                ), ACTION_MONTAGE_MODE_ENTER              , { 0   }},
+#ifndef CONFIGURED_WITHOUT_EXTERNAL_COMMANDS
+	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_o                ), ACTION_TOGGLE_MARK                     , { 0   }},
+	{ DEFAULT, KEY_BINDING_VALUE(0 , GDK_CONTROL_MASK , GDK_KEY_o                ), ACTION_CLEAR_MARKS                     , { 0   }},
+#endif
 	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_s                ), ACTION_TOGGLE_SLIDESHOW                , { 0   }},
 	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_b                ), ACTION_TOGGLE_BACKGROUND_PATTERN       , { 0   }},
 	{ DEFAULT, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_n                ), ACTION_TOGGLE_NEGATE_MODE              , { 0   }},
@@ -598,6 +603,10 @@ static const struct default_key_bindings_struct {
 
 	{ MONTAGE, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_Return           ), ACTION_MONTAGE_MODE_RETURN_PROCEED     , { 0   }},
 	{ MONTAGE, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_Escape           ), ACTION_MONTAGE_MODE_RETURN_CANCEL      , { 0   }},
+#ifndef CONFIGURED_WITHOUT_EXTERNAL_COMMANDS
+	{ MONTAGE, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_o                ), ACTION_TOGGLE_MARK                     , { 0   }},
+	{ MONTAGE, KEY_BINDING_VALUE(0 , GDK_CONTROL_MASK , GDK_KEY_o                ), ACTION_CLEAR_MARKS                     , { 0   }},
+#endif
 	{ MONTAGE, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_m                ), ACTION_MONTAGE_MODE_RETURN_CANCEL      , { 0   }},
 	{ MONTAGE, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_f                ), ACTION_TOGGLE_FULLSCREEN               , { 0   }},
 	{ MONTAGE, KEY_BINDING_VALUE(0 , 0                , GDK_KEY_g                ), ACTION_MONTAGE_MODE_FOLLOW             , { .pcharptr = (char*)montage_mode_default_keys }},
@@ -711,6 +720,8 @@ const struct pqiv_action_descriptor {
 	{ "move_window", PARAMETER_2SHORT },
 	{ "toggle_background_pattern", PARAMETER_INT },
 	{ "toggle_negate_mode", PARAMETER_INT },
+	{ "toggle_mark", PARAMETER_NONE },
+	{ "clear_marks", PARAMETER_NONE },
 	{ NULL, 0 }
 };
 /* }}} */
@@ -791,6 +802,11 @@ void queue_action(pqiv_action_t action_id, pqiv_action_parameter_t parameter);
 #ifndef CONFIGURED_WITHOUT_MONTAGE_MODE
 gboolean montage_window_get_move_cursor_target(int, int, int, int*, int*, int*, BOSNode **);
 void montage_window_move_cursor(int, int, int);
+#endif
+#ifndef CONFIGURED_WITHOUT_EXTERNAL_COMMANDS
+void toggle_mark();
+void clear_marks();
+GString *get_all_marked();
 #endif
 // }}}
 /* Helper functions {{{ */
@@ -3558,6 +3574,45 @@ void apply_external_image_filter(gchar *external_filter) {/*{{{*/
 		// Reminder: Do not free the others, they are string constants
 		g_free(argv[2]);
 	}
+	else if(external_filter[0] == '-') {
+		GString *marklist = get_all_marked();
+		argv[2] = external_filter + 1;
+		GPid child_pid;
+		gint child_stdin;
+		if(!g_spawn_async_with_pipes(NULL, argv, NULL,
+			G_SPAWN_DO_NOT_REAP_CHILD,
+			NULL, NULL, &child_pid, &child_stdin, NULL, NULL, &error_pointer)
+		) {
+			g_printerr("Failed execute external command `%s': %s\n", argv[2], error_pointer->message);
+			g_clear_error(&error_pointer);
+		}
+		else {
+			if(write(child_stdin, marklist->str, marklist->len) == -1) {
+				g_printerr("Failed writing to stdin of %s\n", argv[2]);
+			}
+			close(child_stdin);
+			gint status = 0;  // When left uninitialized, external command reports exiting due to signal 95 (exit statuses have been 233, 201, 217). Why?
+			#ifdef _WIN32
+				WaitForSingleObject(child_pid, INFINITE);
+				DWORD exit_code = 0;
+				GetExitCodeProcess(child_pid, &exit_code);
+				status = (gint)exit_code;
+			#else
+				waitpid(child_pid, &status, 0);
+			#endif
+			g_spawn_close_pid(child_pid);
+
+			if (!WIFEXITED(status)) {
+				if (WIFSIGNALED(status)) {
+					g_printerr("External command exited due to signal %d (exit status: %d)\n", WTERMSIG(status), WEXITSTATUS(status));
+				}
+				else {
+					g_printerr("External command failed with exit status %d\n", WEXITSTATUS(status));
+				}
+			}
+		}
+		g_string_free(marklist, TRUE);
+	}
 	else if(external_filter[0] == '|') {
 		// Pipe image into program, read image from its stdout
 		argv[2] = external_filter + 1;
@@ -4249,12 +4304,13 @@ void update_info_text(const gchar *action) {/*{{{*/
 
 	// Update info text
 	if(!option_hide_info_box) {
-		current_info_text = g_strdup_printf("%s (%dx%d) %03.2f%% [%d/%d]", display_name,
+		current_info_text = g_strdup_printf("%s (%dx%d) %03.2f%% [%d/%d]%s", display_name,
 			CURRENT_FILE->width,
 			CURRENT_FILE->height,
 			current_scale_level * 100.,
 			(unsigned int)(bostree_rank(current_file_node) + 1),
-			(unsigned int)(bostree_node_count(file_tree)));
+			(unsigned int)(bostree_node_count(file_tree)),
+			CURRENT_FILE->marked ? " [m]" : "");
 
 		if(action != NULL) {
 			gchar *old_info_text = current_info_text;
@@ -4787,6 +4843,21 @@ gboolean window_draw_thumbnail_montage(cairo_t *cr_arg) {/*{{{*/
 				cairo_set_source_rgb(cr_arg, option_box_colors.bg_red, option_box_colors.bg_green, option_box_colors.bg_blue);
 				cairo_set_line_width(cr_arg, 8.);
 				cairo_stroke(cr_arg);
+			}
+
+			// Marks
+			if(thumb_file->marked) {
+				int markx = cairo_image_surface_get_width(thumb_file->thumbnail);
+				int marky = cairo_image_surface_get_height(thumb_file->thumbnail);
+				cairo_save(cr_arg);
+				cairo_rectangle(cr_arg, markx - 5, marky - 5, markx + 1, marky + 1);
+				cairo_set_source_rgb(cr_arg, 0, 0, 0);
+				cairo_set_line_width(cr_arg, 1);
+				cairo_stroke_preserve(cr_arg);
+				cairo_set_source_rgb(cr_arg, 1, 0, 1);
+				cairo_set_operator(cr_arg, CAIRO_OPERATOR_DIFFERENCE);
+				cairo_fill(cr_arg);
+				cairo_restore(cr_arg);
 			}
 
 			cairo_restore(cr_arg);
@@ -6567,6 +6638,15 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 			gtk_widget_queue_draw(GTK_WIDGET(main_window));
 			break;
 #endif // without montage
+#ifndef CONFIGURED_WITHOUT_EXTERNAL_COMMANDS
+		case ACTION_TOGGLE_MARK:
+			toggle_mark();
+			break;
+
+		case ACTION_CLEAR_MARKS:
+			clear_marks();
+			break;
+#endif // without external commands
 
 		default:
 			break;
@@ -8020,6 +8100,48 @@ gboolean inner_main(void *user_data) {/*{{{*/
 
 	return FALSE;
 }/*}}}*/
+
+/* Marks system functions {{{ */
+#ifndef CONFIGURED_WITHOUT_EXTERNAL_COMMANDS
+void clear_marks() {/*{{{*/
+	D_LOCK(file_tree);
+	for(BOSNode *iter = bostree_select(file_tree, 0); iter; iter = bostree_next_node(iter)) {
+		FILE(iter)->marked = FALSE;
+	}
+	D_UNLOCK(file_tree);
+	if(application_mode == DEFAULT) {
+		update_info_text("Cleared all marks");
+		info_text_queue_redraw();
+	}
+}/*}}}*/
+void toggle_mark() {/*{{{*/
+	if(application_mode == DEFAULT) {
+		FILE(current_file_node)->marked = !FILE(current_file_node)->marked;
+		update_info_text(NULL);
+		info_text_queue_redraw();
+	}
+	#ifndef CONFIGURED_WITHOUT_MONTAGE_MODE
+	else if(application_mode == MONTAGE) {
+		FILE(montage_window_control.selected_node)->marked = !FILE(montage_window_control.selected_node)->marked;
+	}
+	#endif
+}/*}}}*/
+GString *get_all_marked() {/*{{{*/
+	GString *result = g_string_new(NULL);
+
+	D_LOCK(file_tree);
+	for(BOSNode *iter = bostree_select(file_tree, 0); iter; iter = bostree_next_node(iter)) {
+		file_t *file = FILE(iter);
+		if(file->marked) {
+			g_string_append_printf(result, "%s\n", file->file_name);
+		}
+	}
+	D_UNLOCK(file_tree);
+	return result;
+}/*}}}*/
+#endif
+// }}}
+
 int main(int argc, char *argv[]) {
 	#ifdef DEBUG
 		#ifndef _WIN32
@@ -8127,5 +8249,4 @@ int main(int argc, char *argv[]) {
 
 	return 0;
 }
-
 // vim:noet ts=4 sw=4 tw=0 fdm=marker

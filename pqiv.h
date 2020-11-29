@@ -106,6 +106,11 @@ struct _file {
 
 	// File-type specific data, allocated and freed by the file type handlers
 	void *private;
+
+	// TRUE if file is marked
+#ifndef CONFIGURED_WITHOUT_EXTERNAL_COMMANDS
+	gboolean marked;
+#endif
 };
 // }}}
 // Definition of the built-in file types {{{
@@ -285,6 +290,8 @@ typedef enum {
 	ACTION_MOVE_WINDOW,
 	ACTION_TOGGLE_BACKGROUND_PATTERN,
 	ACTION_TOGGLE_NEGATE_MODE,
+	ACTION_TOGGLE_MARK,
+	ACTION_CLEAR_MARKS,
 } pqiv_action_t;
 
 typedef union {

@@ -109,7 +109,7 @@ Bind the external \fICOMMAND\fR to key 1. You can use 2..9 to bind further
 commands. The \fBACTIONS\fR feature (see below) allows one to bind further keys to
 other commands. \fICOMMAND\fR is executed using the default shell processor.
 `$1' is substituted with the current file name. Unless \fICOMMAND\fR begins with
-`|', if `$1' is not present, the file name is appended to the command line.
+`|' or `-', if `$1' is not present, the file name is appended to the command line.
 .RS
 .PP
 If \fICOMMAND\fR begins with `>', its standard output is displayed in a popup window.
@@ -117,6 +117,9 @@ If \fICOMMAND\fR begins with `>', its standard output is displayed in a popup wi
 If \fICOMMAND\fR begins with `|', the current image is piped to its standard
 input, and its standard output is loaded as an image. This can be used to e.g.
 process images.
+.PP
+If \fICOMMAND\fR begins with `-', a list of currently marked images is piped to its
+standard input.
 .RE
 .\"
 .TP
@@ -417,6 +420,9 @@ Override a key binding. Remember to quote closing parenthesis inside the new
 definition by prepending a backslash. Useful in conjunction with
 \fBsend_keys(STRING)\fR to set up cyclic bindings.
 .TP
+.BR clear_marks()
+Clear all marks.
+.TP
 .BR command(STRING)
 Execute the given shell command. The syntax of the argument is the same as for
 the \fB\-\-command\-1\fR option.
@@ -636,6 +642,9 @@ window mode.
 .BR toggle_info_box()
 Toggle the visibility of the info box.
 .TP
+.BR toggle_mark()
+Toggle the current image's mark.
+.TP
 .BR toggle_negate_mode(INT)
 Toggle negate (color inversion) mode: 0 to toggle, 1 to enable, 2 to disable.
 .TP
@@ -670,6 +679,9 @@ Show a dialog with a list of all files for quick selection.
 Toggle \fImontage\fR mode, an interactive image selection mode. Use cursor keys
 or your mouse to select an image and Return to return to single image view. Use
 \fIg\fR to quickly navigate to a thumbnail.
+.IP o
+Toggle a mark on an image. Use \fIctrl-R\fR to reset all marks. Used in conjunction
+with commands starting with a \fI-\fR.
 .IP q
 Quit \fBpqiv\fR
 .IP r
