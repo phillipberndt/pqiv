@@ -5887,12 +5887,7 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 					info_text_queue_redraw();
 				}
 				else {
-					if(command[0] == '<') {
-						UPDATE_INFO_TEXT("Executing command %s", command + 1);
-					}
-					else {
-						UPDATE_INFO_TEXT("Executing command %s", command);
-					}
+					UPDATE_INFO_TEXT("Executing command %s", command);
 					info_text_queue_redraw();
 					gtk_widget_queue_draw(GTK_WIDGET(main_window));
 
@@ -8107,16 +8102,23 @@ gboolean inner_main(void *user_data) {/*{{{*/
 }/*}}}*/
 
 /* Marks system functions {{{ */
+#ifndef CONFIGURED_WITHOUT_EXTERNAL_COMMANDS
 void clear_marks() {/*{{{*/
 	D_LOCK(file_tree);
 	for(BOSNode *iter = bostree_select(file_tree, 0); iter; iter = bostree_next_node(iter)) {
 		FILE(iter)->marked = FALSE;
 	}
 	D_UNLOCK(file_tree);
+	if(application_mode == DEFAULT) {
+		update_info_text("Cleared all marks");
+		info_text_queue_redraw();
+	}
 }/*}}}*/
 void toggle_mark() {/*{{{*/
 	if(application_mode == DEFAULT) {
 		FILE(current_file_node)->marked = !FILE(current_file_node)->marked;
+		update_info_text(NULL);
+		info_text_queue_redraw();
 	}
 	#ifndef CONFIGURED_WITHOUT_MONTAGE_MODE
 	else if(application_mode == MONTAGE) {
