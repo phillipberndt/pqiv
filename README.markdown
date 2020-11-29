@@ -178,7 +178,7 @@ For some advanced uses of pqiv, take a look at these resouces:
 Changelog
 ---------
 
-pqiv 2.12 (dev)
+pqiv 2.12
  * Fix external image filters (Fixes #182)
  * Fix support for `best` interpolation quality (Fixes #139)
  * Fix wrap-around in shuffled image view (Fixes #176)
@@ -187,6 +187,9 @@ pqiv 2.12 (dev)
  * Add `--auto-montage-mode` (Fixes #181)
  * Replace GTimeVal with GDateTime for glib 2.62 support
  * Add an sxiv-like marks system
+
+<details>
+<summary>Click to expand changelog for old pqiv versions</summary>
 
 pqiv 2.11
  * Added negate (color inversion) mode (bound to `n`, `--negate`)
@@ -200,9 +203,6 @@ pqiv 2.11
  * Fix resizing in WMs without moveresize support (See #130)
  * Work around GTK bug resulting in crash due to invalid free()
  * Improve autotools compatibility of the configure script (See #135)
-
-<details>
-<summary>Click to expand changelog for old pqiv versions</summary>
 
 pqiv 2.10.4
  * Fix output of `montage_mode_shift_y_rows()` in key bindings
