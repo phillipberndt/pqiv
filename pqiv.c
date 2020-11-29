@@ -4849,12 +4849,15 @@ gboolean window_draw_thumbnail_montage(cairo_t *cr_arg) {/*{{{*/
 			if(thumb_file->marked) {
 				int markx = cairo_image_surface_get_width(thumb_file->thumbnail);
 				int marky = cairo_image_surface_get_height(thumb_file->thumbnail);
+				cairo_save(cr_arg);
 				cairo_rectangle(cr_arg, markx - 5, marky - 5, markx + 1, marky + 1);
 				cairo_set_source_rgb(cr_arg, 0, 0, 0);
 				cairo_set_line_width(cr_arg, 1);
 				cairo_stroke_preserve(cr_arg);
-				cairo_set_source_rgb(cr_arg, 1, 1, 1);
+				cairo_set_source_rgb(cr_arg, 1, 0, 1);
+				cairo_set_operator(cr_arg, CAIRO_OPERATOR_DIFFERENCE);
 				cairo_fill(cr_arg);
+				cairo_restore(cr_arg);
 			}
 
 			cairo_restore(cr_arg);
