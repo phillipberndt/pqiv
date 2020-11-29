@@ -3580,12 +3580,7 @@ void apply_external_image_filter(gchar *external_filter) {/*{{{*/
 		GPid child_pid;
 		gint child_stdin;
 		if(!g_spawn_async_with_pipes(NULL, argv, NULL,
-			// In win32, the G_SPAWN_DO_NOT_REAP_CHILD is required to get the process handle
-			#ifdef _WIN32
-				G_SPAWN_DO_NOT_REAP_CHILD,
-			#else
-				0,
-			#endif
+			G_SPAWN_DO_NOT_REAP_CHILD,
 			NULL, NULL, &child_pid, &child_stdin, NULL, NULL, &error_pointer)
 		) {
 			g_printerr("Failed execute external command `%s': %s\n", argv[2], error_pointer->message);
