@@ -108,7 +108,9 @@ struct _file {
 	void *private;
 
 	// TRUE if file is marked
+#ifndef CONFIGURED_WITHOUT_EXTERNAL_COMMANDS
 	gboolean marked;
+#endif
 };
 // }}}
 // Definition of the built-in file types {{{

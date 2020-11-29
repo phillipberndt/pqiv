@@ -798,13 +798,15 @@ gboolean window_auto_hide_cursor_callback(gpointer user_data);
 #ifndef CONFIGURED_WITHOUT_ACTIONS
 gboolean handle_input_event_timeout_callback(gpointer user_data);
 void queue_action(pqiv_action_t action_id, pqiv_action_parameter_t parameter);
-void toggle_mark();
-void clear_marks();
-GString *get_all_marked();
 #endif
 #ifndef CONFIGURED_WITHOUT_MONTAGE_MODE
 gboolean montage_window_get_move_cursor_target(int, int, int, int*, int*, int*, BOSNode **);
 void montage_window_move_cursor(int, int, int);
+#endif
+#ifndef CONFIGURED_WITHOUT_EXTERNAL_COMMANDS
+void toggle_mark();
+void clear_marks();
+GString *get_all_marked();
 #endif
 // }}}
 /* Helper functions {{{ */
@@ -6642,6 +6644,7 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 			gtk_widget_queue_draw(GTK_WIDGET(main_window));
 			break;
 #endif // without montage
+#ifndef CONFIGURED_WITHOUT_EXTERNAL_COMMANDS
 		case ACTION_TOGGLE_MARK:
 			toggle_mark();
 			break;
@@ -6649,6 +6652,7 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 		case ACTION_CLEAR_MARKS:
 			clear_marks();
 			break;
+#endif // without external commands
 
 		default:
 			break;
@@ -8134,6 +8138,7 @@ GString *get_all_marked() {/*{{{*/
 	D_UNLOCK(file_tree);
 	return result;
 }/*}}}*/
+#endif
 // }}}
 
 int main(int argc, char *argv[]) {
