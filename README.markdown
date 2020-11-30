@@ -47,15 +47,16 @@ distribution packages are usually somewhat out of date:
 
  * [Nightly builds for Debian, Ubuntu, SUSE and Fedora](https://build.opensuse.org/package/show/home:phillipberndt/pqiv)
    thanks to the OpenSUSE build service
- * [Arch AUR package](https://aur.archlinux.org/packages/pqiv/)
-   ([Git version](https://aur.archlinux.org/packages/pqiv-git/))
- * [CRUX port](https://crux.nu/portdb/?a=search&q=pqiv)
+ * [Alpine package](https://pkgs.alpinelinux.org/package/edge/testing/x86/pqiv)
+ * [Arch package](https://www.archlinux.org/packages/community/x86_64/pqiv/)
  * [Debian package](https://packages.debian.org/en/sid/pqiv)
  * [FreeBSD port](https://www.freshports.org/graphics/pqiv/)
  * [Gentoo ebuild](https://packages.gentoo.org/packages/media-gfx/pqiv)
- * [macOS brew](http://braumeister.org/formula/pqiv)
+ * [macOS brew](https://formulae.brew.sh/formula/pqiv)
  * [NixOS package](https://github.com/NixOS/nixpkgs/blob/HEAD/pkgs/applications/graphics/pqiv/default.nix)
  * [OpenBSD port](http://cvsweb.openbsd.org/cgi-bin/cvsweb/ports/graphics/pqiv/)
+ * [OpenSUSE package](https://build.opensuse.org/package/show/openSUSE:Factory/pqiv)
+ * [Void linux](https://github.com/void-linux/void-packages/tree/master/srcpkgs/pqiv)
 
 If you'd like to compile pqiv manually, you'll need
 
