@@ -180,8 +180,8 @@ For some advanced uses of pqiv, take a look at these resouces:
 Changelog
 ---------
 
-pqiv 2.13
- * Fix toggle_fullscreen(1/2) behavior when already fullscreen
+pqiv 2.13 (dev)
+ * Fix `toggle_fullscreen(1/2)` behavior when already fullscreen
 
 pqiv 2.12
  * Fix external image filters (Fixes #182)
