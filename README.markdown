@@ -107,6 +107,7 @@ Contributors to pqiv 2.x are:
  * Anton Älgmyr
  * Christian Garbs
  * Kanon Kubose
+ * Wessel Dankers
 
 Contributors to pqiv ≤ 1.0 were:
 
@@ -178,6 +179,9 @@ For some advanced uses of pqiv, take a look at these resouces:
 
 Changelog
 ---------
+
+pqiv 2.13
+ * Fix toggle_fullscreen(1/2) behavior when already fullscreen
 
 pqiv 2.12
  * Fix external image filters (Fixes #182)
