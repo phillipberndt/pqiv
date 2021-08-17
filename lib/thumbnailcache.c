@@ -42,6 +42,9 @@
 #include <gio/gio.h>
 #include <cairo.h>
 
+/* Sorted in decreasing size, such that when looking for thumbnails of at least
+ * some size, they can be traversed last-to-first, starting at the one that
+ * first has a chance to match (see use of minimum_level_index). */
 static const char * thumbnail_levels[] = { "x-pqiv", "large", "normal" };
 
 /* CRC calculation as per PNG TR, Annex D */
@@ -305,13 +308,15 @@ gboolean load_thumbnail_from_cache(file_t *file, unsigned width, unsigned height
 	gchar *file_uri = multi_page_suffix ? g_strdup_printf("file://%s#%s", local_filename, multi_page_suffix) : g_strdup_printf("file://%s", local_filename);
 	gchar *md5_filename = g_compute_checksum_for_string(G_CHECKSUM_MD5, file_uri, -1);
 
+	unsigned int minimum_level_index = (!multi_page_suffix && width <= 128 && height <= 128) ? 2 : (!multi_page_suffix && width <= 256 && height <= 256) ? 1 : 0;
+
 	// Search two directory structures: special_thumbnail_directory, then get_thumbnail_cache_directory()
 	for(int k=0; k<2; k++) {
 		if(k == 0 && special_thumbnail_directory == NULL) {
 			continue;
 		}
 		// Search in the directories for the different sizes
-		for(int j=(!multi_page_suffix && width <= 128 && height <= 128) ? 2 : (!multi_page_suffix && width <= 256 && height <= 256) ? 1 : 0; j>=0; j--) {
+		for(int j=minimum_level_index; j>=0; j--) {
 			gchar *thumbnail_candidate;
 			if(j == 0) {
 				thumbnail_candidate = g_strdup_printf("%s%s%s%s%dx%d%s%s.png", k == 0 ? special_thumbnail_directory : get_thumbnail_cache_directory(), G_DIR_SEPARATOR_S, thumbnail_levels[j], G_DIR_SEPARATOR_S, width, height, G_DIR_SEPARATOR_S, md5_filename);
@@ -352,7 +357,7 @@ gboolean load_thumbnail_from_cache(file_t *file, unsigned width, unsigned height
 		}
 		gchar *md5_basename = g_compute_checksum_for_string(G_CHECKSUM_MD5, file_basename, -1);
 
-		for(int j=(!multi_page_suffix && width <= 128 && height <= 128) ? 2 : (!multi_page_suffix && width <= 256 && height <= 256) ? 1 : 0; j>=0; j--) {
+		for(int j=minimum_level_index; j>=0; j--) {
 			gchar *thumbnail_candidate;
 			if(j == 0) {
 				thumbnail_candidate = g_strdup_printf("%s%s%s%s%dx%d%s%s.png", shared_thumbnail_directory, G_DIR_SEPARATOR_S, thumbnail_levels[j], G_DIR_SEPARATOR_S, width, height, G_DIR_SEPARATOR_S, md5_basename);
