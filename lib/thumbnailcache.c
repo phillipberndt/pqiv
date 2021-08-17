@@ -45,7 +45,7 @@
 /* Sorted in decreasing size, such that when looking for thumbnails of at least
  * some size, they can be traversed last-to-first, starting at the one that
  * first has a chance to match (see use of minimum_level_index). */
-static const char * thumbnail_levels[] = { "x-pqiv", "large", "normal" };
+static const char * thumbnail_levels[] = { "x-pqiv", "xx-large", "x-large", "large", "normal" };
 
 /* CRC calculation as per PNG TR, Annex D */
 static unsigned long crc_table[256];
@@ -308,7 +308,20 @@ gboolean load_thumbnail_from_cache(file_t *file, unsigned width, unsigned height
 	gchar *file_uri = multi_page_suffix ? g_strdup_printf("file://%s#%s", local_filename, multi_page_suffix) : g_strdup_printf("file://%s", local_filename);
 	gchar *md5_filename = g_compute_checksum_for_string(G_CHECKSUM_MD5, file_uri, -1);
 
-	unsigned int minimum_level_index = (!multi_page_suffix && width <= 128 && height <= 128) ? 2 : (!multi_page_suffix && width <= 256 && height <= 256) ? 1 : 0;
+	unsigned int minimum_level_index = 0;
+	if (!multi_page_suffix) {
+		if (width <= 128 && height <= 128) {
+			minimum_level_index = 4;
+		} else if (width <= 256 && height <= 256) {
+			minimum_level_index = 3;
+		} else if (width <= 512 && height <= 512) {
+			minimum_level_index = 2;
+		} else if (width <= 1024 && height <= 1024) {
+			minimum_level_index = 1;
+		} else {
+			minimum_level_index = 0;
+		}
+	}
 
 	// Search two directory structures: special_thumbnail_directory, then get_thumbnail_cache_directory()
 	for(int k=0; k<2; k++) {
@@ -476,10 +489,16 @@ gboolean store_thumbnail_to_cache(file_t *file, unsigned width, unsigned height,
 	}
 
 	if(width == 256 && height == 256) {
-		thumbnail_level = 1;
+		thumbnail_level = 3;
 	}
 	else if(width == 128 && height == 128) {
+		thumbnail_level = 4;
+	}
+	else if(width == 512 && height == 512) {
 		thumbnail_level = 2;
+	}
+	else if(width == 1024 && height == 1024) {
+		thumbnail_level = 1;
 	}
 	else {
 		thumbnail_level = 0;
