@@ -211,7 +211,7 @@ pqiv.desktop: $(HEADERS)
 		echo "NoDisplay=true"; \
 		echo "Icon=emblem-photos"; \
 		echo "TryExec=$(PREFIX)/bin/pqiv"; \
-		echo "Exec=$(PREFIX)/bin/pqiv %F"; \
+		echo "Exec=$(PREFIX)/bin/pqiv --browse %F"; \
 		echo "MimeType=$(shell cat $(foreach BACKEND, $(sort $(BACKENDS)), $(SOURCEDIR)backends/$(BACKEND).mime) /dev/null | sort | uniq | awk 'ORS=";"')"; \
 		echo "Categories=Graphics;"; \
 		echo "Keywords=Viewer;" \
