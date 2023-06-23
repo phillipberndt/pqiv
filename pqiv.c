@@ -106,6 +106,11 @@
 
 #endif // }}}
 
+
+#ifndef CONFIGURED_WITHOUT_INFO_TEXT
+	#include <pango/pangocairo.h>
+#endif
+
 // Global variables and function signatures {{{
 
 // The list of file type handlers and file type initializer function
@@ -289,6 +294,7 @@ const gchar *option_window_title = "pqiv: $FILENAME ($WIDTHx$HEIGHT) $ZOOM% [$IM
 gdouble option_slideshow_interval = 5.;
 #ifndef CONFIGURED_WITHOUT_INFO_TEXT
 gboolean option_hide_info_box = FALSE;
+const gchar *option_font = "Sans-Serif";
 #endif
 gboolean option_start_fullscreen = FALSE;
 gdouble option_initial_scale = 1.0;
@@ -399,6 +405,7 @@ GOptionEntry options[] = {
 	{ "fade", 'F', 0, G_OPTION_ARG_NONE, (gpointer)&option_fading, "Fade between images", NULL },
 #ifndef CONFIGURED_WITHOUT_INFO_TEXT
 	{ "hide-info-box", 'i', 0, G_OPTION_ARG_NONE, &option_hide_info_box, "Initially hide the info box", NULL },
+	{ "font", 0, 0, G_OPTION_ARG_STRING, &option_font, "Specify the Pango font string for the info box. Note that the font size will be scaled to the window.", "FONT" },
 #endif
 	{ "lazy-load", 'l', 0, G_OPTION_ARG_NONE, &option_lazy_load, "Display the main window as soon as one image is loaded", NULL },
 	{ "sort", 'n', 0, G_OPTION_ARG_NONE, &option_sort, "Sort files in natural order", NULL },
@@ -5289,20 +5296,25 @@ gboolean window_draw_callback(GtkWidget *widget, cairo_t *cr_arg, gpointer user_
 	// Draw info box (directly to the screen)
 #ifndef CONFIGURED_WITHOUT_INFO_TEXT
 	if(current_info_text != NULL) {
+		PangoFontDescription *pango_font_desc = pango_font_description_from_string(option_font);
 		double x1 = 0., x2 = 0., y1 = 0., y2 = 0.;
+
 		cairo_save(cr_arg);
 		// Attempt this multiple times: If it does not fit the window,
 		// retry with a smaller font size
-		int font_size;
+		gint font_size;
 		if(current_info_text_cached_font_size < 0) {
-			font_size = 12*screen_scale_factor;
+			const gint desc_font_size = pango_font_description_get_size(pango_font_desc);
+			font_size = desc_font_size != 0 ? desc_font_size : 12;
+			font_size *= screen_scale_factor;
 			current_info_text_cached_font_size = 0;
 		}
 		else {
 			font_size = current_info_text_cached_font_size;
 		}
-		for(; font_size > 6; font_size--) {
-			cairo_set_font_size(cr_arg, font_size);
+		for(; font_size > 1; font_size--) {
+			PangoRectangle pango_extents;
+			PangoLayout *pango_layout;
 
 			if(main_window_in_fullscreen == FALSE) {
 				// Tiling WMs, at least i3, react weird on our window size changing.
@@ -5310,32 +5322,40 @@ gboolean window_draw_callback(GtkWidget *widget, cairo_t *cr_arg, gpointer user_
 				cairo_translate(cr_arg, x < 0 ? 0 : x, y < 0 ? 0 : y);
 			}
 
-			cairo_set_source_rgb(cr_arg, option_box_colors.bg_red, option_box_colors.bg_green, option_box_colors.bg_blue);
 			cairo_translate(cr_arg, 10 * screen_scale_factor, 20 * screen_scale_factor);
-			cairo_text_path(cr_arg, current_info_text);
-			cairo_path_extents(cr_arg, &x1, &y1, &x2, &y2);
+
+			pango_layout = pango_cairo_create_layout(cr_arg);
+			pango_font_description_set_size(pango_font_desc, font_size * PANGO_SCALE);
+			pango_layout_set_font_description(pango_layout, pango_font_desc);
+
+			pango_layout_set_text(pango_layout, current_info_text, -1);
+			pango_layout_get_extents(pango_layout, NULL, &pango_extents);
+			x1 = pango_extents.x / PANGO_SCALE;
+			y1 = pango_extents.y / PANGO_SCALE;
+			x2 = (pango_extents.x + pango_extents.width) / PANGO_SCALE;
+			y2 = (pango_extents.y + pango_extents.height) / PANGO_SCALE;
 
 			if(x2 > main_window_width - 10 * screen_scale_factor && !main_window_in_fullscreen) {
-				cairo_new_path(cr_arg);
 				cairo_restore(cr_arg);
 				cairo_save(cr_arg);
+				g_object_unref(pango_layout);
 				continue;
 			}
-
 			current_info_text_cached_font_size = font_size;
-			cairo_path_t *text_path = cairo_copy_path(cr_arg);
-			cairo_new_path(cr_arg);
-			cairo_rectangle(cr_arg, -5, -(y2 - y1) - 2, x2 - x1 + 10, y2 - y1 + 8);
-			cairo_close_path(cr_arg);
-			cairo_fill(cr_arg);
-			cairo_set_source_rgb(cr_arg, option_box_colors.fg_red, option_box_colors.fg_green, option_box_colors.fg_blue);
-			cairo_append_path(cr_arg, text_path);
-			cairo_fill(cr_arg);
-			cairo_path_destroy(text_path);
 
+			cairo_set_source_rgb(cr_arg, option_box_colors.bg_red, option_box_colors.bg_green, option_box_colors.bg_blue);
+			cairo_rectangle(cr_arg, x1 - 5, y1 - 2, (x2 - x1) + 10, (y2 - y1) + 4);
+			cairo_fill(cr_arg);
+
+			cairo_set_source_rgb(cr_arg, option_box_colors.fg_red, option_box_colors.fg_green, option_box_colors.fg_blue);
+			pango_cairo_show_layout(cr_arg, pango_layout);
+			cairo_fill(cr_arg);
+
+			g_object_unref(pango_layout);
 			break;
 		}
 
+		pango_font_description_free(pango_font_desc);
 		cairo_restore(cr_arg);
 
 		// Store where the box was drawn to allow for partial updates of the screen
@@ -5343,8 +5363,8 @@ gboolean window_draw_callback(GtkWidget *widget, cairo_t *cr_arg, gpointer user_
 		current_info_text_bounding_box.y = (main_window_in_fullscreen == TRUE ? 0 : (y < 0 ? 0 : y)) + 20 -(y2 - y1) - 2;
 
 		 // Redraw some extra pixels to make sure a wider new box would be covered:
-		current_info_text_bounding_box.width = x2 - x1 + 10 + 30;
-		current_info_text_bounding_box.height = y2 - y1 + 8;
+		current_info_text_bounding_box.width = (x2 - x1) + 10 + 30;
+		current_info_text_bounding_box.height = (y2 - y1) + 4 + 4;
 	}
 #endif
 
