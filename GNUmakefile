@@ -46,7 +46,7 @@ $(error Building pqiv without any backends is unsupported.)
 endif
 
 # pkg-config lines for the main program
-LIBS_GENERAL=glib-2.0 >= 2.8 cairo >= 1.6 gio-2.0
+LIBS_GENERAL=glib-2.0 >= 2.8 cairo >= 1.6 pango >= 1.10 gio-2.0
 LIBS_GTK3=gtk+-3.0 gdk-3.0
 LIBS_GTK2=gtk+-2.0 >= 2.6 gdk-2.0 >= 2.8
 
