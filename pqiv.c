@@ -405,7 +405,6 @@ GOptionEntry options[] = {
 	{ "fade", 'F', 0, G_OPTION_ARG_NONE, (gpointer)&option_fading, "Fade between images", NULL },
 #ifndef CONFIGURED_WITHOUT_INFO_TEXT
 	{ "hide-info-box", 'i', 0, G_OPTION_ARG_NONE, &option_hide_info_box, "Initially hide the info box", NULL },
-	{ "font", 0, 0, G_OPTION_ARG_STRING, &option_font, "Specify the Pango font string for the info box. Note that the font size will be scaled to the window.", "FONT" },
 #endif
 	{ "lazy-load", 'l', 0, G_OPTION_ARG_NONE, &option_lazy_load, "Display the main window as soon as one image is loaded", NULL },
 	{ "sort", 'n', 0, G_OPTION_ARG_NONE, &option_sort, "Sort files in natural order", NULL },
@@ -449,6 +448,9 @@ GOptionEntry options[] = {
 	{ "end-of-files-action", 0, 0, G_OPTION_ARG_CALLBACK, &option_end_of_files_action_callback, "Action to take after all images have been viewed. (`quit', `wait', `wrap', `wrap-no-reshuffle')", "ACTION" },
 	{ "enforce-window-aspect-ratio", 0, 0, G_OPTION_ARG_NONE, &option_enforce_window_aspect_ratio, "Fix the aspect ratio of the window to match the current image's", NULL },
 	{ "fade-duration", 0, 0, G_OPTION_ARG_DOUBLE, &option_fading_duration, "Adjust fades' duration", "SECONDS" },
+#ifndef CONFIGURED_WITHOUT_INFO_TEXT
+	{ "font", 0, 0, G_OPTION_ARG_STRING, &option_font, "Specify the Pango font string for the info box. Note that the font size will be scaled to the window.", "FONT" },
+#endif
 	{ "low-memory", 0, 0, G_OPTION_ARG_NONE, &option_lowmem, "Try to keep memory usage to a minimum", NULL },
 	{ "max-depth", 0, 0, G_OPTION_ARG_INT, &option_max_depth, "Descend at most LEVELS levels of directories below the command line arguments", "LEVELS" },
 	{ "negate", 0, 0, G_OPTION_ARG_NONE, &option_negate, "Negate images: show negatives", NULL },

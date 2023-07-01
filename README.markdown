@@ -109,6 +109,7 @@ Contributors to pqiv 2.x are:
  * Christian Garbs
  * Kanon Kubose
  * Wessel Dankers
+ * @buzzingwires
 
 Contributors to pqiv ≤ 1.0 were:
 
@@ -183,6 +184,7 @@ Changelog
 
 pqiv 2.13 (dev)
  * Fix `toggle_fullscreen(1/2)` behavior when already fullscreen
+ * Add `--font` to adjust info box font, use Pango for rendering (See #221)
 
 pqiv 2.12
  * Fix external image filters (Fixes #182)
