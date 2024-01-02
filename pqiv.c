@@ -1769,9 +1769,10 @@ void load_images_handle_parameter(char *param, load_images_state_t state, gint d
 				if(param_file) {
 					GFileInfo *file_info = g_file_query_info(param_file, G_FILE_ATTRIBUTE_TIME_MODIFIED, G_FILE_QUERY_INFO_NONE, NULL, NULL);
 					if(file_info) {
-#if GLIB_CHECK_VERSION(2, 62, 0)
+#if GLIB_CHECK_VERSION(2, 62, 0) && !defined(_WIN32)
+						// Note: _WIN32 check might not be needed, G_GINT64_FORMAT used to be unsupported in MingW
 						GDateTime *result = g_file_info_get_modification_date_time(file_info);
-						file->sort_name = g_strdup_printf("%zu;%s", g_date_time_to_unix(result), file->display_name);
+						file->sort_name = g_strdup_printf("%" G_GINT64_FORMAT ";%s", g_date_time_to_unix(result), file->display_name);
 						g_date_time_unref(result);
 #else
 						GTimeVal result;
