@@ -35,7 +35,7 @@ BOSNode *file_type_poppler_alloc(load_images_state_t state, file_t *file) {/*{{{
 	// We have to load the file now to get the number of pages
 	GError *error_pointer = NULL;
 
-	#if 0 && POPPLER_CHECK_VERSION(0, 26, 5)
+	#if POPPLER_CHECK_VERSION(22, 2, 0)
 		// Poppler has a bug in its stream loader. The original problem #82630 was fixed in
 		// http://cgit.freedesktop.org/poppler/poppler/commit/?h=poppler-0.26&id=f94ba85a736b4c90c05e7782939f32506472658e
 		// and the fix appeared in 0.26.5. But there is another bug, see #96884.
@@ -88,7 +88,7 @@ BOSNode *file_type_poppler_alloc(load_images_state_t state, file_t *file) {/*{{{
 		first_node = FALSE_POINTER;
 	}
 
-	#if 0 && POPPLER_CHECK_VERSION(0, 26, 5)
+	#if POPPLER_CHECK_VERSION(22, 2, 0)
 		g_object_unref(data);
 	#else
 		buffered_file_unref(file);
@@ -109,7 +109,7 @@ void file_type_poppler_load(file_t *file, GInputStream *data, GError **error_poi
 	file_private_data_poppler_t *private = file->private;
 
 	// We need to load the data into memory, because poppler has problems with serving from streams; see above
-	#if 0 && POPPLER_CHECK_VERSION(0, 26, 5)
+	#if POPPLER_CHECK_VERSION(22, 2, 0)
 		PopplerDocument *document = poppler_document_new_from_stream(data, -1, NULL, image_loader_cancellable, error_pointer);
 	#else
 		GBytes *data_bytes = buffered_file_as_bytes(file, data, error_pointer);
@@ -139,7 +139,7 @@ void file_type_poppler_load(file_t *file, GInputStream *data, GError **error_poi
 		g_object_unref(document);
 	}
 
-	#if !POPPLER_CHECK_VERSION(0, 26, 5)
+	#if !POPPLER_CHECK_VERSION(22, 2, 0)
 		buffered_file_unref(file);
 	#endif
 }/*}}}*/
@@ -153,7 +153,7 @@ void file_type_poppler_unload(file_t *file) {/*{{{*/
 		g_object_unref(private->document);
 		private->document = NULL;
 
-		#if !POPPLER_CHECK_VERSION(0, 26, 5)
+		#if !POPPLER_CHECK_VERSION(22, 2, 0)
 			buffered_file_unref(file);
 		#endif
 	}
