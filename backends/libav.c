@@ -251,7 +251,7 @@ void file_type_libav_load(file_t *file, GInputStream *data, GError **error_point
 #ifndef AV_COMPAT_CODEC_DEPRECATED
 	AVCodec *codec = avcodec_find_decoder(private->avcontext->streams[private->video_stream_id]->codec->codec_id);
 #else
-	AVCodec *codec = avcodec_find_decoder(private->avcontext->streams[private->video_stream_id]->codecpar->codec_id);
+	const AVCodec *codec = avcodec_find_decoder(private->avcontext->streams[private->video_stream_id]->codecpar->codec_id);
 #endif
 	private->cocontext = avcodec_alloc_context3(codec);
 #ifndef AV_COMPAT_CODEC_DEPRECATED
