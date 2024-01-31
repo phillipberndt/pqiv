@@ -42,6 +42,16 @@
 #include <gio/gio.h>
 #include <cairo.h>
 
+// Unavailability of an mtime is usually fatal, but if the thumb was created
+// with an absent mtime, this is tolerable (and actually beneficial, because it
+// enables montage mode on incomplete data).
+//
+// This does not get any special treatment at checking time -- if
+// 1970-01-01T00:00:00 is indeed a value placed in the MTime of a thumbnail,
+// chances are that the creator might even have intended to actually not set
+// the MTime.
+const time_t MTIME_UNAVAILABLE = 0;
+
 /* Sorted in decreasing size, such that when looking for thumbnails of at least
  * some size, they can be traversed last-to-first, starting at the one that
  * first has a chance to match (see use of minimum_level_index). */
@@ -145,9 +155,11 @@ gboolean check_png_attributes(gchar *file_name, gchar *file_uri, time_t file_mti
 	//
 	// See below in png_writer for a rough explaination, or read the PNG TR
 	// https://www.w3.org/TR/PNG/
-	//
-	gboolean file_uri_match = FALSE;
-	gboolean file_mtime_match = FALSE;
+
+	// Tracking whether they were found to return early once both are matched.
+	gboolean found_uri = FALSE;
+	gboolean found_mtime = FALSE;
+	gboolean found_mismatch = FALSE;
 
 	int fd = g_open(file_name, O_RDONLY, 0);
 	if(fd < 0) {
@@ -174,7 +186,7 @@ gboolean check_png_attributes(gchar *file_name, gchar *file_uri, time_t file_mti
 	while(1) {
 		if(read(fd, header.buf, 8) != 8) {
 			g_close(fd, NULL);
-			return FALSE;
+			return !found_mismatch;
 		}
 
 		int header_length = (int)ntohl(header.uint32);
@@ -205,18 +217,22 @@ gboolean check_png_attributes(gchar *file_name, gchar *file_uri, time_t file_mti
 
 			if(file_crc == actual_crc) {
 				if(strcmp(data, "Thumb::URI") == 0) {
-					file_uri_match = strncmp(&data[sizeof("Thumb::URI")], file_uri, strlen(file_uri)) == 0;
+					gboolean match = strncmp(&data[sizeof("Thumb::URI")], file_uri, strlen(file_uri)) == 0;
+					found_mismatch |= !match;
+					found_uri = TRUE;
 				}
 				else if(strcmp(data, "Thumb::MTime") == 0) {
 					gchar *file_mtime_str = g_strdup_printf("%" PRIuMAX, (intmax_t)file_mtime);
-					file_mtime_match = strncmp(&data[sizeof("Thumb::MTime")], file_mtime_str, strlen(file_mtime_str)) == 0;
+					gboolean match = strncmp(&data[sizeof("Thumb::MTime")], file_mtime_str, strlen(file_mtime_str)) == 0;
 					g_free(file_mtime_str);
+					found_mismatch |= !match;
+					found_mtime = TRUE;
 				}
 
-				if(file_uri_match && file_mtime_match) {
+				if((found_uri && found_mtime) || found_mismatch) {
 					g_free(data);
 					g_close(fd, NULL);
-					return TRUE;
+					return !found_mismatch;
 				}
 			}
 
@@ -298,11 +314,12 @@ gboolean load_thumbnail_from_cache(file_t *file, unsigned width, unsigned height
 
 	// Obtain modification timestamp
 	struct stat file_stat;
+	time_t file_mtime;
 	if(stat(local_filename, &file_stat) < 0) {
-		g_free(local_filename);
-		return FALSE;
+		file_mtime = MTIME_UNAVAILABLE;
+	} else {
+		file_mtime = file_stat.st_mtime;
 	}
-	time_t file_mtime = file_stat.st_mtime;
 
 	// Obtain the name of the candidate for the local thumbnail file
 	gchar *file_uri = multi_page_suffix ? g_strdup_printf("file://%s#%s", local_filename, multi_page_suffix) : g_strdup_printf("file://%s", local_filename);
