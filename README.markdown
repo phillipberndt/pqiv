@@ -185,6 +185,7 @@ Changelog
 pqiv 2.13 (dev)
  * Fix `toggle_fullscreen(1/2)` behavior when already fullscreen
  * Add `--font` to adjust info box font, use Pango for rendering (See #221)
+ * Prefer x11 over wayland GDK backend to avoid rendering issues
 
 pqiv 2.12
  * Fix external image filters (Fixes #182)

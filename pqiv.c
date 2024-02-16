@@ -8178,6 +8178,12 @@ int main(int argc, char *argv[]) {
 		#endif
 	#endif
 
+	#if GTK_CHECK_VERSION(3, 10, 0)
+		// Always prefer x11 over Wayland. Wayland rendering has several issues, in particular
+		// windows have an undesired black margin around them.
+		gdk_set_allowed_backends("x11,*");
+	#endif
+
 	#if defined(GDK_WINDOWING_X11)
 		XInitThreads();
 	#endif
