@@ -7364,7 +7364,11 @@ void create_window() { /*{{{*/
 	g_signal_connect(main_window, "realize", G_CALLBACK(window_realize_callback), NULL);
 
 	// Not used for anything except determining CSD dimensions
+	#if GTK_CHECK_VERSION(3, 2, 0)
 	main_window_box = GTK_WIDGET(gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0));
+	#else
+	main_window_box = GTK_WIDGET(gtk_hbox_new(TRUE, 0));
+	#endif
 	gtk_container_add(GTK_CONTAINER(main_window), main_window_box);
 
 	gtk_widget_set_events(GTK_WIDGET(main_window),
