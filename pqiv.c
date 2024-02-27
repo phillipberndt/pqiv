@@ -186,6 +186,9 @@ gboolean current_image_drawn = FALSE;
 GtkWindow *main_window;
 gboolean main_window_visible = FALSE;
 
+GtkWidget *main_window_box;
+gint csd_left, csd_right, csd_top, csd_bottom, csd_height, csd_width;
+
 // Detection of tiled WMs: They should ignore our resize events
 gint requested_main_window_resize_pos_callback_id = -1;
 gint requested_main_window_width = -1;
@@ -2108,8 +2111,8 @@ gboolean main_window_resize_callback(gpointer user_data) {/*{{{*/
 
 	// Resize if this has not worked before, but accept a slight deviation (might be round-off error)
 	if(main_window_width >= 0 && abs(main_window_width - new_window_width) + abs(main_window_height - new_window_height) > 1) {
-		requested_main_window_width = new_window_width;
-		requested_main_window_height = new_window_height;
+		requested_main_window_width = new_window_width + csd_width;
+		requested_main_window_height = new_window_height + csd_height;
 		gtk_window_resize(main_window, new_window_width / screen_scale_factor, new_window_height / screen_scale_factor);
 	}
 
@@ -4910,7 +4913,7 @@ gboolean window_draw_thumbnail_montage(cairo_t *cr_arg) {/*{{{*/
 #endif
 
 	D_UNLOCK(file_tree);
-	return TRUE;
+	return FALSE;
 }/*}}}*/
 #endif
 void window_clear_background_pixmap() {/*{{{*/
@@ -5068,6 +5071,15 @@ gboolean window_draw_callback(GtkWidget *widget, cairo_t *cr_arg, gpointer user_
 	// Drawing can generally mean that we succeeded in performing some action.
 	// Resume the action queue
 	action_done();
+
+	// Clip shadow area out
+	if(!main_window_in_fullscreen) {
+		cairo_new_path(cr_arg);
+		cairo_rectangle(cr_arg, csd_left, csd_top, main_window_width, main_window_height);
+		cairo_close_path(cr_arg);
+		cairo_clip(cr_arg);
+		cairo_translate(cr_arg, csd_left, csd_top);
+	}
 
 	// We have different drawing modes. The default, below, is to draw a single
 	// image.
@@ -5338,7 +5350,7 @@ gboolean window_draw_callback(GtkWidget *widget, cairo_t *cr_arg, gpointer user_
 			x2 = (pango_extents.x + pango_extents.width) / PANGO_SCALE;
 			y2 = (pango_extents.y + pango_extents.height) / PANGO_SCALE;
 
-			if(x2 > main_window_width - 10 * screen_scale_factor && !main_window_in_fullscreen) {
+			if(x2 > main_window_width - csd_width - 10 * screen_scale_factor && !main_window_in_fullscreen) {
 				cairo_restore(cr_arg);
 				cairo_save(cr_arg);
 				g_object_unref(pango_layout);
@@ -5371,12 +5383,7 @@ gboolean window_draw_callback(GtkWidget *widget, cairo_t *cr_arg, gpointer user_
 	}
 #endif
 
-	// TODO Maybe this will need to be changed someday; the GDK Wayland backend
-	// currently does not draw window borders if the draw callback reports
-	// success. Anyway, it also draws the borders at the wrong place (well
-	// within the window rather than around it), so I'll leave things as they
-	// are for the time being.
-	return TRUE;
+	return FALSE;
 }/*}}}*/
 #if GTK_MAJOR_VERSION < 3
 	gboolean window_expose_callback(GtkWidget *widget, GdkEvent *event, gpointer user_data) {/*{{{*/
@@ -6724,7 +6731,7 @@ gboolean window_configure_callback(GtkWidget *widget, GdkEventConfigure *event, 
 		requested_main_window_width = -1;
 	}
 
-	if(wm_ignores_size_requests || (main_window_width != event->width || main_window_height != event->height)) {
+	if(wm_ignores_size_requests || (main_window_width != event->width - csd_width || main_window_height != event->height - csd_height)) {
 		// Reset cached font size for info text
 		#ifndef CONFIGURED_WITHOUT_INFO_TEXT
 			current_info_text_cached_font_size = -1;
@@ -6736,8 +6743,8 @@ gboolean window_configure_callback(GtkWidget *widget, GdkEventConfigure *event, 
 			main_window_height = screen_geometry.height;
 		}
 		else {
-			main_window_width = event->width;
-			main_window_height = event->height;
+			main_window_width = event->width - csd_width;
+			main_window_height = event->height - csd_height;
 		}
 
 		// If the fullscreen state just changed execute the post-change callbacks here
@@ -6752,9 +6759,10 @@ gboolean window_configure_callback(GtkWidget *widget, GdkEventConfigure *event, 
 		}
 
 		// Rescale the image
-		if(main_window_width != event->width || main_window_height != event->height) {
+		if(main_window_width != event->width - csd_width || main_window_height != event->height - csd_height) {
 			set_scale_level_to_fit();
 		}
+		gdk_window_invalidate_rect(gtk_widget_get_window(GTK_WIDGET(main_window)), NULL, TRUE);
 		queue_draw();
 
 		// We need to redraw in old GTK versions to avoid artifacts
@@ -7275,6 +7283,21 @@ void window_screen_changed_callback(GtkWidget *widget, GdkScreen *previous_scree
 	#endif
 }/*}}}*/
 void window_realize_callback(GtkWidget *widget, gpointer user_data) {/*{{{*/
+	// Compute CSD dimensions
+	// If the theme changes while pqiv is running, this breaks, but that should rarely happen
+	GtkAllocation box_allocation, window_allocation;
+	gtk_widget_get_allocation(main_window_box, &box_allocation);
+	gtk_widget_get_allocation(GTK_WIDGET(main_window), &window_allocation);
+	csd_left = box_allocation.x;
+	csd_top = box_allocation.y;
+	csd_right = window_allocation.width - box_allocation.width - csd_left;
+	csd_bottom = window_allocation.height - box_allocation.height - csd_top;
+	csd_height = csd_top + csd_bottom;
+	csd_width = csd_left + csd_right;
+	gtk_widget_destroy(main_window_box);
+	main_window_box = NULL;
+
+	// Transition to fullscreen if that was requested
 	if(option_start_fullscreen) {
 		window_fullscreen();
 	}
@@ -7333,6 +7356,10 @@ void create_window() { /*{{{*/
 	g_signal_connect(main_window, "button-release-event", G_CALLBACK(window_button_release_callback), NULL);
 	g_signal_connect(main_window, "window-state-event", G_CALLBACK(window_state_callback), NULL);
 	g_signal_connect(main_window, "realize", G_CALLBACK(window_realize_callback), NULL);
+
+	// Not used for anything except determining CSD dimensions
+	main_window_box = GTK_WIDGET(gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0));
+	gtk_container_add(GTK_CONTAINER(main_window), main_window_box);
 
 	gtk_widget_set_events(GTK_WIDGET(main_window),
 		GDK_EXPOSURE_MASK | GDK_SCROLL_MASK | GDK_BUTTON_MOTION_MASK |
