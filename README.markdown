@@ -187,6 +187,7 @@ pqiv 2.13 (dev)
  * Add `--font` to adjust info box font, use Pango for rendering (See #221)
  * Prefer x11 over Wayland GDK backend (it overall provides a better experience)
  * Fix Client Side Decorations (CSD), e.g. in Wayland
+ * Fix race/crash upon exit (Fixes #227)
 
 pqiv 2.12
  * Fix external image filters (Fixes #182)

@@ -143,6 +143,7 @@ BOSTree *file_tree;
 BOSNode *current_file_node = NULL;
 BOSNode *earlier_file_node = NULL;
 BOSNode *image_loader_thread_currently_loading = NULL;
+GThread *image_loader_thread_ref;
 gboolean file_tree_valid = FALSE;
 
 // We asynchroniously load images in a separate thread
@@ -2701,6 +2702,9 @@ gpointer image_loader_thread(gpointer user_data) {/*{{{*/
 		// Handle new queued image load
 		struct image_loader_queue_item *it = g_async_queue_pop(image_loader_queue);
 		BOSNode *node = it->node_ref;
+		if(node == NULL) {
+			return NULL;
+		}
 		#ifndef CONFIGURED_WITHOUT_MONTAGE_MODE
 		image_loader_purpose_t purpose = it->purpose;
 		#endif
@@ -2831,7 +2835,9 @@ gpointer image_loader_thread(gpointer user_data) {/*{{{*/
 	}
 }/*}}}*/
 void image_loader_queue_destroy(gpointer data) {/*{{{*/
-	bostree_node_weak_unref(file_tree, ((struct image_loader_queue_item *)data)->node_ref);
+	if(((struct image_loader_queue_item *)data)->node_ref != NULL) {
+		bostree_node_weak_unref(file_tree, ((struct image_loader_queue_item *)data)->node_ref);
+	}
 	g_slice_free(struct image_loader_queue_item, data);
 }/*}}}*/
 gboolean initialize_image_loader() {/*{{{*/
@@ -2867,7 +2873,7 @@ gboolean initialize_image_loader() {/*{{{*/
 	if(bostree_node_count(file_tree) == 0) {
 		return FALSE;
 	}
-	g_thread_new("image-loader", image_loader_thread, NULL);
+	image_loader_thread_ref = g_thread_new("image-loader", image_loader_thread, NULL);
 
 	preload_adjacent_images();
 
@@ -8294,7 +8300,10 @@ int main(int argc, char *argv[]) {
 	file_tree_valid = FALSE;
 	D_LOCK(file_tree);
 	abort_pending_image_loads(NULL);
+	// NULL is used as a poison pill for the image loader thread
+	queue_image_load(NULL);
 	D_UNLOCK(file_tree);
+	g_thread_join(image_loader_thread_ref);
 	for(BOSNode *node = bostree_select(file_tree, 0); node; node = bostree_next_node(node)) {
 		// Iterate over the images ourselves, because there might be open weak references which
 		// prevent this to be called from bostree_destroy.
