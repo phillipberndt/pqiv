@@ -29,7 +29,7 @@
 #include "lib/bostree.h"
 
 #ifndef PQIV_VERSION
-#define PQIV_VERSION "2.12"
+#define PQIV_VERSION "2.13"
 #endif
 
 #define FILE_FLAGS_ANIMATION      (guint)(1)

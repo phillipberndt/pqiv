@@ -182,12 +182,15 @@ For some advanced uses of pqiv, take a look at these resouces:
 Changelog
 ---------
 
-pqiv 2.13 (dev)
+pqiv 2.13
  * Fix `toggle_fullscreen(1/2)` behavior when already fullscreen
  * Add `--font` to adjust info box font, use Pango for rendering (See #221)
  * Prefer x11 over Wayland GDK backend (it overall provides a better experience)
  * Fix Client Side Decorations (CSD), e.g. in Wayland
  * Fix race/crash upon exit (Fixes #227)
+
+<details>
+<summary>Click to expand changelog for old pqiv versions</summary>
 
 pqiv 2.12
  * Fix external image filters (Fixes #182)
@@ -198,9 +201,6 @@ pqiv 2.12
  * Add `--auto-montage-mode` (Fixes #181)
  * Replace GTimeVal with GDateTime for glib 2.62 support
  * Add an sxiv-like marks system
-
-<details>
-<summary>Click to expand changelog for old pqiv versions</summary>
 
 pqiv 2.11
  * Added negate (color inversion) mode (bound to `n`, `--negate`)
