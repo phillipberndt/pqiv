@@ -182,6 +182,9 @@ For some advanced uses of pqiv, take a look at these resouces:
 Changelog
 ---------
 
+pqiv 2.13.1
+ * Revert to not adding `--browse` to desktop files (fixes #232)
+
 pqiv 2.13
  * Fix `toggle_fullscreen(1/2)` behavior when already fullscreen
  * Add `--font` to adjust info box font, use Pango for rendering (See #221)
