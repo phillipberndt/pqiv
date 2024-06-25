@@ -3,6 +3,7 @@
  * Part of pqiv
  */
 
+#include <errno.h>
 #define _POSIX_C_SOURCE 200809L
 
 #include <stdio.h>
@@ -64,13 +65,14 @@ void config_parser_parse_file(const char *file_name, config_parser_callback_t ca
 	char *file_data = NULL;
 
 #ifdef HAS_MMAP
+	errno = 0;
 	file_data = mmap(NULL, stat.st_size, PROT_READ | PROT_WRITE, MAP_PRIVATE, fd, 0);
-	if(file_data) {
+	if(!errno) {
 		config_parser_parse_data(file_data, stat.st_size, callback);
 		munmap(file_data, stat.st_size);
 		close(fd);
-		return;
 	}
+	return;
 #endif
 
 	file_data = malloc(stat.st_size);
