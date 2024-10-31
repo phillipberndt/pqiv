@@ -182,8 +182,9 @@ For some advanced uses of pqiv, take a look at these resouces:
 Changelog
 ---------
 
-pqiv 2.13.1
+pqiv 2.13.2
  * Revert to not adding `--browse` to desktop files (fixes #232)
+ * Fix crash for videos with unusual resolutions (fixes #247)
 
 pqiv 2.13
  * Fix `toggle_fullscreen(1/2)` behavior when already fullscreen

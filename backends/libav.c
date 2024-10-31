@@ -295,7 +295,7 @@ void file_type_libav_load(file_t *file, GInputStream *data, GError **error_point
 #if LIBAVUTIL_VERSION_INT < AV_VERSION_INT(55, 0, 0)
 	size_t num_bytes = avpicture_get_size(PIX_FMT_RGB32, file->width, file->height);
 #else
-	size_t num_bytes = av_image_get_buffer_size(AV_PIX_FMT_RGB32, file->width, file->height, 16);
+	size_t num_bytes = av_image_get_buffer_size(AV_PIX_FMT_RGB32, file->width, file->height, 64);
 #endif
 	private->buffer = (uint8_t *)g_malloc(num_bytes * sizeof(uint8_t));
 
