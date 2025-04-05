@@ -1290,6 +1290,7 @@ void parse_configuration_file() {/*{{{*/
 	GQueue *test_dirs = g_queue_new();
 	const gchar *config_dir = g_getenv("XDG_CONFIG_HOME");
 	if(!config_dir) {
+		g_queue_push_tail(test_dirs, g_build_filename(".", ".pqivrc", NULL));
 		g_queue_push_tail(test_dirs, g_build_filename(g_getenv("HOME"), ".config", "pqivrc", NULL));
 	}
 	else {
