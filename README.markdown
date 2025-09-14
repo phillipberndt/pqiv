@@ -182,6 +182,9 @@ For some advanced uses of pqiv, take a look at these resouces:
 Changelog
 ---------
 
+pqiv 2.14 (wip)
+ * Fix ffmpeg 8.0 compatibility (fixes #258)
+
 pqiv 2.13.2
  * Revert to not adding `--browse` to desktop files (fixes #232)
  * Fix crash for videos with unusual resolutions (fixes #247)
