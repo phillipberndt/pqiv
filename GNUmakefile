@@ -104,6 +104,7 @@ SHARED_OBJECTS=
 SHARED_BACKENDS=
 HELPER_OBJECTS=
 BACKENDS_INITIALIZER:=backends/initializer
+SORTED_BACKENDS=gdkpixbuf webp archive_cbx archive poppler libav wand
 define handle-backend
 ifneq ($(origin LIBS_$(1)),undefined)
 	ifneq ($(findstring $(1), $(BACKENDS)),)
@@ -124,7 +125,14 @@ ifneq ($(origin LIBS_$(1)),undefined)
 	endif
 endif
 endef
-$(foreach BACKEND_C, $(wildcard $(SOURCEDIR)backends/*.c), $(eval $(call handle-backend,$(basename $(notdir $(BACKEND_C))))))
+
+define handle-extra-backend
+ifeq ($(findstring $(1), $(SORTED_BACKENDS)),)
+	SORTED_BACKENDS+=$(1)
+endif
+endef
+$(foreach BACKEND_C, $(wildcard $(SOURCEDIR)backends/*.c), $(eval $(call handle-extra-backend,$(basename $(notdir $(BACKEND_C))))))
+$(foreach BACKEND, $(SORTED_BACKENDS), $(eval $(call handle-backend,$(BACKEND))))
 PIXBUF_FILTER="gdkpixbuf",
 ifeq ($(BACKENDS_BUILD), shared)
 	OBJECTS+=backends/shared-initializer.o
