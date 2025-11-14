@@ -53,7 +53,7 @@ distribution packages are usually somewhat out of date:
  * [FreeBSD port](https://www.freshports.org/graphics/pqiv/)
  * [Gentoo ebuild](https://packages.gentoo.org/packages/media-gfx/pqiv)
  * [macOS brew](https://formulae.brew.sh/formula/pqiv)
- * [NixOS package](https://github.com/NixOS/nixpkgs/blob/HEAD/pkgs/applications/graphics/pqiv/default.nix)
+ * [NixOS package](https://github.com/NixOS/nixpkgs/blob/master/pkgs/by-name/pq/pqiv/package.nix)
  * [OpenBSD port](http://cvsweb.openbsd.org/cgi-bin/cvsweb/ports/graphics/pqiv/)
  * [OpenSUSE package](https://build.opensuse.org/package/show/openSUSE:Factory/pqiv)
  * [Void linux](https://github.com/void-linux/void-packages/tree/master/srcpkgs/pqiv)
