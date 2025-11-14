@@ -8102,7 +8102,7 @@ gboolean load_images_thread_update_info_text(gpointer user_data) {/*{{{*/
 #endif
 gpointer load_images_thread(gpointer user_data) {/*{{{*/
 #ifndef CONFIGURED_WITHOUT_INFO_TEXT
-	guint event_source;
+	guint event_source = 0;
 	if(user_data != NULL) {
 		// Use the info text updater only if this function was called in a separate
 		// thread (--lazy-load option)
