@@ -182,7 +182,7 @@ For some advanced uses of pqiv, take a look at these resouces:
 Changelog
 ---------
 
-pqiv 2.14 (wip)
+pqiv 2.13.3
  * Fix ffmpeg 8.0 compatibility (fixes #258)
  * Prefer specialized backends over generic ones (fixes #257)
 
