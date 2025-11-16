@@ -8,6 +8,12 @@ project(
 
 cc = meson.get_compiler('c')
 
+if host_machine.system() == 'windows'
+  gio_platform = dependency('gio-windows-2.0')
+else
+  gio_platform = dependency('gio-unix-2.0')
+endif
+
 dependencies = [
   dependency('glib-2.0', version: '>=2.8'),
   dependency('gtk+-3.0'),
@@ -15,7 +21,7 @@ dependencies = [
   dependency('cairo', version: '>=1.6'),
   dependency('pango', version: '>=1.10'),
   dependency('gio-2.0'),
-  dependency('gio-unix-2.0'),
+  gio_platform,
   dependency('X11'),
   cc.find_library('m', required: false),
 ]
