@@ -35,11 +35,28 @@ lib_sources = [
   'lib/thumbnailcache.c',
 ]
 
+#deal with configurable features
+conf_data = configuration_data()
+without_montage = not get_option('montage')
+conf_data.set('CONFIGURED_WITHOUT_MONTAGE_MODE', without_montage)
+without_actions = not get_option('actions')
+conf_data.set('CONFIGURED_WITHOUT_ACTIONS', without_actions)
+without_commands = not get_option('external-commands')
+conf_data.set('CONFIGURED_WITHOUT_EXTERNAL_COMMANDS', without_commands)
+without_jump = not get_option('jump-dialog')
+conf_data.set('CONFIGURED_WITHOUT_JUMP_DIALOG', without_jump)
+without_info = not get_option('info-text')
+conf_data.set('CONFIGURED_WITHOUT_INFO_TEXT', without_info)
+
+configure_file(input: 'config.h.in', output: 'config.h', configuration: conf_data)
+
+configuration_inc = include_directories('.')
+
 exe = executable(
   'pqiv',
   'pqiv.c',
   lib_sources,
-  include_directories: lib_headers,
+  include_directories: [lib_headers, configuration_inc],
   dependencies: dependencies,
   install: true,
 )
