@@ -16,19 +16,17 @@ option(
     value: 'auto',
     description: 'Enable eneric archive file support',
 )
-
-option(
-    'libav',
-    type: 'feature',
-    value: 'auto',
-    description: 'Enable video support with libav/ffmpeg',
-)
-
 option(
     'poppler',
     type: 'feature',
     value: 'auto',
     description: 'Enable PDF support',
+)
+option(
+    'libav',
+    type: 'feature',
+    value: 'auto',
+    description: 'Enable video support with libav/ffmpeg',
 )
 option(
     'spectre',
