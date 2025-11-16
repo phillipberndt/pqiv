@@ -1,0 +1,80 @@
+option(
+    'gdkpixbuf',
+    type: 'feature',
+    value: 'auto',
+    description: 'Enable image support',
+)
+option(
+    'archive_cbx',
+    type: 'feature',
+    value: 'auto',
+    description: 'Enable *.cb? comic book archive support',
+)
+option(
+    'archive',
+    type: 'feature',
+    value: 'auto',
+    description: 'Enable eneric archive file support',
+)
+
+option(
+    'libav',
+    type: 'feature',
+    value: 'auto',
+    description: 'Enable video support with libav/ffmpeg',
+)
+
+option(
+    'poppler',
+    type: 'feature',
+    value: 'auto',
+    description: 'Enable PDF support',
+)
+option(
+    'spectre',
+    type: 'feature',
+    value: 'auto',
+    description: 'Enable PS/EPS support',
+)
+option(
+    'wand',
+    type: 'feature',
+    value: 'auto',
+    description: 'Enable various image format support with ImageMagick',
+)
+option(
+    'webp',
+    type: 'feature',
+    value: 'auto',
+    description: 'Enable WebP format support',
+)
+option(
+    'montage',
+    type: 'feature',
+    value: 'enabled',
+    description: 'Enable thumbnail overview',
+)
+option(
+    'actions',
+    type: 'feature',
+    value: 'enabled',
+    description: 'Enable configurable key/mouse bindings and actions',
+)
+option(
+    'external-commands',
+    type: 'feature',
+    value: 'enabled',
+    description: 'Enable calling external programs',
+)
+option(
+    'jimp-dialog',
+    type: 'feature',
+    value: 'enabled',
+    description: 'Enable jump dialogue with -j',
+)
+option(
+    'info-text',
+    type: 'feature',
+    value: 'enabled',
+    description: 'Enable support for info text',
+)
