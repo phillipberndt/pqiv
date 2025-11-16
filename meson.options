@@ -48,31 +48,31 @@ option(
 )
 option(
     'montage',
-    type: 'feature',
-    value: 'enabled',
+    type: 'boolean',
+    value: true,
     description: 'Enable thumbnail overview',
 )
 option(
     'actions',
-    type: 'feature',
-    value: 'enabled',
+    type: 'boolean',
+    value: true,
     description: 'Enable configurable key/mouse bindings and actions',
 )
 option(
     'external-commands',
-    type: 'feature',
-    value: 'enabled',
+    type: 'boolean',
+    value: true,
     description: 'Enable calling external programs',
 )
 option(
-    'jimp-dialog',
-    type: 'feature',
-    value: 'enabled',
+    'jump-dialog',
+    type: 'boolean',
+    value: true,
     description: 'Enable jump dialogue with -j',
 )
 option(
     'info-text',
-    type: 'feature',
-    value: 'enabled',
+    type: 'boolean',
+    value: true,
     description: 'Enable support for info text',
 )
