@@ -52,12 +52,14 @@ configure_file(input: 'config.h.in', output: 'config.h', configuration: conf_dat
 
 configuration_inc = include_directories('.')
 
+subdir('backends')
+
 exe = executable(
   'pqiv',
   'pqiv.c',
-  lib_sources,
+  [lib_sources, backend_sources, generated_sources],
   include_directories: [lib_headers, configuration_inc],
-  dependencies: dependencies,
+  dependencies: [dependencies, backend_dependencies],
   install: true,
 )
 
