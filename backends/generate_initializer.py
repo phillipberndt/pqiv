@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 import sys
 
+target = sys.argv[1]
 #this could be more elegant, but for now it's line by line translation of code from GNUmakefile to python
-with open("initializer.c", "w", encoding="utf-8") as f:
+with open(target, "w", encoding="utf-8") as f:
+    backends = sys.argv[2:]
     f.write("/* Auto-Generated file by generate_initializer.py */\n")
     f.write("#include \"../pqiv.h\"\n")
-    f.write(f"file_type_handler_t file_type_handlers[{len(sys.argv)}];\n")
-    backends = sys.argv[1:]
+    f.write(f"file_type_handler_t file_type_handlers[{len(backends)+1}];\n")
     backends.sort()
     for backend in backends:
         f.write(f"void file_type_{backend}_initializer(file_type_handler_t *info);\n")
