@@ -4159,7 +4159,7 @@ void do_jump_dialog() { /* {{{ */
 #endif
 // }}}
 /* Main window functions {{{ */
-gboolean window_fullscreen_helper_reset_transition_id() {/*{{{*/
+gboolean window_fullscreen_helper_reset_transition_id(void *) {/*{{{*/
 	action_done();
 	fullscreen_transition_source_id = -1;
 	return FALSE;
