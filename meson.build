@@ -26,6 +26,8 @@ dependencies = [
   cc.find_library('m', required: false),
 ]
 
+subdir('backends')
+
 lib_headers = include_directories('lib')
 lib_sources = [
   'lib/strnatcmp.c',
@@ -51,8 +53,6 @@ conf_data.set('CONFIGURED_WITHOUT_INFO_TEXT', without_info)
 configure_file(input: 'config.h.in', output: 'config.h', configuration: conf_data)
 
 configuration_inc = include_directories('.')
-
-subdir('backends')
 
 exe = executable(
   'pqiv',

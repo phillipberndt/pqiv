@@ -9,6 +9,20 @@ if gdkpixbuf.found()
     backend_sources += 'backends/gdkpixbuf.c'
 endif
 
+poppler = dependency('poppler-glib', required: get_option('poppler'))
+if poppler.found()
+    backends +=['poppler']
+    backend_dependencies += poppler
+    backend_sources += 'backends/poppler.c'
+endif
+
+spectre = dependency('libspectre', required: get_option('spectre'))
+if spectre.found()
+    backends +=['spectre']
+    backend_dependencies += spectre
+    backend_sources += 'backends/spectre.c'
+endif
+
 archive = dependency('libarchive', required: get_option('archive'))
 if archive.found()
   backends += ['archive']
