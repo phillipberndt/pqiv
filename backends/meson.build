@@ -23,6 +23,14 @@ if spectre.found()
     backend_sources += 'backends/spectre.c'
 endif
 
+wand = dependency('MagickWand', required: get_option('wand'))
+if wand.found()
+    backends +=['wand']
+    backend_dependencies += wand
+    backend_sources += 'backends/wand.c'
+    add_project_arguments('-DWAND_VERSION=' + wand.version().split('.')[0], language: 'c')
+endif
+
 archive = dependency('libarchive', required: get_option('archive'))
 if archive.found()
   backends += ['archive']
