@@ -30,7 +30,15 @@ if archive.found()
   backend_sources += 'backends/archive.c'
 endif
 
-#archive_cbx - think how to make it elegantly
+archive_cbx_feat = get_option('archive_cbx')
+cbx_gdkpixbuf = dependency('gdk-pixbuf-2.0', version: '>= 2.2', required: archive_cbx_feat)
+cbx_archive = dependency('libarchive', required: archive_cbx_feat)
+if archive_cbx_feat.allowed() and cbx_gdkpixbuf.found() and cbx_archive.found()
+    backends +=['archive_cbx']
+    backend_dependencies += [cbx_gdkpixbuf, cbx_archive]
+    backend_sources += 'backends/archive_cbx.c'
+endif
+
 
 prog_python = find_program('python3')
 
