@@ -7,12 +7,12 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v1
+    - uses: actions/checkout@v6
     - name: prepare
-      run: sudo apt-get update && sudo apt-get install build-essential libgtk-3-dev libmagickwand-dev libarchive-dev libpoppler-glib-dev libavformat-dev libavcodec-dev libswscale-dev libavutil-dev libwebp-dev
+      run: sudo apt-get update && sudo apt-get install build-essential meson libgtk-3-dev libmagickwand-dev libarchive-dev libpoppler-glib-dev libavformat-dev libavcodec-dev libswscale-dev libavutil-dev libwebp-dev
     - name: configure
-      run: ./configure
+      run: meson setup builddir
     - name: make
-      run: make
+      run: meson compile -C builddir
     - name: check
-      run: ./pqiv --version
+      run: builddir/pqiv --version
