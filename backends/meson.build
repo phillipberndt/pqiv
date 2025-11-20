@@ -76,7 +76,8 @@ if webp.found()
     backend_sources += files('webp.c')
 endif
 
-prog_python = find_program('python3')
+pymod = import('python')
+prog_python = pymod.find_installation('python3')
 
 generated_sources = custom_target(
     'initializer.c',
