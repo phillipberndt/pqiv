@@ -9,6 +9,15 @@ if gdkpixbuf.found()
     backend_sources += 'backends/gdkpixbuf.c'
 endif
 
+archive = dependency('libarchive', required: get_option('archive'))
+if archive.found()
+  backends += ['archive']
+  backend_dependencies += archive
+  backend_sources += 'backends/archive.c'
+endif
+
+#archive_cbx - think how to make it elegantly
+
 prog_python = find_program('python3')
 
 generated_sources = custom_target(
