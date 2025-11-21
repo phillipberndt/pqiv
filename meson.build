@@ -22,7 +22,7 @@ dependencies = [
     dependency('pango', version: '>=1.10'),
     dependency('gio-2.0'),
     gio_platform,
-    dependency('X11', required: host_machine.system() == 'windows'), #may be not needed if gtk doesn't depend on X11, but that's for gtk2 and windows
+    dependency('X11', required: host_machine.system() == 'windows'),  #may be not needed if gtk doesn't depend on X11, but that's for gtk2 and windows
     cc.find_library('m', required: false),
 ]
 
@@ -67,4 +67,15 @@ exe = executable(
     install: true,
 )
 
-test('basic', exe)
+custom_target(
+    'pqiv.desktop',
+    input: 'generate_desktop.py',
+    output: 'pqiv.desktop',
+    command: [prog_python, '@INPUT@', '@OUTPUT@', mimefiles],
+    install: true,
+    install_dir: get_option('datadir') / 'applications',
+)
+
+install_man('pqiv.1')
+
+test('basic', exe, args: ['--version'])
