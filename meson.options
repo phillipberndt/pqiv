@@ -76,3 +76,9 @@ option(
     value: true,
     description: 'Enable support for info text',
 )
+option(
+    'build-shared',
+    type: 'boolean',
+    value: false,
+    description: 'Build backends in shared mode, for distribution purposes. Defaults to statically building backends in.',
+)
