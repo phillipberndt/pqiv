@@ -14,17 +14,26 @@ else
     gio_platform = dependency('gio-unix-2.0')
 endif
 
+gtk_dep = dependency('gtk+-3.0')
+
 dependencies = [
     dependency('glib-2.0', version: '>=2.8'),
-    dependency('gtk+-3.0'),
+    gtk_dep,
     dependency('gdk-3.0'),
     dependency('cairo', version: '>=1.6'),
     dependency('pango', version: '>=1.10'),
     dependency('gio-2.0'),
     gio_platform,
-    dependency('X11', required: host_machine.system() == 'windows'),  #may be not needed if gtk doesn't depend on X11, but that's for gtk2 and windows
     cc.find_library('m', required: false),
 ]
+
+# Workaround to bug, see http://stackoverflow.com/questions/18647475, fixed in libX11-1.8
+if 'x11' in gtk_dep.get_variable('target', default_value: '') or 'x11' in gtk_dep.get_variable(
+    'targets',
+    default_value: '',
+)
+    dependencies += dependency('x11')
+endif
 
 subdir('backends')
 
