@@ -28,6 +28,7 @@
 #include <libavcodec/avcodec.h>
 #include <libswscale/swscale.h>
 #include <libavutil/imgutils.h>
+#include <libavutil/pixfmt.h>
 
 #if LIBAVCODEC_VERSION_INT < AV_VERSION_INT(55,28,1)
 #define av_frame_alloc avcodec_alloc_frame
@@ -368,10 +369,32 @@ void file_type_libav_draw(file_t *file, cairo_t *cr) {/*{{{*/
 		AVFrame *rgb_frame = private->rgb_frame;
 
 #ifdef AV_COMPAT_CODEC_DEPRECATED
-		const int pix_fmt = private->avcontext->streams[private->video_stream_id]->codecpar->format;
+		int pix_fmt = private->avcontext->streams[private->video_stream_id]->codecpar->format;
 #else
-		const int pix_fmt = private->avcontext->streams[private->video_stream_id]->codec->pix_fmt;
+		int pix_fmt = private->avcontext->streams[private->video_stream_id]->codec->pix_fmt;
 #endif
+
+		int color_space_needs_patching = FALSE;
+		switch (pix_fmt) {
+			case AV_PIX_FMT_YUVJ420P:
+				pix_fmt = AV_PIX_FMT_YUV420P;
+				color_space_needs_patching = TRUE;
+				break;
+			case AV_PIX_FMT_YUVJ422P:
+				pix_fmt = AV_PIX_FMT_YUV422P;
+				color_space_needs_patching = TRUE;
+				break;
+			case AV_PIX_FMT_YUVJ440P:
+				pix_fmt = AV_PIX_FMT_YUV440P;
+				color_space_needs_patching = TRUE;
+				break;
+			case AV_PIX_FMT_YUVJ444P:
+				pix_fmt = AV_PIX_FMT_YUV444P;
+				color_space_needs_patching = TRUE;
+				break;
+			default:
+				break;
+		}
 
 		// Prepare buffer for RGB32 version
 		uint8_t *buffer = private->buffer;
@@ -386,6 +409,21 @@ void file_type_libav_draw(file_t *file, cairo_t *cr) {/*{{{*/
 			// ..convert to RGB32
 			struct SwsContext *img_convert_ctx = sws_getCachedContext(NULL, private->pixel_width, private->pixel_height, pix_fmt, file->width,
 					file->height, AV_PIX_FMT_RGB32, SWS_BICUBIC, NULL, NULL, NULL);
+
+			if(color_space_needs_patching) {
+				// Following https://stackoverflow.com/questions/23067722
+				// Needed to use YUV for YUVJ
+				int dummy[4];
+				int src_range, dst_range;
+				int brightness, contrast, saturation;
+				sws_getColorspaceDetails(img_convert_ctx, (int**)&dummy, &src_range, (int**)&dummy, &dst_range, &brightness, &contrast, &saturation);
+				const int* coefs = sws_getCoefficients(SWS_CS_DEFAULT);
+				src_range = 1;
+				sws_setColorspaceDetails(img_convert_ctx, coefs, src_range, coefs, dst_range,
+						brightness, contrast, saturation);
+			}
+
+
 			sws_scale(img_convert_ctx, (const uint8_t * const*)frame->data, frame->linesize, 0, private->pixel_height, rgb_frame->data, rgb_frame->linesize);
 			sws_freeContext(img_convert_ctx);
 		}

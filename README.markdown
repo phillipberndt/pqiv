@@ -182,6 +182,9 @@ For some advanced uses of pqiv, take a look at these resouces:
 Changelog
 ---------
 
+pqiv (dev)
+ * Fix YUVJ deprecation warning for ffmpeg (fixes #266)
+
 pqiv 2.13.3
  * Fix ffmpeg 8.0 compatibility (fixes #258)
  * Prefer specialized backends over generic ones (fixes #257)
