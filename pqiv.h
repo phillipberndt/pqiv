@@ -199,7 +199,11 @@ BOSNode *load_images_handle_parameter_add_file(load_images_state_t state, file_t
 
 // Find a handler for a given file; useful for handler redirection, see archive
 // file type
+#if GTK_MAJOR_VERSION < 4
 BOSNode *load_images_handle_parameter_find_handler(const char *param, load_images_state_t state, file_t *file, GtkFileFilterInfo *file_filter_info);
+#else
+BOSNode *load_images_handle_parameter_find_handler(const char *param, load_images_state_t state, file_t *file, GFileInfo *file_info);
+#endif
 
 // Load all data from an input stream into memory, conveinience function
 GBytes *g_input_stream_read_completely(GInputStream *input_stream, GCancellable *cancellable, GError **error_pointer);
