@@ -293,6 +293,7 @@ if [ -z "$BACKENDS" ]; then
 fi
 
 echo -n "Checking if the prerequisites are installed.. "
+LIBS_GTK4="`$MAKE get_libs GTK_VERSION=4 EXECUTABLE_EXTENSION=$EXECUTABLE_EXTENSION ${PKG_CONFIG:+PKG_CONFIG="$PKG_CONFIG"} ${BACKENDS:+BACKENDS="$BACKENDS"} | awk '/^LIBS:/ {print substr($0, 7);}'`"
 LIBS_GTK3="`$MAKE get_libs GTK_VERSION=3 EXECUTABLE_EXTENSION=$EXECUTABLE_EXTENSION ${PKG_CONFIG:+PKG_CONFIG="$PKG_CONFIG"} ${BACKENDS:+BACKENDS="$BACKENDS"} | awk '/^LIBS:/ {print substr($0, 7);}'`"
 LIBS_GTK2="`$MAKE get_libs GTK_VERSION=2 EXECUTABLE_EXTENSION=$EXECUTABLE_EXTENSION ${PKG_CONFIG:+PKG_CONFIG="$PKG_CONFIG"} ${BACKENDS:+BACKENDS="$BACKENDS"} | awk '/^LIBS:/ {print substr($0, 7);}'`"
 
@@ -304,33 +305,40 @@ if [ $? != 0 ]; then
 	exit 1
 fi
 
-if ${PKG_CONFIG:-pkg-config} --exists "$LIBS_GTK3"; then
-	LIBS="${LIBS_GTK3}"
+if ${PKG_CONFIG:-pkg-config} --exists "$LIBS_GTK4"; then
+	LIBS="${LIBS_GTK4}"
 	echo "ok"
 else
-	if ${PKG_CONFIG:-pkg-config} --exists "$LIBS_GTK2"; then
-		if [ "$GTK_VERSION" = 3 ]; then
+	if ${PKG_CONFIG:-pkg-config} --exists "$LIBS_GTK3"; then
+		LIBS="${LIBS_GTK3}"
+		echo "ok"
+	else
+		if ${PKG_CONFIG:-pkg-config} --exists "$LIBS_GTK2"; then
+			if [ "$GTK_VERSION" = 3 ]; then
+				echo "failed."
+				echo
+				echo
+				echo "GTK 2 was found, but you manually specified --gtk-version=3, which was not found." >&2
+				echo "If you want GTK3, install the development packages for" >&2
+				echo " ${LIBS_GTK3}" >&2
+				exit 1
+			fi
+			echo "ok, found GTK 2"
+			GTK_VERSION=2
+			LIBS="${LIBS_GTK2}"
+		else
 			echo "failed."
 			echo
 			echo
-			echo "GTK 2 was found, but you manually specified --gtk-version=3, which was not found." >&2
-			echo "If you want GTK3, install the development packages for" >&2
+			echo "Please install either the development packages for " >&2
+			echo " ${LIBS_GTK4}" >&2
+			echo ", " >&2
 			echo " ${LIBS_GTK3}" >&2
+			echo "or for" >&2
+			echo " ${LIBS_GTK2}" >&2
 			exit 1
 		fi
-		echo "ok, found GTK 2"
-		GTK_VERSION=2
-		LIBS="${LIBS_GTK2}"
-	else
-		echo "failed."
-		echo
-		echo
-		echo "Please install either the development packages for " >&2
-		echo " ${LIBS_GTK3}" >&2
-		echo "or for" >&2
-		echo " ${LIBS_GTK2}" >&2
-		exit 1
-	fi
+fi
 fi
 
 if [ "$SOURCE_DIR" != "$STARTUP_DIR" ]; then

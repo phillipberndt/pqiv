@@ -54,8 +54,10 @@
 	#include <sys/wait.h>
 	#include <gio/gunixinputstream.h>
 #endif
-#ifdef GDK_WINDOWING_X11
-	#include <gdk/gdkx.h>
+#ifdef GDK_WINDOWING_X11 
+	#if GTK_MAJOR_VERSION < 4
+		#include <gdk/gdkx.h>
+	#endif
 	#include <X11/Xlib.h>
 	#include <X11/Xutil.h>
 	#include <cairo/cairo-xlib.h>
@@ -158,9 +160,14 @@ GCancellable *image_loader_cancellable = NULL;
 // For that, we keep a list of loaded files
 GList *loaded_files_list = NULL;
 
-// Filter for path traversing upon building the file list
+// Filters for path traversing upon building the file list
 GHashTable *load_images_file_filter_hash_table;
+#if GTK_MAJOR_VERSION < 4
 GtkFileFilterInfo *load_images_file_filter_info;
+#else
+GFileInfo *load_images_file_info;
+GFileInfo *mime_guesser;
+#endif
 GTimer *load_images_timer;
 
 // Easy access to the file_t within a node
@@ -1522,6 +1529,7 @@ GFile *gfile_for_commandline_arg(const char *parameter) {/*{{{*/
 			return g_file_new_for_commandline_arg(parameter);
 		}
 }/*}}}*/
+#if GTK_MAJOR_VERSION < 4
 BOSNode *load_images_handle_parameter_find_handler(const char *param, load_images_state_t state, file_t *file, GtkFileFilterInfo *file_filter_info) {/*{{{*/
 	// Check if one of the file type handlers can handle this file
 	file_type_handler_t *file_type_handler = &file_type_handlers[0];
@@ -1543,6 +1551,30 @@ BOSNode *load_images_handle_parameter_find_handler(const char *param, load_image
 
 	return NULL;
 }/*}}}*/
+#else //GTK_MAJOR_VERSION >= 4
+BOSNode *load_images_handle_parameter_find_handler(const char *param, load_images_state_t state, file_t *file, GFileInfo *file_info) {/*{{{*/
+	// Check if one of the file type handlers can handle this file
+	file_type_handler_t *file_type_handler = &file_type_handlers[0];
+	while(file_type_handler->file_types_handled) {
+
+		if(gtk_filter_match((GtkFilter *)(file_type_handler->file_types_handled), file_info) == TRUE) {
+			file->file_type = file_type_handler;
+
+			// Handle using this handler
+			if(file_type_handler->alloc_fn != NULL) {
+				return file_type_handler->alloc_fn(state, file);
+			}
+			else {
+				return load_images_handle_parameter_add_file(state, file);
+			}
+		}
+
+		file_type_handler++;
+	
+	}
+	return NULL;
+}/*}}}*/
+#endif
 void gfree_with_dummy_arg(void *pointer, void *dummy) {/*{{{*/
 	g_free(pointer);
 }/*}}}*/
@@ -1601,11 +1633,16 @@ void load_images_handle_parameter(char *param, load_images_state_t state, gint d
 		gchar *file_mime_type = g_content_type_get_mime_type(file_content_type);
 		g_free(file_content_type);
 
+		#if GTK_MAJOR_VERSION < 4
 		GtkFileFilterInfo mime_guesser;
 		mime_guesser.contains = GTK_FILE_FILTER_MIME_TYPE;
 		mime_guesser.mime_type = file_mime_type;
-
 		BOSNode *mime_guess_result = load_images_handle_parameter_find_handler(param, state, file, &mime_guesser);
+		#else
+		g_file_info_set_content_type(mime_guesser, file_mime_type);
+		BOSNode *mime_guess_result = load_images_handle_parameter_find_handler(param, state, file, mime_guesser);
+		#endif
+
 		if(mime_guess_result == FALSE_POINTER) {
 			return;
 		}
@@ -1795,10 +1832,18 @@ void load_images_handle_parameter(char *param, load_images_state_t state, gint d
 
 		// Filter based on formats supported by the different handlers
 		gchar *param_lowerc = g_utf8_strdown(param, -1);
+		
+		#if GTK_MAJOR_VERSION < 4
 		load_images_file_filter_info->filename = load_images_file_filter_info->display_name = param_lowerc;
-
 		// Check if one of the file type handlers can handle this file
 		BOSNode *new_node = load_images_handle_parameter_find_handler(param, state, file, load_images_file_filter_info);
+		#else
+		g_file_info_set_display_name(load_images_file_info, param_lowerc);
+		g_file_info_set_name(load_images_file_info, param_lowerc);
+		// Check if one of the file type handlers can handle this file
+		BOSNode *new_node = load_images_handle_parameter_find_handler(param, state, file, load_images_file_info);
+		#endif
+
 		if(new_node && new_node != FALSE_POINTER) {
 #if !defined(CONFIGURED_WITHOUT_MONTAGE_MODE) && !defined(CONFIGURED_WITHOUT_ACTIONS)
 			// Automatically enter montage mode
@@ -1838,11 +1883,16 @@ void load_images_handle_parameter(char *param, load_images_state_t state, gint d
 		if(file_info) {
 			gchar *param_file_mime_type = g_content_type_get_mime_type(g_file_info_get_content_type(file_info));
 			if(param_file_mime_type) {
+				#if GTK_MAJOR_VERSION < 4
 				GtkFileFilterInfo mime_guesser;
 				mime_guesser.contains = GTK_FILE_FILTER_MIME_TYPE;
 				mime_guesser.mime_type = param_file_mime_type;
-
 				new_node = load_images_handle_parameter_find_handler(param, state, file, &mime_guesser);
+				#else
+				g_file_info_set_content_type(mime_guesser, param_file_mime_type);
+				new_node = load_images_handle_parameter_find_handler(param, state, file, mime_guesser);
+				#endif
+
 				if(new_node && new_node != FALSE_POINTER) {
 					if(!current_file_node && main_window_visible) {
 						current_file_node = bostree_node_weak_ref(new_node);
@@ -1938,8 +1988,13 @@ void load_images() {/*{{{*/
 	}
 
 	// Prepare the file filter info structure used for handler detection
+	#if GTK_MAJOR_VERSION < 4
 	load_images_file_filter_info = g_new0(GtkFileFilterInfo, 1);
 	load_images_file_filter_info->contains = GTK_FILE_FILTER_FILENAME | GTK_FILE_FILTER_DISPLAY_NAME;
+	#else
+	load_images_file_info = g_file_info_new();
+	mime_guesser = g_file_info_new();
+	#endif
 
 	// Initialize structure to hold directory watches
 	if(option_watch_directories && active_directory_watches == NULL) {

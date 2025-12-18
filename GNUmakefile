@@ -47,6 +47,7 @@ endif
 
 # pkg-config lines for the main program
 LIBS_GENERAL=glib-2.0 >= 2.8 cairo >= 1.6 pango >= 1.10 gio-2.0
+LIBS_GTK4=gtk4
 LIBS_GTK3=gtk+-3.0 gdk-3.0
 LIBS_GTK2=gtk+-2.0 >= 2.6 gdk-2.0 >= 2.8
 
@@ -69,9 +70,11 @@ ifeq ($(EXECUTABLE_EXTENSION),.exe)
    LDLIBS_poppler+=-llcms2 -lstdc++
 endif
 
-# If no GTK_VERSION is set, try to auto-determine, with GTK 3 preferred
+# If no GTK_VERSION is set, try to auto-determine, with GTK 4 preferred
 ifeq ($(GTK_VERSION), 0)
-	ifeq ($(shell $(PKG_CONFIG) --errors-to-stdout --print-errors "$(LIBS_GTK3)"), )
+	ifeq ($(shell $(PKG_CONFIG) --errors-to-stdout --print-errors "$(LIBS_GTK4)"), )
+		override GTK_VERSION=4
+	else ifeq ($(shell $(PKG_CONFIG) --errors-to-stdout --print-errors "$(LIBS_GTK3)"), )
 		override GTK_VERSION=3
 	else
 		LIBS=$(LIBS_GTK2)
@@ -84,6 +87,9 @@ endif
 ifeq ($(GTK_VERSION), 3)
 	LIBS=$(LIBS_GTK3)
 endif
+ifeq ($(GTK_VERSION), 4)
+	LIBS=$(LIBS_GTK4)
+endif
 LIBS+=$(LIBS_GENERAL)
 
 # Add platform specific libraries
@@ -95,6 +101,7 @@ else
 endif
 
 # We need X11 to workaround a bug, see http://stackoverflow.com/questions/18647475
+# Bug is fixed on a systems with GTK-4, and library is called gtk4, so this finds no library and does nothing, correctly
 ifeq ($(filter x11, $(shell $(PKG_CONFIG) --errors-to-stdout --variable=target gtk+-$(GTK_VERSION).0; $(PKG_CONFIG) --errors-to-stdout --variable=targets gtk+-$(GTK_VERSION).0)), x11)
 	LIBS+=x11
 endif
