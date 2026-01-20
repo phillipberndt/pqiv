@@ -2494,7 +2494,18 @@ gboolean image_loader_load_single(BOSNode *node, gboolean called_from_main) {/*{
 		if(data) {
 			// Let the file type handler handle the details
 			g_mutex_lock(&file->lock);
-			file->file_type->load_fn(file, data, &error_pointer);
+
+			// Use thumbnail loader if requested and available
+			if((file->file_flags & FILE_FLAGS_LOAD_AS_THUMBNAIL) && file->file_type->thumbnail_load_fn != NULL) {
+				file->file_type->thumbnail_load_fn(file, data, &error_pointer);
+			}
+			else {
+				file->file_type->load_fn(file, data, &error_pointer);
+			}
+
+			// Clear thumbnail flag after loading
+			file->file_flags &= ~FILE_FLAGS_LOAD_AS_THUMBNAIL;
+
 			g_mutex_unlock(&file->lock);
 			g_object_unref(data);
 		}
@@ -2738,6 +2749,15 @@ gpointer image_loader_thread(gpointer user_data) {/*{{{*/
 				}
 			}
 			D_UNLOCK(file_tree);
+		}
+		#endif
+
+		#ifndef CONFIGURED_WITHOUT_MONTAGE_MODE
+		// If we need a thumbnail and don't have one, request thumbnail loading
+		if(!FILE(node)->thumbnail && (option_thumbnails.enabled || application_mode == MONTAGE)) {
+			FILE(node)->file_flags |= FILE_FLAGS_LOAD_AS_THUMBNAIL;
+			FILE(node)->thumbnail_width = option_thumbnails.width;
+			FILE(node)->thumbnail_height = option_thumbnails.height;
 		}
 		#endif
 
