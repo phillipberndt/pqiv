@@ -113,6 +113,9 @@ gboolean file_type_gdkpixbuf_load_destroy_old_image_callback(gpointer old_surfac
 	return FALSE;
 }/*}}}*/
 
+// Forward declaration for fallback in thumbnail loader
+void file_type_gdkpixbuf_load(file_t *file, GInputStream *data, GError **error_pointer);
+
 // Helper function to process a GdkPixbuf into a cairo surface
 // Used by both full-resolution and thumbnail loading
 static void file_type_gdkpixbuf_process_pixbuf(file_t *file, GdkPixbuf *pixbuf, GError **error_pointer) {/*{{{*/
@@ -211,6 +214,31 @@ static void file_type_gdkpixbuf_process_pixbuf(file_t *file, GdkPixbuf *pixbuf, 
 	file->is_loaded = TRUE;
 }/*}}}*/
 
+void file_type_gdkpixbuf_thumbnail_load(file_t *file, GInputStream *data, GError **error_pointer) {/*{{{*/
+	// Use gdk_pixbuf_new_from_stream_at_scale for faster thumbnail generation
+	// This is significantly faster than loading the full image and scaling down
+	GdkPixbuf *pixbuf = gdk_pixbuf_new_from_stream_at_scale(
+		data,
+		file->thumbnail_width > 0 ? file->thumbnail_width : 128,
+		file->thumbnail_height > 0 ? file->thumbnail_height : 128,
+		TRUE, // preserve_aspect_ratio
+		image_loader_cancellable,
+		error_pointer
+	);
+
+	if(pixbuf) {
+		file_type_gdkpixbuf_process_pixbuf(file, pixbuf, error_pointer);
+	}
+	else {
+		// Fallback to full load if scaled load fails
+		if(*error_pointer) {
+			g_warning("Thumbnail load failed, falling back to full load: %s", (*error_pointer)->message);
+			g_clear_error(error_pointer);
+		}
+		file_type_gdkpixbuf_load(file, data, error_pointer);
+	}
+}/*}}}*/
+
 void file_type_gdkpixbuf_load(file_t *file, GInputStream *data, GError **error_pointer) {/*{{{*/
 	file_private_data_gdkpixbuf_t *private = (file_private_data_gdkpixbuf_t *)file->private;
 	GdkPixbufAnimation *pixbuf_animation = NULL;
@@ -297,6 +325,7 @@ void file_type_gdkpixbuf_initializer(file_type_handler_t *info) {/*{{{*/
 	info->alloc_fn                 =  file_type_gdkpixbuf_alloc;
 	info->free_fn                  =  file_type_gdkpixbuf_free;
 	info->load_fn                  =  file_type_gdkpixbuf_load;
+	info->thumbnail_load_fn        =  file_type_gdkpixbuf_thumbnail_load;
 	info->unload_fn                =  file_type_gdkpixbuf_unload;
 	info->animation_initialize_fn  =  file_type_gdkpixbuf_animation_initialize;
 	info->animation_next_frame_fn  =  file_type_gdkpixbuf_animation_next_frame;
