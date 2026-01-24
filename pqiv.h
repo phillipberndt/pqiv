@@ -34,6 +34,7 @@
 
 #define FILE_FLAGS_ANIMATION      (guint)(1)
 #define FILE_FLAGS_MEMORY_IMAGE   (guint)(1<<1)
+#define FILE_FLAGS_LOAD_AS_THUMBNAIL (guint)(1<<2)
 
 #define FALSE_POINTER ((void*)-1)
 
@@ -94,6 +95,10 @@ struct _file {
 #ifndef CONFIGURED_WITHOUT_MONTAGE_MODE
 	// Cached thumbnail
 	cairo_surface_t *thumbnail;
+
+	// Desired thumbnail dimensions (used during loading)
+	guint thumbnail_width;
+	guint thumbnail_height;
 #endif
 
 	// Lock to prevent multiple threads from accessing the backend at the same
@@ -166,6 +171,7 @@ struct file_type_handler_struct_t {
 	file_type_alloc_fn_t alloc_fn;
 	file_type_free_fn_t free_fn;
 	file_type_load_fn_t load_fn;
+	file_type_load_fn_t thumbnail_load_fn;
 	file_type_unload_fn_t unload_fn;
 	file_type_animation_initialize_fn_t animation_initialize_fn;
 	file_type_animation_next_frame_fn_t animation_next_frame_fn;
