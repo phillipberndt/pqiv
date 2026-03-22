@@ -2652,6 +2652,35 @@ void image_loader_create_thumbnail(file_t *file) {/*{{{*/
 	cairo_destroy(cr);
 	file->thumbnail = surf;
 }/*}}}*/
+void image_loader_create_thumbnail_from_rendered(file_t *file, cairo_surface_t *image_surf) {/*{{{*/
+	int w = cairo_image_surface_get_width(image_surf);
+	int h = cairo_image_surface_get_height(image_surf);
+
+	cairo_surface_t *surf = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, w, h);
+	if(cairo_surface_status(surf) != CAIRO_STATUS_SUCCESS) {
+		cairo_surface_destroy(surf);
+		return;
+	}
+
+	cairo_t *cr = cairo_create(surf);
+
+	cairo_save(cr);
+	cairo_set_source_rgba(cr, 0., 0., 0., option_transparent_background ? 0. : 1.);
+	cairo_set_operator(cr, CAIRO_OPERATOR_SOURCE);
+	cairo_paint(cr);
+	cairo_restore(cr);
+
+	if(background_checkerboard_pattern != NULL && !option_transparent_background) {
+		cairo_set_source(cr, background_checkerboard_pattern);
+		cairo_paint(cr);
+	}
+
+	cairo_set_source_surface(cr, image_surf, 0, 0);
+	cairo_paint(cr);
+
+	cairo_destroy(cr);
+	file->thumbnail = surf;
+}/*}}}*/
 #endif
 void image_generate_prerendered_view(file_t *file, gboolean force, double scale_level) {/*{{{*/
 	if(option_lowmem) {
@@ -2738,6 +2767,39 @@ gpointer image_loader_thread(gpointer user_data) {/*{{{*/
 				}
 			}
 			D_UNLOCK(file_tree);
+		}
+		#endif
+
+		// If the file type supports direct thumbnail rendering, use that instead
+		// of a full image load for MONTAGE items.
+		#ifndef CONFIGURED_WITHOUT_MONTAGE_MODE
+		if(purpose == MONTAGE && !FILE(node)->thumbnail && FILE(node)->file_type->render_thumbnail_fn != NULL) {
+			GError *error_pointer = NULL;
+			GInputStream *data = image_loader_stream_file(FILE(node), &error_pointer);
+			if(data) {
+				g_mutex_lock(&FILE(node)->lock);
+				cairo_surface_t *image_surf = FILE(node)->file_type->render_thumbnail_fn(
+					FILE(node), data, option_thumbnails.width, option_thumbnails.height, &error_pointer);
+				g_mutex_unlock(&FILE(node)->lock);
+				g_object_unref(data);
+				if(image_surf) {
+					D_LOCK(file_tree);
+					image_loader_create_thumbnail_from_rendered(FILE(node), image_surf);
+					cairo_surface_destroy(image_surf);
+					if(FILE(node)->thumbnail && option_thumbnails.persist != THUMBNAILS_PERSIST_OFF && option_thumbnails.persist != THUMBNAILS_PERSIST_RO) {
+						store_thumbnail_to_cache(FILE(node), option_thumbnails.width, option_thumbnails.height, option_thumbnails.persist, option_thumbnails.special_thumbnail_directory);
+					}
+					bostree_node_weak_unref(file_tree, node);
+					D_UNLOCK(file_tree);
+					gdk_threads_add_idle((GSourceFunc)image_loaded_handler, node);
+					continue;
+				}
+			}
+			g_clear_error(&error_pointer);
+			D_LOCK(file_tree);
+			bostree_node_weak_unref(file_tree, node);
+			D_UNLOCK(file_tree);
+			continue;
 		}
 		#endif
 
