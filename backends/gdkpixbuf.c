@@ -277,6 +277,37 @@ void file_type_gdkpixbuf_draw(file_t *file, cairo_t *cr) {/*{{{*/
 	cairo_paint(cr);
 }/*}}}*/
 
+cairo_surface_t *file_type_gdkpixbuf_render_thumbnail(file_t *file, GInputStream *data, int width, int height, GError **error_pointer) {/*{{{*/
+	GdkPixbuf *pixbuf = gdk_pixbuf_new_from_stream_at_scale(data, width, height, TRUE, image_loader_cancellable, error_pointer);
+	if(pixbuf == NULL) {
+		return NULL;
+	}
+
+	GdkPixbuf *oriented = gdk_pixbuf_apply_embedded_orientation(pixbuf);
+	g_object_unref(pixbuf);
+	if(oriented == NULL) {
+		return NULL;
+	}
+
+	int actual_width = gdk_pixbuf_get_width(oriented);
+	int actual_height = gdk_pixbuf_get_height(oriented);
+
+	cairo_surface_t *surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, actual_width, actual_height);
+	if(cairo_surface_status(surface) != CAIRO_STATUS_SUCCESS) {
+		g_object_unref(oriented);
+		cairo_surface_destroy(surface);
+		return NULL;
+	}
+
+	cairo_t *cr = cairo_create(surface);
+	gdk_cairo_set_source_pixbuf(cr, oriented, 0, 0);
+	cairo_paint(cr);
+	cairo_destroy(cr);
+	g_object_unref(oriented);
+
+	return surface;
+}/*}}}*/
+
 void file_type_gdkpixbuf_initializer(file_type_handler_t *info) {/*{{{*/
 	// Fill the file filter pattern
 	info->file_types_handled = gtk_file_filter_new();
@@ -297,6 +328,7 @@ void file_type_gdkpixbuf_initializer(file_type_handler_t *info) {/*{{{*/
 	info->alloc_fn                 =  file_type_gdkpixbuf_alloc;
 	info->free_fn                  =  file_type_gdkpixbuf_free;
 	info->load_fn                  =  file_type_gdkpixbuf_load;
+	info->render_thumbnail_fn      =  file_type_gdkpixbuf_render_thumbnail;
 	info->unload_fn                =  file_type_gdkpixbuf_unload;
 	info->animation_initialize_fn  =  file_type_gdkpixbuf_animation_initialize;
 	info->animation_next_frame_fn  =  file_type_gdkpixbuf_animation_next_frame;

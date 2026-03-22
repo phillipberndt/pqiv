@@ -154,6 +154,10 @@ typedef double (*file_type_animation_next_frame_fn_t)(file_t *file);
 // Draw the current view to a cairo context
 typedef void (*file_type_draw_fn_t)(file_t *file, cairo_t *cr);
 
+// Optional: directly render a scaled thumbnail surface from file data.
+// If NULL, pqiv falls back to full load + draw_fn for thumbnail generation.
+typedef cairo_surface_t* (*file_type_render_thumbnail_fn_t)(file_t *file, GInputStream *data, int width, int height, GError **error_pointer);
+
 struct file_type_handler_struct_t {
 	// All files will be filtered with this filter. If it lets it pass,
 	// a handler is assigned to a file. If none do, the file is
@@ -166,6 +170,7 @@ struct file_type_handler_struct_t {
 	file_type_alloc_fn_t alloc_fn;
 	file_type_free_fn_t free_fn;
 	file_type_load_fn_t load_fn;
+	file_type_render_thumbnail_fn_t render_thumbnail_fn;
 	file_type_unload_fn_t unload_fn;
 	file_type_animation_initialize_fn_t animation_initialize_fn;
 	file_type_animation_next_frame_fn_t animation_next_frame_fn;
