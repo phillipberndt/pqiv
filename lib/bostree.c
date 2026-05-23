@@ -132,6 +132,10 @@ static BOSNode *_bostree_rotate_left(BOSTree *tree, BOSNode *P) {
 /* API implementation */
 BOSTree *bostree_new(BOSTree_cmp_function cmp_function, BOSTree_free_function free_function) {
 	BOSTree *new_tree = malloc(sizeof(BOSTree));
+	// If no memory, die.
+	if(NULL == new_tree) {
+		abort();
+	}
 	new_tree->root_node = NULL;
 	new_tree->cmp_function = cmp_function;
 	new_tree->free_function = free_function;
@@ -195,6 +199,14 @@ BOSNode *bostree_insert(BOSTree *tree, void *key, void *data) {
 	// Create new node
 	BOSNode *new_node = malloc(sizeof(BOSNode));
 	memset(new_node, 0, sizeof(BOSNode));
+	// Memset can return NULL if there's not enough free memory.
+	// We can return null and pretend everything is ok.
+	// Or we can abort because something is significantly wrong
+	// with system, and lettign it have some memory is more
+	// important than looking at pictures. Sorry.
+	if(NULL == new_node) {
+		abort();
+	}
 	new_node->key = key;
 	new_node->data = data;
 	new_node->weak_ref_count = 1;
@@ -564,6 +576,9 @@ BOSNode *bostree_previous_node(BOSNode *node) {
 }
 
 unsigned int bostree_rank(BOSNode *node) {
+	if(NULL==node){
+		return 0;
+	}
 	unsigned int counter = node->left_child_count;
 	while(node) {
 		if(node->parent_node && node->parent_node->right_child_node == node) counter += 1 + node->parent_node->left_child_count;
