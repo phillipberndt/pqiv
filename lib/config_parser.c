@@ -126,6 +126,11 @@ static void _config_parser_parse_data_invoke_callback(config_parser_callback_t c
 }
 
 void config_parser_parse_data(char *file_data, size_t file_length, config_parser_callback_t callback) {
+	//In some unlikely, but possible code paths file_data could be NULL; guard agains that
+	if(NULL==file_data) {
+		fprintf(stderr, "Info: no data to parse, possible malloc failure");
+		return;
+	}
 	enum { DEFAULT, SECTION_IDENTIFIER, COMMENT, VALUE } state = DEFAULT;
 	int section_had_keys = 0;
 	char *section_start = NULL, *section_end = NULL, *key_start = NULL, *key_end = NULL, *data_start = NULL, *value_start = NULL;
