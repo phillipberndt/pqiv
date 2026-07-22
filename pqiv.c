@@ -744,6 +744,7 @@ typedef struct {
 	GTree *outstanding_files;
 	GSList *recursion_folder_stack;
 	gchar *base_param;
+	gchar *monitored_directory_path;
 } directory_watch_options_t;
 GHashTable *active_directory_watches;
 
@@ -1353,8 +1354,8 @@ void load_images_directory_watch_callback(GFileMonitor *monitor, GFile *file, GF
 	gchar *name = NULL;
 	if(event_type == G_FILE_MONITOR_EVENT_CREATED || event_type == G_FILE_MONITOR_EVENT_CHANGES_DONE_HINT) {
 		name = g_file_get_path(file);
-		if(options->recursion_folder_stack && options->base_param) {
-			size_t original_path_length = strlen(options->recursion_folder_stack->data);
+		if(options->monitored_directory_path && options->base_param) {
+			size_t original_path_length = strlen(options->monitored_directory_path);
 			if(original_path_length && original_path_length < strlen(name)) {
 				gchar *new_name = g_strdup_printf("%s%s", options->base_param, name + original_path_length);
 				g_free(name);
@@ -1738,6 +1739,7 @@ void load_images_handle_parameter(char *param, load_images_state_t state, gint d
 						}
 					}
 					options->recursion_folder_stack = recursion_folder_stack;
+					options->monitored_directory_path = g_file_get_path(file_ptr);
 					g_signal_connect_data(directory_monitor, "changed", G_CALLBACK(load_images_directory_watch_callback), options, (GClosureNotify)gfree_with_dummy_arg, 0);
 					g_hash_table_insert(active_directory_watches, g_strdup(abs_path), directory_monitor);
 				}
