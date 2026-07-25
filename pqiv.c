@@ -1479,6 +1479,13 @@ BOSNode *load_images_handle_parameter_add_file(load_images_state_t state, file_t
 		// development machine.
 		update_info_text(NULL);
 		info_text_queue_redraw();
+		if(slideshow_timeout_id == 0 && is_current_file_loaded()
+		#ifndef CONFIGURED_WITHOUT_MONTAGE_MODE
+			&& application_mode != MONTAGE
+		#endif
+		) {
+			slideshow_timeout_id = gdk_threads_add_timeout(option_slideshow_interval * 1000, slideshow_timeout_callback, NULL);
+		}
 		#ifndef CONFIGURED_WITHOUT_MONTAGE_MODE
 		if(application_mode == MONTAGE) {
 			D_LOCK(file_tree);
