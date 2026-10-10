@@ -3426,25 +3426,37 @@ BOSNode *relative_image_pointer_directory(int direction, gboolean logical_direct
 	// be inverse operations of each other. This makes this function slightly
 	// complex.
 	//
-	BOSNode *target;
-	BOSNode *current = current_file_node;
+	BOSNode *target = current_file_node;
+	BOSNode *current;
 
-	if(direction == 1) {
-		// Forward searches are trivial
-		target = directory_image_movement_find_different_directory(current, 1, logical_directories);
-	}
-	else {
-		// Bardward searches are more involved, because we want to end up at the first image
-		// of the previous directory, not at the last one. The trick is to
-		// search backwards twice and then again go forward by one image.
-		target = directory_image_movement_find_different_directory(current, -1, logical_directories);
-		target = directory_image_movement_find_different_directory(target, -1, logical_directories);
+	// Move by one directory at a time, |direction| times
+	while(direction != 0) {
+		current = target;
 
-		if(target != current) {
-			target = bostree_next_node(target);
-			if(!target) {
-				target = bostree_select(file_tree, 0);
+		if(direction > 0) {
+			// Forward searches are trivial
+			target = directory_image_movement_find_different_directory(current, 1, logical_directories);
+			direction--;
+		}
+		else {
+			// Bardward searches are more involved, because we want to end up at the first image
+			// of the previous directory, not at the last one. The trick is to
+			// search backwards twice and then again go forward by one image.
+			target = directory_image_movement_find_different_directory(current, -1, logical_directories);
+			target = directory_image_movement_find_different_directory(target, -1, logical_directories);
+
+			if(target != current) {
+				target = bostree_next_node(target);
+				if(!target) {
+					target = bostree_select(file_tree, 0);
+				}
 			}
+			direction++;
+		}
+
+		if(target == current) {
+			// There is no other directory
+			break;
 		}
 	}
 
