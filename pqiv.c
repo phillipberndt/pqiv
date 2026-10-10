@@ -3474,7 +3474,14 @@ void directory_image_movement(int direction, gboolean logical_directories) {/*{{
 	D_UNLOCK(file_tree);
 
 	if(application_mode == DEFAULT) {
-		absolute_image_movement(target);
+		// Only perform the movement if there is another directory to go to
+		if(target != current_file_node) {
+			absolute_image_movement(target);
+		}
+		else {
+			bostree_node_weak_unref(file_tree, target);
+			action_done();
+		}
 	}
 	#ifndef CONFIGURED_WITHOUT_MONTAGE_MODE
 	else if(application_mode == MONTAGE) {
