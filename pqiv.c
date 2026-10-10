@@ -1448,7 +1448,10 @@ BOSNode *load_images_handle_parameter_add_file(load_images_state_t state, file_t
 			}
 		}
 		else {
-			*index = (float)bostree_node_count(file_tree);
+			// Append after the last image. The node count would collide with
+			// existing indices once images have been removed.
+			BOSNode *last_node = bostree_node_count(file_tree) ? bostree_select(file_tree, bostree_node_count(file_tree) - 1) : NULL;
+			*index = last_node ? *(float *)last_node->key + 1.f : 0.f;
 		}
 		new_node = bostree_insert(file_tree, (void *)index, file);
 	}
@@ -1882,7 +1885,7 @@ void load_images_handle_parameter(char *param, load_images_state_t state, gint d
 	}
 }/*}}}*/
 int image_tree_float_compare(const float *a, const float *b) {/*{{{*/
-	return *a > *b;
+	return *a > *b ? 1 : (*a < *b ? -1 : 0);
 }/*}}}*/
 void file_free(file_t *file) {/*{{{*/
 	if(file->file_type && file->file_type->free_fn != NULL && file->private) {
