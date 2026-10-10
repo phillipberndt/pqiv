@@ -3663,7 +3663,8 @@ void apply_external_image_filter(gchar *external_filter) {/*{{{*/
 	}
 	else if(external_filter[0] == '-') {
 		GString *marklist = get_all_marked();
-		argv[2] = external_filter + 1;
+		// $1 is replaced, but the file name is not appended if it is missing
+		argv[2] = strstr(external_filter + 1, "$1") ? apply_external_image_filter_prepare_command(external_filter + 1) : g_strdup(external_filter + 1);
 		GPid child_pid;
 		gint child_stdin;
 		if(!g_spawn_async_with_pipes(NULL, argv, NULL,
@@ -3699,10 +3700,12 @@ void apply_external_image_filter(gchar *external_filter) {/*{{{*/
 			}
 		}
 		g_string_free(marklist, TRUE);
+		g_free(argv[2]);
 	}
 	else if(external_filter[0] == '|') {
 		// Pipe image into program, read image from its stdout
-		argv[2] = external_filter + 1;
+		// $1 is replaced, but the file name is not appended if it is missing
+		argv[2] = strstr(external_filter + 1, "$1") ? apply_external_image_filter_prepare_command(external_filter + 1) : g_strdup(external_filter + 1);
 		GPid child_pid;
 		gint child_stdin;
 		gint child_stdout;
@@ -3766,6 +3769,7 @@ void apply_external_image_filter(gchar *external_filter) {/*{{{*/
 			}
 			g_io_channel_unref(stdin_channel);
 		}
+		g_free(argv[2]);
 	}
 	else {
 		// Plain system() call
