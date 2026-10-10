@@ -1696,6 +1696,7 @@ void load_images_handle_parameter(char *param, load_images_state_t state, gint d
 				}
 				return;
 			}
+			gchar *original_parameter_basename = original_parameter != NULL ? g_path_get_basename(original_parameter) : NULL;
 			while(TRUE) {
 				const gchar *dir_entry = g_dir_read_name(dir_ptr);
 				if(dir_entry == NULL) {
@@ -1707,7 +1708,7 @@ void load_images_handle_parameter(char *param, load_images_state_t state, gint d
 				}
 
 				gchar *dir_entry_full = g_strdup_printf("%s%s%s", param, g_str_has_suffix(param, G_DIR_SEPARATOR_S) ? "" : G_DIR_SEPARATOR_S, dir_entry);
-				if(!(original_parameter != NULL && g_strcmp0(dir_entry_full, original_parameter) == 0)) {
+				if(!(original_parameter_basename != NULL && g_strcmp0(dir_entry, original_parameter_basename) == 0)) {
 					// Skip if we are in --browse mode and this is the file which we have already added above.
 					load_images_handle_parameter(dir_entry_full, RECURSION, depth + 1, recursion_folder_stack);
 				}
@@ -1720,6 +1721,7 @@ void load_images_handle_parameter(char *param, load_images_state_t state, gint d
 				}
 			}
 			g_dir_close(dir_ptr);
+			g_free(original_parameter_basename);
 
 			// Add a watch for new files in this directory
 			if(option_watch_directories && !g_hash_table_lookup(active_directory_watches, abs_path)) {
