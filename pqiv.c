@@ -3563,13 +3563,11 @@ gchar *apply_external_image_filter_prepare_command(gchar *command) { /*{{{*/
 		gchar *quoted = g_shell_quote(CURRENT_FILE->file_name);
 		D_UNLOCK(file_tree);
 
-		gchar *ins_pos;
 		gchar *retval;
-		if((ins_pos = g_strrstr(command, "$1")) != NULL) {
-			retval = (gchar*)g_malloc(strlen(command) + strlen(quoted) + 2);
-
-			memcpy(retval, command, ins_pos - command);
-			sprintf(retval + (ins_pos - command), "%s%s", quoted, ins_pos + 2);
+		if(strstr(command, "$1") != NULL) {
+			gchar **parts = g_strsplit(command, "$1", -1);
+			retval = g_strjoinv(quoted, parts);
+			g_strfreev(parts);
 		}
 		else {
 			retval = (gchar*)g_malloc(strlen(command) + 2 + strlen(quoted));
