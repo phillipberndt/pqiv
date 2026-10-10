@@ -4021,7 +4021,16 @@ static void status_output() {/*{{{*/
 	}
 	D_LOCK(file_tree);
 	if(file_tree_valid && current_file_node) {
-		printf("CURRENT_FILE_NAME=\"%s\"\nCURRENT_FILE_INDEX=%d\n\n", CURRENT_FILE->file_name, bostree_rank(current_file_node));
+		// Escape the characters that are special within double quotes in sh
+		GString *escaped_file_name = g_string_new(NULL);
+		for(const gchar *c = CURRENT_FILE->file_name; *c; c++) {
+			if(*c == '"' || *c == '\\' || *c == '$' || *c == '`') {
+				g_string_append_c(escaped_file_name, '\\');
+			}
+			g_string_append_c(escaped_file_name, *c);
+		}
+		printf("CURRENT_FILE_NAME=\"%s\"\nCURRENT_FILE_INDEX=%d\n\n", escaped_file_name->str, bostree_rank(current_file_node));
+		g_string_free(escaped_file_name, TRUE);
 		fflush(stdout);
 	}
 	D_UNLOCK(file_tree);
