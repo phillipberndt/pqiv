@@ -6744,6 +6744,8 @@ gboolean window_configure_callback(GtkWidget *widget, GdkEventConfigure *event, 
 		#endif
 
 		// Update window size
+		gint old_main_window_width = main_window_width;
+		gint old_main_window_height = main_window_height;
 		if(main_window_in_fullscreen) {
 			main_window_width = screen_geometry.width;
 			main_window_height = screen_geometry.height;
@@ -6765,7 +6767,7 @@ gboolean window_configure_callback(GtkWidget *widget, GdkEventConfigure *event, 
 		}
 
 		// Rescale the image
-		if(main_window_width != event->width - csd_width || main_window_height != event->height - csd_height) {
+		if(main_window_width != old_main_window_width || main_window_height != old_main_window_height) {
 			set_scale_level_to_fit();
 		}
 		gdk_window_invalidate_rect(gtk_widget_get_window(GTK_WIDGET(main_window)), NULL, TRUE);
