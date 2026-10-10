@@ -8155,6 +8155,21 @@ gboolean read_commands_thread_helper(gpointer command) {/*{{{*/
 	g_free(command);
 	return FALSE;
 }/*}}}*/
+gboolean read_stdin_commands_thread_helper(gpointer command) {/*{{{*/
+	if(global_argc == 1) {
+		// Without files, the window only appears once actions from stdin
+		// add some, so these must not wait for it while there are none.
+		D_LOCK(file_tree);
+		gboolean no_images = !file_tree_valid || bostree_node_count(file_tree) == 0;
+		D_UNLOCK(file_tree);
+		if(no_images) {
+			perform_string_action((gchar *)command);
+			g_free(command);
+			return FALSE;
+		}
+	}
+	return read_commands_thread_helper(command);
+}/*}}}*/
 gpointer read_commands_thread(gpointer user_data) {/*{{{*/
 		GIOChannel *stdin_reader =
 		#ifdef _WIN32
@@ -8176,7 +8191,7 @@ gpointer read_commands_thread(gpointer user_data) {/*{{{*/
 			}
 
 			buffer[line_terminator_pos] = 0;
-			gdk_threads_add_idle(read_commands_thread_helper, buffer);
+			gdk_threads_add_idle(read_stdin_commands_thread_helper, buffer);
 		}
 		g_io_channel_unref(stdin_reader);
 		return NULL;
