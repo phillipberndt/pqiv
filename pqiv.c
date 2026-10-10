@@ -5744,6 +5744,10 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 
 		case ACTION_SET_SCALE_LEVEL_RELATIVE:
 		case ACTION_SET_SCALE_LEVEL_ABSOLUTE:
+			if(parameter.pdouble <= 0) {
+				g_printerr("Invalid parameter for %s()\n", action_id == ACTION_SET_SCALE_LEVEL_ABSOLUTE ? "set_scale_level_absolute" : "set_scale_level_relative");
+				break;
+			}
 			if(!is_current_file_loaded()) return;
 			if(action_id == ACTION_SET_SCALE_LEVEL_ABSOLUTE) {
 				current_scale_level = parameter.pdouble;
@@ -5761,6 +5765,9 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 				}
 			}
 			current_scale_level = round(current_scale_level * 100.) / 100.;
+			if(current_scale_level < .01) {
+				current_scale_level = .01;
+			}
 			if((option_scale == AUTO_SCALEDOWN && current_scale_level > 1) || option_scale == NO_SCALING) {
 				scale_override = TRUE;
 			}
