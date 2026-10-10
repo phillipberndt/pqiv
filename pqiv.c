@@ -797,6 +797,7 @@ void window_clear_background_pixmap();
 gboolean window_show_background_pixmap_cb(gpointer user_data);
 BOSNode *image_pointer_by_name(gchar *display_name);
 BOSNode *relative_image_pointer(ptrdiff_t movement);
+BOSNode *relative_image_pointer_from(BOSNode *current_node, ptrdiff_t movement);
 void file_tree_free_helper(BOSNode *node);
 gint relative_image_pointer_shuffle_list_cmp(shuffled_image_ref_t *ref, BOSNode *node);
 void relative_image_pointer_shuffle_list_unref_fn(shuffled_image_ref_t *ref);
@@ -3100,8 +3101,8 @@ BOSNode *image_pointer_by_name(gchar *display_name) {/*{{{*/
 		return NULL;
 	}
 }/*}}}*/
-BOSNode *relative_image_pointer(ptrdiff_t movement) {/*{{{*/
-	// Obtain a pointer to the image that is +movement away from the current image
+BOSNode *relative_image_pointer_from(BOSNode *current_node, ptrdiff_t movement) {/*{{{*/
+	// Obtain a pointer to the image that is +movement away from current_node
 	// This function behaves differently depending on whether shuffle mode is
 	// enabled. It implements the actual shuffling.
 	// It does not lock the file tree. This should be done before calling this
@@ -3112,7 +3113,7 @@ BOSNode *relative_image_pointer(ptrdiff_t movement) {/*{{{*/
 	if(option_shuffle) {
 #if 0
 		// Output some debug info
-		GList *aa = g_list_find_custom(shuffled_images_list, current_file_node, (GCompareFunc)relative_image_pointer_shuffle_list_cmp);
+		GList *aa = g_list_find_custom(shuffled_images_list, current_node, (GCompareFunc)relative_image_pointer_shuffle_list_cmp);
 		g_print("Current shuffle list: ");
 		for(GList *e = g_list_first(shuffled_images_list); e; e = e->next) {
 			BOSNode *n = bostree_node_weak_unref(file_tree, bostree_node_weak_ref(LIST_SHUFFLED_IMAGE(e)->node));
@@ -3132,7 +3133,7 @@ BOSNode *relative_image_pointer(ptrdiff_t movement) {/*{{{*/
 #endif
 
 		// First, check if the relative movement is already possible within the existing list
-		GList *current_shuffled_image = g_list_find_custom(shuffled_images_list, current_file_node, (GCompareFunc)relative_image_pointer_shuffle_list_cmp);
+		GList *current_shuffled_image = g_list_find_custom(shuffled_images_list, current_node, (GCompareFunc)relative_image_pointer_shuffle_list_cmp);
 		if(!current_shuffled_image) {
 			current_shuffled_image = g_list_last(shuffled_images_list);
 
@@ -3172,7 +3173,7 @@ BOSNode *relative_image_pointer(ptrdiff_t movement) {/*{{{*/
 			next_candidate = chosen_candidate = bostree_select(file_tree, g_random_int_range(0, count));
 			if(!next_candidate) {
 				// All images have gone.
-				return current_file_node;
+				return current_node;
 			}
 			while(g_list_find_custom(shuffled_images_list, next_candidate, (GCompareFunc)relative_image_pointer_shuffle_list_cmp)) {
 				next_candidate = bostree_next_node(next_candidate);
@@ -3190,7 +3191,7 @@ BOSNode *relative_image_pointer(ptrdiff_t movement) {/*{{{*/
 
 			// If this is the start of a cycle and the current image has
 			// been selected again by chance, jump one image ahead.
-			if((shuffled_images_list == NULL || shuffled_images_list->data == NULL) && next_candidate == current_file_node && bostree_node_count(file_tree) > 1) {
+			if((shuffled_images_list == NULL || shuffled_images_list->data == NULL) && next_candidate == current_node && bostree_node_count(file_tree) > 1) {
 				next_candidate = bostree_next_node(next_candidate);
 				if(!next_candidate) {
 					next_candidate = bostree_select(file_tree, 0);
@@ -3235,7 +3236,7 @@ BOSNode *relative_image_pointer(ptrdiff_t movement) {/*{{{*/
 			BOSNode *chosen_candidate = bostree_select(file_tree, g_random_int_range(0, count));
 			if(!chosen_candidate) {
 				// All images have gone.
-				return current_file_node;
+				return current_node;
 			}
 			g_list_free_full(shuffled_images_list, (GDestroyNotify)relative_image_pointer_shuffle_list_unref_fn);
 			shuffled_images_list = g_list_append(NULL, relative_image_pointer_shuffle_list_create(chosen_candidate));
@@ -3265,7 +3266,7 @@ BOSNode *relative_image_pointer(ptrdiff_t movement) {/*{{{*/
 				// happen. pqiv will likely exit. But return the current image,
 				// just to be sure that nothing breaks.
 				g_warn_if_reached();
-				return current_file_node;
+				return current_node;
 			}
 		}
 		return image;
@@ -3274,19 +3275,19 @@ BOSNode *relative_image_pointer(ptrdiff_t movement) {/*{{{*/
 		// Sequential movement. This is the simple stuff:
 
 		if(movement == 0) {
-			// Only used for initialization, current_file_node might be 0
-			return current_file_node ? current_file_node : bostree_select(file_tree, 0);
+			// Only used for initialization, current_node might be 0
+			return current_node ? current_node : bostree_select(file_tree, 0);
 		}
 		else if(movement == 1) {
-			BOSNode *ret = bostree_next_node(current_file_node);
+			BOSNode *ret = bostree_next_node(current_node);
 			return ret ? ret : bostree_select(file_tree, 0);
 		}
 		else if(movement == -1) {
-			BOSNode *ret = bostree_previous_node(current_file_node);
+			BOSNode *ret = bostree_previous_node(current_node);
 			return ret ? ret : bostree_select(file_tree, bostree_node_count(file_tree) - 1);
 		}
 		else {
-			ptrdiff_t pos = bostree_rank(current_file_node) + movement;
+			ptrdiff_t pos = bostree_rank(current_node) + movement;
 			while(pos < 0) {
 				pos += count;
 			}
@@ -3296,6 +3297,10 @@ BOSNode *relative_image_pointer(ptrdiff_t movement) {/*{{{*/
 		}
 	}
 }/*}}}*/
+BOSNode *relative_image_pointer(ptrdiff_t movement) {/*{{{*/
+	// Obtain a pointer to the image that is +movement away from the current image
+	return relative_image_pointer_from(current_file_node, movement);
+}/*}}}*/
 void relative_image_movement(ptrdiff_t movement) {/*{{{*/
 	// Calculate new position
 	D_LOCK(file_tree);
@@ -3303,7 +3308,17 @@ void relative_image_movement(ptrdiff_t movement) {/*{{{*/
 		D_UNLOCK(file_tree);
 		return;
 	}
-	BOSNode *target = bostree_node_weak_ref(relative_image_pointer(movement));
+	BOSNode *current_node = current_file_node;
+	#ifndef CONFIGURED_WITHOUT_MONTAGE_MODE
+	if(application_mode == MONTAGE && montage_window_control.selected_node != NULL) {
+		// In montage mode, move relative to the selection
+		BOSNode *selected_node = bostree_node_weak_unref(file_tree, bostree_node_weak_ref(montage_window_control.selected_node));
+		if(selected_node) {
+			current_node = selected_node;
+		}
+	}
+	#endif
+	BOSNode *target = bostree_node_weak_ref(relative_image_pointer_from(current_node, movement));
 	D_UNLOCK(file_tree);
 
 	// Check if this movement is allowed
@@ -4744,7 +4759,11 @@ void window_draw_thumbnail_montage_show_binding_overlays_looper(gpointer key, gp
 				}
 				break;
 			case ACTION_GOTO_FILE_RELATIVE:
-				target_index = bostree_rank(relative_image_pointer(binding->parameter.pint));
+				target_node = bostree_select(file_tree, (montage_window_control.scroll_y + data.current_y) * n_thumbs_x + data.current_x);
+				if(!target_node) {
+					break;
+				}
+				target_index = bostree_rank(relative_image_pointer_from(target_node, binding->parameter.pint));
 				data.current_y = target_index / n_thumbs_x - montage_window_control.scroll_y;
 				data.current_x = target_index % n_thumbs_x;
 				break;
