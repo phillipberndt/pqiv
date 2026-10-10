@@ -3787,7 +3787,14 @@ void hardlink_current_image() {/*{{{*/
 		gchar *store_target = g_strdup_printf("%s.png", link_target);
 
 
-		cairo_surface_t *surface = get_scaled_image_surface_for_current_image();
+		cairo_surface_t *surface = NULL;
+		if(g_file_test(store_target, G_FILE_TEST_EXISTS)) {
+			update_info_text("Failed to link file, and its PNG fallback already exists in .pqiv-select");
+			info_text_queue_redraw();
+		}
+		else {
+			surface = get_scaled_image_surface_for_current_image();
+		}
 		if(surface) {
 			if(cairo_surface_write_to_png(surface, store_target) == CAIRO_STATUS_SUCCESS) {
 				UPDATE_INFO_TEXT("Failed to link file, but stored what you see into %s", store_target);
