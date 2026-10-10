@@ -216,6 +216,9 @@ gboolean gui_initialized = FALSE;
 int global_argc;
 char **global_argv;
 
+// Exit status of pqiv; set to 1 if pqiv quits because no images are left
+int exit_status = 0;
+
 // Those surfaces are here to store scaled image versions (to reduce
 // processor load) and to store the last visible image to have something to
 // display while fading and while the (new) current image has not been loaded
@@ -2574,7 +2577,7 @@ gboolean image_loader_load_single(BOSNode *node, gboolean called_from_main) {/*{
 		else {
 			bostree_remove(file_tree, node);
 		}
-		if(!called_from_main && bostree_node_count(file_tree) == 0) {
+		if(!called_from_main && file_tree_valid && bostree_node_count(file_tree) == 0) {
 			if(option_allow_empty_window) {
 				D_UNLOCK(file_tree);
 				current_file_node = NULL;
@@ -2594,6 +2597,7 @@ gboolean image_loader_load_single(BOSNode *node, gboolean called_from_main) {/*{
 				if(gtk_main_level() == 0) {
 					exit(1);
 				}
+				exit_status = 1;
 				gtk_main_quit();
 			}
 		}
@@ -7470,6 +7474,7 @@ gboolean initialize_gui_or_quit_callback(gpointer user_data) {/*{{{*/
 
 	if(!file_tree_valid || bostree_node_count(file_tree) == 0) {
 		g_printerr("No images left to display.\n");
+		exit_status = 1;
 		gtk_main_quit();
 	}
 
@@ -8126,14 +8131,19 @@ gpointer load_images_thread(gpointer user_data) {/*{{{*/
 
 	load_images();
 
+	gboolean tree_valid = file_tree_valid;
 	gboolean tree_empty = TRUE;
-	if(file_tree_valid) {
+	if(tree_valid) {
 		tree_empty = bostree_node_count(file_tree) == 0;
 	}
 
 	if(!option_wait_for_images_to_appear) {
 		if(tree_empty) {
-			g_printerr("No images left to display.\n");
+			// An invalid tree means that pqiv is quitting anyway
+			if(tree_valid) {
+				g_printerr("No images left to display.\n");
+				exit_status = 1;
+			}
 			g_idle_add((GSourceFunc)gtk_main_quit, NULL);
 			return NULL;
 		}
@@ -8166,6 +8176,7 @@ gboolean inner_main(void *user_data) {/*{{{*/
 		load_images_thread(NULL);
 		if(!initialize_gui()) {
 			g_printerr("No images left to display.\n");
+			exit_status = 1;
 			gtk_main_quit();
 		}
 	}
@@ -8334,6 +8345,6 @@ int main(int argc, char *argv[]) {
 	bostree_destroy(file_tree);
 	D_UNLOCK(file_tree);
 
-	return 0;
+	return exit_status;
 }
 // vim:noet ts=4 sw=4 tw=0 fdm=marker
