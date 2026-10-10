@@ -5749,7 +5749,16 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 				current_scale_level = parameter.pdouble;
 			}
 			else {
+				// At low scale levels, the rounding below can undo a relative
+				// change. Change the level by at least 1% in that case.
+				double rounded_scale_level = round(current_scale_level * 100.) / 100.;
 				current_scale_level *= parameter.pdouble;
+				if(parameter.pdouble > 1 && round(current_scale_level * 100.) / 100. <= rounded_scale_level) {
+					current_scale_level = rounded_scale_level + .01;
+				}
+				else if(parameter.pdouble < 1 && round(current_scale_level * 100.) / 100. >= rounded_scale_level && rounded_scale_level > .015) {
+					current_scale_level = rounded_scale_level - .01;
+				}
 			}
 			current_scale_level = round(current_scale_level * 100.) / 100.;
 			if((option_scale == AUTO_SCALEDOWN && current_scale_level > 1) || option_scale == NO_SCALING) {
