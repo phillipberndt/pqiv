@@ -4526,7 +4526,7 @@ void montage_window_set_cursor(int pos_x, int pos_y) {/*{{{*/
 
 	size_t new_selection = montage_window_control.scroll_y * n_thumbs_x + pos_x + pos_y * n_thumbs_x;
 
-	if(new_selection > number_of_images) {
+	if(new_selection >= number_of_images) {
 		new_selection = number_of_images - 1;
 	}
 
