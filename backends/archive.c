@@ -154,7 +154,7 @@ BOSNode *file_type_archive_alloc(load_images_state_t state, file_t *file) {/*{{{
 
 		// Prepare a new file_t for this entry
 		gchar *sub_name = g_strdup_printf("%s#%s", file->display_name, entry_name);
-		file_t *new_file = image_loader_duplicate_file(file, g_strdup(sub_name), g_strdup(sub_name), sub_name);
+		file_t *new_file = image_loader_duplicate_file(file, g_strdup(sub_name), sub_name, file->sort_name ? g_strdup_printf("%s#%s", file->sort_name, entry_name) : NULL);
 		if(new_file->file_data) {
 			g_bytes_unref(new_file->file_data);
 			new_file->file_data = NULL;
