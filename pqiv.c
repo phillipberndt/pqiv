@@ -6932,9 +6932,16 @@ void handle_input_event(guint key_binding_value) {/*{{{*/
 			key_binding_t *binding = active_key_binding.key_binding;
 			active_key_binding.key_binding = binding->next_action;
 			queue_action_from_binding(binding);
-			return;
+
+			// The key that broke the sequence is handled on its own below,
+			// except in follow mode, where it just ends follow mode
+			if(binding->action == ACTION_MONTAGE_MODE_FOLLOW_PROCEED) {
+				return;
+			}
 		}
-		active_key_binding.key_binding = NULL;
+		else {
+			active_key_binding.key_binding = NULL;
+		}
 	}
 
 	if(!key_binding_value) {
