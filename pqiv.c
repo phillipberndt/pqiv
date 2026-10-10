@@ -1465,6 +1465,14 @@ BOSNode *load_images_handle_parameter_add_file(load_images_state_t state, file_t
 	if(state == BROWSE_ORIGINAL_PARAMETER && browse_startup_node == NULL) {
 		browse_startup_node = bostree_node_weak_ref(new_node);
 	}
+#if !defined(CONFIGURED_WITHOUT_MONTAGE_MODE) && !defined(CONFIGURED_WITHOUT_ACTIONS)
+	// Automatically enter montage mode
+	if(option_auto_montage_mode && state != FILTER_OUTPUT && bostree_node_count(file_tree) >= 2) {
+		pqiv_action_parameter_t empty_param = { .pint = 0 };
+		queue_action(ACTION_MONTAGE_MODE_ENTER, empty_param);
+		option_auto_montage_mode = FALSE;
+	}
+#endif
 	D_UNLOCK(file_tree);
 	if(option_lazy_load && !gui_initialized) {
 		// When the first image has been processed, we can show the window
@@ -1809,14 +1817,6 @@ void load_images_handle_parameter(char *param, load_images_state_t state, gint d
 		// Check if one of the file type handlers can handle this file
 		BOSNode *new_node = load_images_handle_parameter_find_handler(param, state, file, load_images_file_filter_info);
 		if(new_node && new_node != FALSE_POINTER) {
-#if !defined(CONFIGURED_WITHOUT_MONTAGE_MODE) && !defined(CONFIGURED_WITHOUT_ACTIONS)
-			// Automatically enter montage mode
-			if(option_auto_montage_mode && bostree_node_count(file_tree) == 2) {
-				pqiv_action_parameter_t empty_param = { .pint = 0 };
-				queue_action(ACTION_MONTAGE_MODE_ENTER, empty_param);
-				option_auto_montage_mode = FALSE;
-			}
-#endif
 			if(!current_file_node && main_window_visible) {
 				current_file_node = bostree_node_weak_ref(new_node);
 				g_idle_add((GSourceFunc)absolute_image_movement, bostree_node_weak_ref(new_node));
