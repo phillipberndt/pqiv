@@ -264,6 +264,7 @@ gint slideshow_timeout_id = -1;
 // A list containing references to the images in shuffled order
 typedef struct {
 	gboolean viewed;
+	gboolean completed_cycle;
 	BOSNode *node;
 } shuffled_image_ref_t;
 guint shuffled_images_visited_count = 0;
@@ -2331,6 +2332,13 @@ gboolean image_loaded_handler(gconstpointer node) {/*{{{*/
 						shuffled_images_visited_count = 0;
 						shuffled_images_list_length = 0;
 					}
+					else {
+						// Remember the last image of the cycle, it marks the end of the files
+						for(GList *e = shuffled_images_list; e; e = e->next) {
+							LIST_SHUFFLED_IMAGE(e)->completed_cycle = FALSE;
+						}
+						LIST_SHUFFLED_IMAGE(current_shuffled_image)->completed_cycle = TRUE;
+					}
 				}
 			}
 		}
@@ -3083,6 +3091,7 @@ shuffled_image_ref_t *relative_image_pointer_shuffle_list_create(BOSNode *node) 
 	shuffled_image_ref_t *retval = g_slice_new(shuffled_image_ref_t);
 	retval->node = bostree_node_weak_ref(node);
 	retval->viewed = FALSE;
+	retval->completed_cycle = FALSE;
 	return retval;
 }
 BOSNode *image_pointer_by_name(gchar *display_name) {/*{{{*/
@@ -3319,12 +3328,27 @@ void relative_image_movement(ptrdiff_t movement) {/*{{{*/
 	}
 	#endif
 	BOSNode *target = bostree_node_weak_ref(relative_image_pointer_from(current_node, movement));
+	// In shuffle mode, the end of the files is the image that completed the
+	// cycle. Check whether a forward move reaches past it.
+	gboolean shuffle_end_passed = FALSE;
+	if(option_shuffle && movement > 0) {
+		gint position = 0, current_position = -1, end_position = -1;
+		for(GList *e = shuffled_images_list; e; e = e->next, position++) {
+			if(LIST_SHUFFLED_IMAGE(e)->node == current_node) {
+				current_position = position;
+			}
+			if(LIST_SHUFFLED_IMAGE(e)->completed_cycle) {
+				end_position = position;
+			}
+		}
+		shuffle_end_passed = current_position < 0 || end_position < 0 || movement > (end_position - current_position + position) % position;
+	}
 	D_UNLOCK(file_tree);
 
 	// Check if this movement is allowed. In montage mode, where only the
 	// selection moves, the end of the list does not apply.
 	if(application_mode == DEFAULT && (
-		   (option_shuffle && shuffled_images_visited_count == bostree_node_count(file_tree)) ||
+		   (option_shuffle && shuffle_end_passed && shuffled_images_visited_count == bostree_node_count(file_tree)) ||
 		   (!option_shuffle && movement > 0 && bostree_rank(target) <= bostree_rank(current_file_node)))) {
 		if(option_end_of_files_action == QUIT) {
 			bostree_node_weak_unref(file_tree, target);
