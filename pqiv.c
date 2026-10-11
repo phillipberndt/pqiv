@@ -8197,7 +8197,8 @@ gboolean perform_string_action(const gchar *string_action) {/*{{{*/
 			command_found = TRUE;
 
 			gchar *parameter = g_malloc(parameter_length + 1);
-			for(int i=0, j=0; j<parameter_length; i++, j++) {
+			int i = 0;
+			for(int j=0; j<parameter_length; i++, j++) {
 				if(parameter_start[j] == '\\') {
 					if(++j > parameter_length) {
 						break;
@@ -8205,7 +8206,7 @@ gboolean perform_string_action(const gchar *string_action) {/*{{{*/
 				}
 				parameter[i] = parameter_start[j];
 			}
-			parameter[parameter_length] = 0;
+			parameter[i] = 0;
 
 			pqiv_action_parameter_t parsed_parameter;
 			switch(descriptor->parameter_type) {
