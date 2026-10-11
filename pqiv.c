@@ -1228,7 +1228,8 @@ void parse_configuration_file_callback(char *section, char *key, config_parser_v
 					} break;
 					case G_OPTION_ARG_CALLBACK:
 					case G_OPTION_ARG_STRING:
-						if(value->chrpval != NULL) {
+						// Callbacks of flags without an argument only run if the flag is set
+						if(value->chrpval != NULL && (!(iter->flags & G_OPTION_FLAG_NO_ARG) || value->intval)) {
 							if(iter->arg == G_OPTION_ARG_CALLBACK) {
 								gchar long_name[64];
 								g_snprintf(long_name, 64, "--%s", iter->long_name);
