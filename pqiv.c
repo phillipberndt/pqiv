@@ -7602,6 +7602,40 @@ gboolean help_show_version(const gchar *option_name, const gchar *value, gpointe
 	return FALSE;
 }
 #ifndef CONFIGURED_WITHOUT_ACTIONS
+gboolean parse_action_parameter_int(const gchar *value, gint64 min, gint64 max, gint64 *result) {/*{{{*/
+	// Parse an integer action parameter, allowing surrounding whitespace only.
+	// An empty parameter means 0, as it did with atoi.
+	gchar *end;
+	while(*value == ' ' || *value == '\t' || *value == '\n') value++;
+	if(!*value) {
+		*result = 0;
+		return TRUE;
+	}
+	errno = 0;
+	*result = g_ascii_strtoll(value, &end, 10);
+	if(end == value || errno != 0 || *result < min || *result > max) {
+		return FALSE;
+	}
+	while(*end == ' ' || *end == '\t' || *end == '\n') end++;
+	return *end == 0;
+}/*}}}*/
+gboolean parse_action_parameter_double(const gchar *value, double *result) {/*{{{*/
+	// Parse a floating point action parameter, allowing surrounding whitespace only.
+	// An empty parameter means 0, as it did with atof.
+	gchar *end;
+	while(*value == ' ' || *value == '\t' || *value == '\n') value++;
+	if(!*value) {
+		*result = 0;
+		return TRUE;
+	}
+	errno = 0;
+	*result = g_ascii_strtod(value, &end);
+	if(end == value || errno != 0 || !isfinite(*result)) {
+		return FALSE;
+	}
+	while(*end == ' ' || *end == '\t' || *end == '\n') end++;
+	return *end == 0;
+}/*}}}*/
 char *key_binding_sequence_to_string(guint key_binding_value, gchar *prefix) {/*{{{*/
 	gboolean is_mouse = (key_binding_value >> 31) & 1;
 	guint state = (key_binding_value >> (31 - KEY_BINDING_STATE_BITS)) & ((1 << KEY_BINDING_STATE_BITS) - 1);
@@ -7962,10 +7996,21 @@ gboolean parse_key_bindings(const gchar *bindings) {/*{{{*/
 							}
 							break;
 						case PARAMETER_INT:
-							binding->parameter.pint = atoi(identifier);
+							{
+								gint64 value;
+								if(!parse_action_parameter_int(identifier, G_MININT, G_MAXINT, &value)) {
+									error_message = g_strdup("This function expects an integer parameter");
+									state = -1;
+									break;
+								}
+								binding->parameter.pint = (int)value;
+							}
 							break;
 						case PARAMETER_DOUBLE:
-							binding->parameter.pdouble = atof(identifier);
+							if(!parse_action_parameter_double(identifier, &binding->parameter.pdouble)) {
+								error_message = g_strdup("This function expects a numeric parameter");
+								state = -1;
+							}
 							break;
 						case PARAMETER_CHARPTR:
 							binding->parameter.pcharptr = g_strndup(identifier, identifier_pos);
@@ -7977,9 +8022,12 @@ gboolean parse_key_bindings(const gchar *bindings) {/*{{{*/
 									if(!strchr(comma_pos + 1, ',')) {
 										*comma_pos = 0;
 										for(comma_pos++; *comma_pos == '\t' || *comma_pos == '\n' || *comma_pos == ' '; comma_pos++);
-										binding->parameter.p2short.p1 = (short)atoi(identifier);
-										binding->parameter.p2short.p2 = (short)atoi(comma_pos);
-										break;
+										gint64 p1, p2;
+										if(parse_action_parameter_int(identifier, G_MINSHORT, G_MAXSHORT, &p1) && parse_action_parameter_int(comma_pos, G_MINSHORT, G_MAXSHORT, &p2)) {
+											binding->parameter.p2short.p1 = (short)p1;
+											binding->parameter.p2short.p2 = (short)p2;
+											break;
+										}
 									}
 								}
 								error_message = g_strdup("This function expects two parameters");
@@ -8154,11 +8202,23 @@ gboolean perform_string_action(const gchar *string_action) {/*{{{*/
 					break;
 
 				case PARAMETER_INT:
-					parsed_parameter.pint = atoi(parameter);
+					{
+						gint64 value;
+						if(!parse_action_parameter_int(parameter, G_MININT, G_MAXINT, &value)) {
+							g_printerr("Invalid command: This command expects an integer parameter\n");
+							g_free(parameter);
+							return FALSE;
+						}
+						parsed_parameter.pint = (int)value;
+					}
 					break;
 
 				case PARAMETER_DOUBLE:
-					parsed_parameter.pdouble = atof(parameter);
+					if(!parse_action_parameter_double(parameter, &parsed_parameter.pdouble)) {
+						g_printerr("Invalid command: This command expects a numeric parameter\n");
+						g_free(parameter);
+						return FALSE;
+					}
 					break;
 
 				case PARAMETER_CHARPTR:
@@ -8172,9 +8232,12 @@ gboolean perform_string_action(const gchar *string_action) {/*{{{*/
 							if(!strchr(comma_pos + 1, ',')) {
 								*comma_pos = 0;
 								for(comma_pos++; *comma_pos == '\t' || *comma_pos == '\n' || *comma_pos == ' '; comma_pos++);
-								parsed_parameter.p2short.p1 = (short)atoi(parameter);
-								parsed_parameter.p2short.p2 = (short)atoi(comma_pos);
-								break;
+								gint64 p1, p2;
+								if(parse_action_parameter_int(parameter, G_MINSHORT, G_MAXSHORT, &p1) && parse_action_parameter_int(comma_pos, G_MINSHORT, G_MAXSHORT, &p2)) {
+									parsed_parameter.p2short.p1 = (short)p1;
+									parsed_parameter.p2short.p2 = (short)p2;
+									break;
+								}
 							}
 						}
 						g_printerr("Invalid command: This command expects two parameters\n");
