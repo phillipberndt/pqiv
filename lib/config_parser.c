@@ -9,6 +9,7 @@
 #include <stdlib.h>
 #include <stdbool.h>
 #include <string.h>
+#include <ctype.h>
 
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -125,6 +126,17 @@ static void _config_parser_parse_data_invoke_callback(config_parser_callback_t c
 	}
 }
 
+static int _config_parser_is_key(const char *key_start, const char *key_end) {
+	// Only text made of key characters before a `=' is a key, such that
+	// e.g. `a { command(>echo a=b) }' in [keybindings] is not mistaken for one
+	for(; key_start < key_end; key_start++) {
+		if(!isalnum((unsigned char)*key_start) && !strchr("-_ \t", *key_start)) {
+			return 0;
+		}
+	}
+	return 1;
+}
+
 void config_parser_parse_data(char *file_data, size_t file_length, config_parser_callback_t callback) {
 	enum { DEFAULT, SECTION_IDENTIFIER, COMMENT, VALUE } state = DEFAULT;
 	int section_had_keys = 0;
@@ -153,7 +165,7 @@ void config_parser_parse_data(char *file_data, size_t file_length, config_parser
 			else if(*fp == ';' || *fp == '#') {
 				state = COMMENT;
 			}
-			else if(*fp == '=' && key_start != NULL) {
+			else if(*fp == '=' && key_start != NULL && _config_parser_is_key(key_start, fp)) {
 				key_end = fp - 1;
 				value_start = NULL;
 				state = VALUE;
