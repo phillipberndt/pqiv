@@ -3772,7 +3772,10 @@ void apply_external_image_filter(gchar *external_filter) {/*{{{*/
 					g_mutex_init(&new_image->lock);
 
 					BOSNode *loaded_file = new_image->file_type->alloc_fn(FILTER_OUTPUT, new_image);
-					absolute_image_movement(bostree_node_weak_ref(loaded_file));
+					if(loaded_file) {
+						// NULL if pqiv is exiting
+						absolute_image_movement(bostree_node_weak_ref(loaded_file));
+					}
 				}
 			}
 			g_io_channel_unref(stdin_channel);
