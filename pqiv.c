@@ -8535,7 +8535,7 @@ int main(int argc, char *argv[]) {
 	}
 	cairo_matrix_init_identity(&current_transformation);
 
-	if(option_fading_duration > option_slideshow_interval) {
+	if(option_fading && option_fading_duration > option_slideshow_interval) {
 		g_printerr("Warning: Fade durations larger than the slideslow interval won't work as expected.\n");
 	}
 
