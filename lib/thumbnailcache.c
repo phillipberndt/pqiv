@@ -217,13 +217,13 @@ gboolean check_png_attributes(gchar *file_name, gchar *file_uri, time_t file_mti
 
 			if(file_crc == actual_crc) {
 				if(strcmp(data, "Thumb::URI") == 0) {
-					gboolean match = strncmp(&data[sizeof("Thumb::URI")], file_uri, strlen(file_uri)) == 0;
+					gboolean match = (size_t)header_length == sizeof("Thumb::URI") + strlen(file_uri) && memcmp(&data[sizeof("Thumb::URI")], file_uri, strlen(file_uri)) == 0;
 					found_mismatch |= !match;
 					found_uri = TRUE;
 				}
 				else if(strcmp(data, "Thumb::MTime") == 0) {
 					gchar *file_mtime_str = g_strdup_printf("%" PRIuMAX, (intmax_t)file_mtime);
-					gboolean match = strncmp(&data[sizeof("Thumb::MTime")], file_mtime_str, strlen(file_mtime_str)) == 0;
+					gboolean match = (size_t)header_length == sizeof("Thumb::MTime") + strlen(file_mtime_str) && memcmp(&data[sizeof("Thumb::MTime")], file_mtime_str, strlen(file_mtime_str)) == 0;
 					g_free(file_mtime_str);
 					found_mismatch |= !match;
 					found_mtime = TRUE;
