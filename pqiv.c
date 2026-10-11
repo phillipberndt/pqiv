@@ -1214,8 +1214,10 @@ void parse_configuration_file_callback(char *section, char *key, config_parser_v
 	else if(strcmp(section, "options") == 0 && key) {
 		// pqiv 2.x configuration setting {{{
 		GError *error_pointer = NULL;
+		gboolean found = FALSE;
 		for(GOptionEntry *iter = options; iter->arg_data != NULL; iter++) {
 			if(iter->long_name != NULL && strcmp(iter->long_name, key) == 0) {
+				found = TRUE;
 				switch(iter->arg) {
 					case G_OPTION_ARG_NONE: {
 						*(gboolean *)(iter->arg_data) = !!value->intval;
@@ -1251,10 +1253,11 @@ void parse_configuration_file_callback(char *section, char *key, config_parser_v
 				}
 			}
 		}
+		if(!found) {
+			g_printerr("Failed to load setting for `%s' from configuration file: Unknown option\n", key);
+		}
 		if(error_pointer != NULL) {
-			if(error_pointer->code == G_KEY_FILE_ERROR_INVALID_VALUE) {
-				g_printerr("Failed to load setting for `%s' from configuration file: %s\n", key, error_pointer->message);
-			}
+			g_printerr("Failed to load setting for `%s' from configuration file: %s\n", key, error_pointer->message);
 			g_clear_error(&error_pointer);
 		}
 		// }}}
