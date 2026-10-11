@@ -110,6 +110,9 @@ static void _config_parser_parse_data_invoke_callback(config_parser_callback_t c
 	if(*value.chrpval == 'y' || *value.chrpval == 'Y' || *value.chrpval == 't' || *value.chrpval == 'T') {
 		value.intval = 1;
 	}
+	else if((value.chrpval[0] == 'o' || value.chrpval[0] == 'O') && (value.chrpval[1] == 'n' || value.chrpval[1] == 'N') && (value.chrpval[2] == '\0' || strchr(" \t;#", value.chrpval[2]))) {
+		value.intval = 1;
+	}
 	else {
 		value.intval = atoi(value.chrpval);
 	}
