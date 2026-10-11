@@ -3469,14 +3469,14 @@ BOSNode *directory_image_movement_find_different_directory(BOSNode *current, int
 
 	return target;
 }/*}}}*/
-BOSNode *relative_image_pointer_directory(int direction, gboolean logical_directories) {/*{{{*/
-	// Directory movement
+BOSNode *relative_image_pointer_directory(BOSNode *current_node, int direction, gboolean logical_directories) {/*{{{*/
+	// Directory movement, starting at current_node
 	//
 	// This should be consistent, i.e. movements in different directions should
 	// be inverse operations of each other. This makes this function slightly
 	// complex.
 	//
-	BOSNode *target = current_file_node;
+	BOSNode *target = current_node;
 	BOSNode *current;
 
 	// Move by one directory at a time, |direction| times
@@ -3520,7 +3520,17 @@ void directory_image_movement(int direction, gboolean logical_directories) {/*{{
 	// complex.
 
 	D_LOCK(file_tree);
-	BOSNode *target = bostree_node_weak_ref(relative_image_pointer_directory(direction, logical_directories));
+	BOSNode *current_node = current_file_node;
+	#ifndef CONFIGURED_WITHOUT_MONTAGE_MODE
+	if(application_mode == MONTAGE && montage_window_control.selected_node != NULL) {
+		// In montage mode, move relative to the selection
+		BOSNode *selected_node = bostree_node_weak_unref(file_tree, bostree_node_weak_ref(montage_window_control.selected_node));
+		if(selected_node) {
+			current_node = selected_node;
+		}
+	}
+	#endif
+	BOSNode *target = bostree_node_weak_ref(relative_image_pointer_directory(current_node, direction, logical_directories));
 	D_UNLOCK(file_tree);
 
 	if(application_mode == DEFAULT) {
@@ -4840,7 +4850,10 @@ void window_draw_thumbnail_montage_show_binding_overlays_looper(gpointer key, gp
 				}
 				break;
 			case ACTION_GOTO_DIRECTORY_RELATIVE:
-				target_node = relative_image_pointer_directory(binding->parameter.pint, FALSE);
+				target_node = bostree_select(file_tree, (montage_window_control.scroll_y + data.current_y) * n_thumbs_x + data.current_x);
+				if(target_node) {
+					target_node = relative_image_pointer_directory(target_node, binding->parameter.pint, FALSE);
+				}
 				if(target_node) {
 					target_index = bostree_rank(target_node);
 					data.current_y = target_index / n_thumbs_x - montage_window_control.scroll_y;
@@ -4848,7 +4861,10 @@ void window_draw_thumbnail_montage_show_binding_overlays_looper(gpointer key, gp
 				}
 				break;
 			case ACTION_GOTO_LOGICAL_DIRECTORY_RELATIVE:
-				target_node = relative_image_pointer_directory(binding->parameter.pint, TRUE);
+				target_node = bostree_select(file_tree, (montage_window_control.scroll_y + data.current_y) * n_thumbs_x + data.current_x);
+				if(target_node) {
+					target_node = relative_image_pointer_directory(target_node, binding->parameter.pint, TRUE);
+				}
 				if(target_node) {
 					target_index = bostree_rank(target_node);
 					data.current_y = target_index / n_thumbs_x - montage_window_control.scroll_y;
