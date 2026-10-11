@@ -8591,10 +8591,14 @@ int main(int argc, char *argv[]) {
 	file_tree_valid = FALSE;
 	D_LOCK(file_tree);
 	abort_pending_image_loads(NULL);
-	// NULL is used as a poison pill for the image loader thread
-	queue_image_load(NULL);
+	if(image_loader_thread_ref) {
+		// NULL is used as a poison pill for the image loader thread
+		queue_image_load(NULL);
+	}
 	D_UNLOCK(file_tree);
-	g_thread_join(image_loader_thread_ref);
+	if(image_loader_thread_ref) {
+		g_thread_join(image_loader_thread_ref);
+	}
 	for(BOSNode *node = bostree_select(file_tree, 0); node; node = bostree_next_node(node)) {
 		// Iterate over the images ourselves, because there might be open weak references which
 		// prevent this to be called from bostree_destroy.
