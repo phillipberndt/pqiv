@@ -3552,6 +3552,7 @@ void directory_image_movement(int direction, gboolean logical_directories) {/*{{
 		montage_window_control.selected_node = target;
 		montage_window_move_cursor(0, 0,  0);
 		D_UNLOCK(file_tree);
+		gtk_widget_queue_draw(GTK_WIDGET(main_window));
 	}
 	#endif
 }/*}}}*/
