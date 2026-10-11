@@ -4429,7 +4429,11 @@ void update_info_text(const gchar *action) {/*{{{*/
 			current_scale_level * 100.,
 			(unsigned int)(bostree_rank(current_file_node) + 1),
 			(unsigned int)(bostree_node_count(file_tree)),
+#ifndef CONFIGURED_WITHOUT_EXTERNAL_COMMANDS
 			CURRENT_FILE->marked ? " [m]" : "");
+#else
+			"");
+#endif
 
 		if(action != NULL) {
 			gchar *old_info_text = current_info_text;
@@ -4971,6 +4975,7 @@ gboolean window_draw_thumbnail_montage(cairo_t *cr_arg) {/*{{{*/
 				cairo_stroke(cr_arg);
 			}
 
+			#ifndef CONFIGURED_WITHOUT_EXTERNAL_COMMANDS
 			// Marks
 			if(thumb_file->marked) {
 				int markx = cairo_image_surface_get_width(thumb_file->thumbnail);
@@ -4985,6 +4990,7 @@ gboolean window_draw_thumbnail_montage(cairo_t *cr_arg) {/*{{{*/
 				cairo_fill(cr_arg);
 				cairo_restore(cr_arg);
 			}
+			#endif
 
 			cairo_restore(cr_arg);
 		}
