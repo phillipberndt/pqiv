@@ -127,7 +127,7 @@ endif
 endef
 
 define handle-extra-backend
-ifeq ($(findstring $(1), $(SORTED_BACKENDS)),)
+ifeq ($(filter $(1), $(SORTED_BACKENDS)),)
 	SORTED_BACKENDS+=$(1)
 endif
 endef
