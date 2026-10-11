@@ -8435,7 +8435,8 @@ gboolean inner_main(void *user_data) {/*{{{*/
 	}
 	else {
 		load_images_thread(NULL);
-		if(!initialize_gui()) {
+		// An empty file list has already been reported by load_images_thread()
+		if(bostree_node_count(file_tree) > 0 && !initialize_gui()) {
 			g_printerr("No images left to display.\n");
 			exit_status = 1;
 			gtk_main_quit();
