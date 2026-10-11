@@ -179,6 +179,7 @@ void config_parser_parse_data(char *file_data, size_t file_length, config_parser
 		}
 		else if(state == COMMENT) {
 			if(*fp == '\n') {
+				key_start = NULL;
 				state = DEFAULT;
 			}
 		}
