@@ -806,7 +806,7 @@ void relative_image_pointer_shuffle_list_unref_fn(shuffled_image_ref_t *ref);
 gboolean slideshow_timeout_callback(gpointer user_data);
 gboolean absolute_image_movement(BOSNode *ref);
 #ifndef CONFIGURED_WITHOUT_ACTIONS
-void parse_key_bindings(const gchar *bindings);
+gboolean parse_key_bindings(const gchar *bindings);
 gboolean read_commands_thread_helper(gpointer command);
 #endif
 void recreate_window();
@@ -871,7 +871,9 @@ gboolean options_bind_key_callback(const gchar *option_name, const gchar *value,
 	// To set an error:
 	// g_set_error(error, G_OPTION_ERROR, G_OPTION_ERROR_FAILED, "The argument to the alias option must have a multiple of two characters: Every odd one is mapped to the even one following it.");
 	//
-	parse_key_bindings(value);
+	if(!parse_key_bindings(value)) {
+		exit(1);
+	}
 
 	return TRUE;
 }/*}}}*/
@@ -1260,7 +1262,9 @@ void parse_configuration_file_callback(char *section, char *key, config_parser_v
 #ifndef CONFIGURED_WITHOUT_ACTIONS
 	else if(strcmp(section, "keybindings") == 0 && !key) {
 		config_parser_strip_comments(value->chrpval);
-		parse_key_bindings(value->chrpval);
+		if(!parse_key_bindings(value->chrpval)) {
+			exit(1);
+		}
 	}
 	else if(strcmp(section, "actions") == 0 && !key) {
 		config_parser_strip_comments(value->chrpval);
@@ -7686,7 +7690,7 @@ gboolean help_show_key_bindings(const gchar *option_name, const gchar *value, gp
 	exit(0);
 	return FALSE;
 }/*}}}*/
-void parse_key_bindings(const gchar *bindings) {/*{{{*/
+gboolean parse_key_bindings(const gchar *bindings) {/*{{{*/
 	/*
 	 * This is a simple state machine based parser for the same format that the help function outputs:
 	 *  shortcut { command(parameter); command(parameter); }
@@ -7713,6 +7717,15 @@ void parse_key_bindings(const gchar *bindings) {/*{{{*/
 	key_binding_t *binding = NULL;
 	int parameter_type = 0;
 	const gchar *current_command_start = bindings;
+	// The commands of the binding being parsed are collected in pending and
+	// only assigned to the bound key (target) once the binding is complete.
+	// If parsing fails, the first table or binding created for the key is
+	// removed again, so that no partial binding remains.
+	key_binding_t *target = NULL;
+	key_binding_t *pending = NULL;
+	GHashTable **created_table = NULL;
+	GHashTable *created_in_table = NULL;
+	guint created_key = 0;
 	gchar *error_message = NULL;
 	const gchar *scan;
 
@@ -7740,6 +7753,8 @@ void parse_key_bindings(const gchar *bindings) {/*{{{*/
 				}
 
 				current_command_start = scan;
+				created_table = NULL;
+				created_in_table = NULL;
 				/* fall through */
 
 			case 1: // Expecting continuation of key description or start of command
@@ -7777,11 +7792,18 @@ void parse_key_bindings(const gchar *bindings) {/*{{{*/
 							keyboard_state = 0; \
 							if(!*active_key_bindings_table) { \
 								*active_key_bindings_table = g_hash_table_new_full((GHashFunc)g_direct_hash, (GEqualFunc)g_direct_equal, NULL, key_binding_t_destroy_callback); \
+								if(!created_table && !created_in_table) { \
+									created_table = active_key_bindings_table; \
+								} \
 							} \
 							binding = g_hash_table_lookup(*active_key_bindings_table, GUINT_TO_POINTER(keyboard_key_value)); \
 							if(!binding) { \
 								binding = g_slice_new0(key_binding_t); \
 								g_hash_table_insert(*active_key_bindings_table, GUINT_TO_POINTER(keyboard_key_value), binding); \
+								if(!created_table && !created_in_table) { \
+									created_in_table = *active_key_bindings_table; \
+									created_key = keyboard_key_value; \
+								} \
 							} \
 							active_key_bindings_table = &(binding->next_key_bindings);
 						PARSE_KEY_BINDINGS_BIND(keyboard_key_value);
@@ -7820,6 +7842,7 @@ void parse_key_bindings(const gchar *bindings) {/*{{{*/
 						guint keyval = gdk_keyval_from_name(identifier);
 						if(keyval == GDK_KEY_VoidSymbol) {
 							error_message = g_strdup_printf("Failed to parse key: `%s' is not a known GDK keyval name", identifier);
+							g_free(identifier);
 							state = -1;
 							break;
 						}
@@ -7853,9 +7876,13 @@ void parse_key_bindings(const gchar *bindings) {/*{{{*/
 						memcpy(identifier, token_start, identifier_length);
 						identifier[identifier_length] = 0;
 
-						if(binding->action && state == 5) {
+						if(state == 5) {
 							binding->next_action = g_slice_new0(key_binding_t);
 							binding = binding->next_action;
+						}
+						else {
+							target = binding;
+							pending = binding = g_slice_new0(key_binding_t);
 						}
 
 						state = -1;
@@ -7863,10 +7890,6 @@ void parse_key_bindings(const gchar *bindings) {/*{{{*/
 						for(const struct pqiv_action_descriptor *descriptor = pqiv_action_descriptors; descriptor->name; descriptor++) {
 							if((ptrdiff_t)strlen(descriptor->name) == identifier_length && g_ascii_strncasecmp(descriptor->name, identifier, identifier_length) == 0) {
 								binding->action = action_id;
-								if (binding->next_action) {
-									key_binding_t_destroy_callback(binding->next_action);
-									binding->next_action = NULL;
-								}
 								parameter_type = descriptor->parameter_type;
 								token_start = scan + 1;
 								state = 4;
@@ -7877,6 +7900,7 @@ void parse_key_bindings(const gchar *bindings) {/*{{{*/
 
 						if(state != 4) {
 							error_message = g_strdup_printf("Unknown action: `%s'", identifier);
+							g_free(identifier);
 							state = -1;
 							break;
 						}
@@ -7886,6 +7910,22 @@ void parse_key_bindings(const gchar *bindings) {/*{{{*/
 						break;
 
 					case KEY_BINDINGS_COMMANDS_END_SYMBOL: /* } */
+						if(state == 5) {
+							// Replace the old commands of the key
+							if(pqiv_action_descriptors[target->action].parameter_type == PARAMETER_CHARPTR) {
+								g_free(target->parameter.pcharptr);
+							}
+							if(target->next_action) {
+								key_binding_t_destroy_callback(target->next_action);
+							}
+							target->action = pending->action;
+							target->parameter = pending->parameter;
+							target->next_action = pending->next_action;
+							g_slice_free(key_binding_t, pending);
+							pending = NULL;
+						}
+						created_table = NULL;
+						created_in_table = NULL;
 						active_key_bindings_table = &key_bindings[current_context];
 						binding = NULL;
 						state = 0;
@@ -8019,6 +8059,18 @@ void parse_key_bindings(const gchar *bindings) {/*{{{*/
 			error_message = g_strdup("Unexpected end of key binding definition");
 		}
 
+		// Discard the incomplete binding
+		if(pending) {
+			key_binding_t_destroy_callback(pending);
+		}
+		if(created_table) {
+			g_hash_table_unref(*created_table);
+			*created_table = NULL;
+		}
+		else if(created_in_table) {
+			g_hash_table_remove(created_in_table, GUINT_TO_POINTER(created_key));
+		}
+
 		g_printerr("Failed to parse key bindings. Error in definition:\n");
 		int error_pos = scan - current_command_start;
 		int print_after = strlen(scan);
@@ -8028,8 +8080,10 @@ void parse_key_bindings(const gchar *bindings) {/*{{{*/
 		g_printerr("^-- here\nError was: %s\n\n", error_message);
 		g_free(error_message);
 
-		exit(1);
+		return FALSE;
 	}
+
+	return TRUE;
 }/*}}}*/
 gboolean perform_string_action(const gchar *string_action) {/*{{{*/
 	const gchar *action_name_start = NULL;
