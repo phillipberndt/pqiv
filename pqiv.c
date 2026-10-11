@@ -5455,7 +5455,8 @@ gboolean window_draw_callback(GtkWidget *widget, cairo_t *cr_arg, gpointer user_
 			x2 = (pango_extents.x + pango_extents.width) / PANGO_SCALE;
 			y2 = (pango_extents.y + pango_extents.height) / PANGO_SCALE;
 
-			if(x2 > main_window_width - csd_width - 10 * screen_scale_factor && !main_window_in_fullscreen) {
+			// The smallest font size is used even if it does not fit
+			if(x2 > main_window_width - csd_width - 10 * screen_scale_factor && !main_window_in_fullscreen && font_size > 2) {
 				cairo_restore(cr_arg);
 				cairo_save(cr_arg);
 				g_object_unref(pango_layout);
