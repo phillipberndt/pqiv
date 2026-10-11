@@ -6422,6 +6422,9 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 			break;
 
 		case ACTION_MONTAGE_MODE_ENTER:
+			if(!current_file_node) {
+				break;
+			}
 			if(slideshow_timeout_id > 0) {
 				g_source_remove(slideshow_timeout_id);
 				slideshow_timeout_id = 0;
