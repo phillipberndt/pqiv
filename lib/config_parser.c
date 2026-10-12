@@ -131,7 +131,12 @@ static void _config_parser_parse_data_invoke_callback(config_parser_callback_t c
 
 static int _config_parser_is_key(const char *key_start, const char *key_end) {
 	// Only text made of key characters before a `=' is a key, such that
-	// e.g. `a { command(>echo a=b) }' in [keybindings] is not mistaken for one
+	// e.g. `a { command(>echo a=b) }' in [keybindings] is not mistaken for one.
+	// Keys do not start with a `-', such that command line options like
+	// `--thumbnail-size=128x128' in a pqiv 1.x style file are not keys either.
+	if(*key_start == '-') {
+		return 0;
+	}
 	for(; key_start < key_end; key_start++) {
 		if(!isalnum((unsigned char)*key_start) && !strchr("-_ \t", *key_start)) {
 			return 0;
