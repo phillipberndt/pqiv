@@ -107,7 +107,7 @@ BACKENDS_INITIALIZER:=backends/initializer
 SORTED_BACKENDS=gdkpixbuf webp archive_cbx archive poppler libav wand
 define handle-backend
 ifneq ($(origin LIBS_$(1)),undefined)
-	ifneq ($(findstring $(1), $(BACKENDS)),)
+	ifneq ($(filter $(1), $(BACKENDS)),)
 		ifeq ($(BACKENDS_BUILD), shared)
 			ifeq ($(shell $(PKG_CONFIG) --errors-to-stdout --print-errors "$(LIBS_$(1))" 2>&1), )
 				SHARED_OBJECTS+=backends/pqiv-backend-$(1).so
