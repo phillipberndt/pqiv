@@ -5898,6 +5898,7 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 				break;
 			}
 			option_scale_screen_fraction = parameter.pdouble;
+			if(!current_file_node) break;
 
 			scale_override = FALSE;
 			current_image_drawn = FALSE;
@@ -6263,6 +6264,7 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 			break;
 
 		case ACTION_SET_SHIFT_ALIGN_CORNER:
+			if(!current_file_node) break;
 			{
 				int flags = 0;
 				int x, y;
@@ -6339,7 +6341,7 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 			break;
 
 		case ACTION_ANIMATION_STEP:
-			if(!(CURRENT_FILE->file_flags & FILE_FLAGS_ANIMATION)) {
+			if(!current_file_node || !(CURRENT_FILE->file_flags & FILE_FLAGS_ANIMATION)) {
 				break;
 			}
 			if(current_image_animation_timeout_id > 0) {
@@ -6361,7 +6363,7 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 			break;
 
 		case ACTION_ANIMATION_CONTINUE:
-			if(!(CURRENT_FILE->file_flags & FILE_FLAGS_ANIMATION)) {
+			if(!current_file_node || !(CURRENT_FILE->file_flags & FILE_FLAGS_ANIMATION)) {
 				break;
 			}
 			current_image_animation_speed_scale = 1.0;
@@ -6377,7 +6379,7 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 			break;
 
 		case ACTION_ANIMATION_SET_SPEED_ABSOLUTE:
-			if(!(CURRENT_FILE->file_flags & FILE_FLAGS_ANIMATION)) {
+			if(!current_file_node || !(CURRENT_FILE->file_flags & FILE_FLAGS_ANIMATION)) {
 				break;
 			}
 			current_image_animation_speed_scale = parameter.pdouble;
@@ -6390,7 +6392,7 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 			break;
 
 		case ACTION_ANIMATION_SET_SPEED_RELATIVE:
-			if(!(CURRENT_FILE->file_flags & FILE_FLAGS_ANIMATION)) {
+			if(!current_file_node || !(CURRENT_FILE->file_flags & FILE_FLAGS_ANIMATION)) {
 				break;
 			}
 			current_image_animation_speed_scale *= parameter.pdouble;
@@ -8512,6 +8514,7 @@ void clear_marks() {/*{{{*/
 }/*}}}*/
 void toggle_mark() {/*{{{*/
 	if(application_mode == DEFAULT) {
+		if(!current_file_node) return;
 		FILE(current_file_node)->marked = !FILE(current_file_node)->marked;
 		update_info_text(NULL);
 		info_text_queue_redraw();
