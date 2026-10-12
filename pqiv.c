@@ -3325,6 +3325,8 @@ void relative_image_movement(ptrdiff_t movement) {/*{{{*/
 	D_LOCK(file_tree);
 	if(!file_tree_valid || !bostree_node_count(file_tree)) {
 		D_UNLOCK(file_tree);
+		// Nothing will be drawn, continue with the next action right away
+		action_done();
 		return;
 	}
 	BOSNode *current_node = current_file_node;
@@ -3366,6 +3368,7 @@ void relative_image_movement(ptrdiff_t movement) {/*{{{*/
 		}
 		else if(option_end_of_files_action == WAIT) {
 			bostree_node_weak_unref(file_tree, target);
+			action_done();
 			return;
 		}
 	}
@@ -3391,6 +3394,7 @@ void relative_image_movement(ptrdiff_t movement) {/*{{{*/
 	}
 	else {
 		bostree_node_weak_unref(file_tree, target);
+		action_done();
 
 		// If a slideshow called relative_image_movement, it has already stopped the slideshow
 		// callback at this point. It might be that target == current_file_node because the
@@ -5763,15 +5767,15 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 			break;
 
 		case ACTION_SHIFT_Y:
-			if(!main_window_visible) return;
-			if(!is_current_file_loaded()) return;
+			if(!main_window_visible) break;
+			if(!is_current_file_loaded()) break;
 			current_shift_y += parameter.pint;
 			gtk_widget_queue_draw(GTK_WIDGET(main_window));
 			update_info_text(NULL);
 			break;
 
 		case ACTION_SHIFT_X:
-			if(!is_current_file_loaded()) return;
+			if(!is_current_file_loaded()) break;
 			current_shift_x += parameter.pint;
 			gtk_widget_queue_draw(GTK_WIDGET(main_window));
 			update_info_text(NULL);
@@ -5799,7 +5803,7 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 				g_printerr("Invalid parameter for %s()\n", action_id == ACTION_SET_SCALE_LEVEL_ABSOLUTE ? "set_scale_level_absolute" : "set_scale_level_relative");
 				break;
 			}
-			if(!is_current_file_loaded()) return;
+			if(!is_current_file_loaded()) break;
 			if(action_id == ACTION_SET_SCALE_LEVEL_ABSOLUTE) {
 				current_scale_level = parameter.pdouble;
 			}
@@ -5845,7 +5849,7 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 			break;
 
 		case ACTION_TOGGLE_SCALE_MODE:
-			if(!is_current_file_loaded()) return;
+			if(!is_current_file_loaded()) break;
 			if(parameter.pint == 0) {
 				if(++option_scale > AUTO_SCALEUP) {
 					option_scale = NO_SCALING;
@@ -5903,7 +5907,7 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 			break;
 
 		case ACTION_RELOAD:
-			if(!is_current_file_loaded()) return;
+			if(!is_current_file_loaded()) break;
 			CURRENT_FILE->force_reload = TRUE;
 			update_info_text("Reloading image..");
 			info_text_queue_redraw();
@@ -5914,7 +5918,7 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 			break;
 
 		case ACTION_RESET_SCALE_LEVEL:
-			if(!is_current_file_loaded()) return;
+			if(!is_current_file_loaded()) break;
 			current_image_drawn = FALSE;
 			scale_override = FALSE;
 			invalidate_current_scaled_image_surface();
@@ -5927,16 +5931,18 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 
 		case ACTION_TOGGLE_FULLSCREEN:
 			if(parameter.pint == 1 || (parameter.pint == 0 && main_window_in_fullscreen == FALSE)) {
+				if(main_window_in_fullscreen) break;
 				window_fullscreen();
 			}
 			else {
+				if(!main_window_in_fullscreen) break;
 				window_unfullscreen();
 			}
 			return;
 			break;
 
 		case ACTION_FLIP_HORIZONTALLY:
-			if(!is_current_file_loaded()) return;
+			if(!is_current_file_loaded()) break;
 			{
 				int image_width, image_height;
 				calculate_current_image_transformed_size(&image_width, &image_height);
@@ -5948,7 +5954,7 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 			break;
 
 		case ACTION_FLIP_VERTICALLY:
-			if(!is_current_file_loaded()) return;
+			if(!is_current_file_loaded()) break;
 			{
 				int image_width, image_height;
 				calculate_current_image_transformed_size(&image_width, &image_height);
@@ -5960,7 +5966,7 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 			break;
 
 		case ACTION_ROTATE_LEFT:
-			if(!is_current_file_loaded()) return;
+			if(!is_current_file_loaded()) break;
 			{
 				int image_width, image_height;
 				calculate_current_image_transformed_size(&image_width, &image_height);
@@ -5972,7 +5978,7 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 			break;
 
 		case ACTION_ROTATE_RIGHT:
-			if(!is_current_file_loaded()) return;
+			if(!is_current_file_loaded()) break;
 			{
 				int image_width, image_height;
 				calculate_current_image_transformed_size(&image_width, &image_height);
@@ -5993,7 +5999,7 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 
 #ifndef CONFIGURED_WITHOUT_JUMP_DIALOG
 		case ACTION_JUMP_DIALOG:
-			if(!is_current_file_loaded()) return;
+			if(!is_current_file_loaded()) break;
 			do_jump_dialog();
 			return;
 			break;
@@ -6015,7 +6021,7 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 			break;
 
 		case ACTION_HARDLINK_CURRENT_IMAGE:
-			if(!is_current_file_loaded()) return;
+			if(!is_current_file_loaded()) break;
 			hardlink_current_image();
 			gtk_widget_queue_draw(GTK_WIDGET(main_window));
 			break;
@@ -6050,7 +6056,7 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 			{
 				if(parameter.pint < 1 || parameter.pint > 9) {
 					g_printerr("Only commands 1..9 are supported.\n");
-					return;
+					break;
 				}
 				gchar *command = external_image_filter_commands[parameter.pint - 1];
 				pqiv_action_parameter_t action_parameter = { .pcharptr = command };
@@ -6060,7 +6066,7 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 			break;
 
 		case ACTION_COMMAND:
-			if(!is_current_file_loaded()) return;
+			if(!is_current_file_loaded()) break;
 			{
 				char *command = parameter.pcharptr;
 				if(command == NULL) {
@@ -6107,6 +6113,7 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 
 				if(!node) {
 					g_printerr("Image #%d not found.\n", parameter.pint);
+					action_done();
 				}
 				else {
 					if(action_id == ACTION_GOTO_FILE_BYINDEX) {
@@ -6148,6 +6155,7 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 
 				if(!node) {
 					g_printerr("Image `%s' not found.\n", parameter.pcharptr);
+					action_done();
 				}
 				else {
 					if(action_id == ACTION_GOTO_FILE_BYNAME) {
@@ -6215,14 +6223,14 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 			break;
 
 		case ACTION_SET_SHIFT_X:
-			if(!is_current_file_loaded()) return;
+			if(!is_current_file_loaded()) break;
 			current_shift_x = parameter.pint;
 			gtk_widget_queue_draw(GTK_WIDGET(main_window));
 			update_info_text(NULL);
 			break;
 
 		case ACTION_SET_SHIFT_Y:
-			if(!is_current_file_loaded()) return;
+			if(!is_current_file_loaded()) break;
 			current_shift_y = parameter.pint;
 			gtk_widget_queue_draw(GTK_WIDGET(main_window));
 			update_info_text(NULL);
