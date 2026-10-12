@@ -215,7 +215,7 @@ gboolean check_png_attributes(gchar *file_name, gchar *file_uri, time_t file_mti
 			unsigned file_crc = ntohl(header.uint32);
 			unsigned actual_crc = crc(crc(0, (unsigned char*)"tEXt", 4), (unsigned char *)data, header_length);
 
-			if(file_crc == actual_crc) {
+			if(file_crc == actual_crc && header_length > 0 && memchr(data, '\0', header_length)) {
 				if(strcmp(data, "Thumb::URI") == 0) {
 					gboolean match = (size_t)header_length == sizeof("Thumb::URI") + strlen(file_uri) && memcmp(&data[sizeof("Thumb::URI")], file_uri, strlen(file_uri)) == 0;
 					found_mismatch |= !match;
