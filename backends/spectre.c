@@ -72,6 +72,8 @@ BOSNode *file_type_spectre_alloc(load_images_state_t state, file_t *file) {/*{{{
 	if(!file_name) {
 		g_printerr("Failed to load PS file %s: %s\n", file->file_name, error_pointer->message);
 		g_clear_error(&error_pointer);
+		spectre_document_free(document);
+		file_free(file);
 		return FALSE_POINTER;
 	}
 	spectre_document_load(document, file_name);
