@@ -6618,7 +6618,7 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 					0, 10, 11, 12, 13, 20, 21, 22, 23, 30, 31, 32
 				*/
 
-				const int binding_length = (int)ceil(log(visible_thumbnails) / log(number_of_characters));
+				const int binding_length = visible_thumbnails > 1 ? (int)ceil(log(visible_thumbnails) / log(number_of_characters)) : 1;
 				const int most_significant_power = (int)pow(number_of_characters, binding_length - 1);
 				int high_image_digit = number_of_characters - (visible_thumbnails / most_significant_power);
 
