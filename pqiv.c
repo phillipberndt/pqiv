@@ -661,6 +661,7 @@ void help_show_single_action(key_binding_t *current_action);
 #ifndef CONFIGURED_WITHOUT_MONTAGE_MODE
 key_binding_t follow_mode_key_binding = { ACTION_MONTAGE_MODE_FOLLOW_PROCEED, { .p2short = { -1, -1 } }, NULL, NULL };
 double follow_mode_previous_keyboard_timeout = .5;
+gboolean follow_mode_previous_show_binding_overlays = FALSE;
 #endif
 
 #endif
@@ -6542,11 +6543,12 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 				break;
 			}
 
-			montage_window_control.show_binding_overlays = 1;
 			if(!follow_mode_key_binding.next_key_bindings) {
-				// Not yet in follow mode; remember the timeout to restore it afterwards
+				// Not yet in follow mode; remember the timeout and overlay state to restore them afterwards
 				follow_mode_previous_keyboard_timeout = option_keyboard_timeout;
+				follow_mode_previous_show_binding_overlays = montage_window_control.show_binding_overlays;
 			}
+			montage_window_control.show_binding_overlays = 1;
 			option_keyboard_timeout = 5;
 
 			if(follow_mode_key_binding.next_key_bindings) {
@@ -6700,13 +6702,14 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 				if(follow_mode_key_binding.next_key_bindings) {
 					// Montage mode was left during follow mode
 					option_keyboard_timeout = follow_mode_previous_keyboard_timeout;
+					montage_window_control.show_binding_overlays = follow_mode_previous_show_binding_overlays;
 					g_hash_table_unref(follow_mode_key_binding.next_key_bindings);
 					follow_mode_key_binding.next_key_bindings = NULL;
 				}
 				break;
 			}
 			option_keyboard_timeout = follow_mode_previous_keyboard_timeout;
-			montage_window_control.show_binding_overlays = 0;
+			montage_window_control.show_binding_overlays = follow_mode_previous_show_binding_overlays;
 			if(parameter.p2short.p1 >= 0 || parameter.p2short.p2 >= 0) {
 				montage_window_set_cursor(parameter.p2short.p1, parameter.p2short.p2);
 			}
