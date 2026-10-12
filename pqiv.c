@@ -4574,7 +4574,10 @@ void montage_window_set_cursor(int pos_x, int pos_y) {/*{{{*/
 		pos_x = old_selection % n_thumbs_x;
 	}
 	if(pos_y < 0) {
-		pos_y = old_selection / n_thumbs_x;
+		pos_y = (int)(old_selection / n_thumbs_x) - montage_window_control.scroll_y;
+		if(pos_y < 0) {
+			pos_y = 0;
+		}
 	}
 	if((unsigned)pos_x >= n_thumbs_x) {
 		pos_x = n_thumbs_x - 1;
