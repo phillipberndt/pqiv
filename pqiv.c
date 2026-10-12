@@ -6699,6 +6699,10 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 						guint key_binding_value = KEY_BINDING_VALUE(0, 0, parameter.pcharptr[key_sequence[binding_pos] - 1]);
 						g_hash_table_insert(active_binding->next_key_bindings, GUINT_TO_POINTER(key_binding_value), binding);
 
+						if(image_id + 1 >= visible_thumbnails) {
+							break;
+						}
+
 						// Increase the key_sequence "number"
 						int pos = binding_length;
 						while(key_sequence[pos] == 0) {
