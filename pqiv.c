@@ -3535,6 +3535,12 @@ void directory_image_movement(int direction, gboolean logical_directories) {/*{{
 		}
 	}
 	#endif
+	if(!current_node) {
+		// No images
+		D_UNLOCK(file_tree);
+		action_done();
+		return;
+	}
 	BOSNode *target = bostree_node_weak_ref(relative_image_pointer_directory(current_node, direction, logical_directories));
 	D_UNLOCK(file_tree);
 
