@@ -2992,6 +2992,11 @@ void remove_image(BOSNode *node) {/*{{{*/
 void preload_adjacent_images() {/*{{{*/
 	if(!option_lowmem) {
 		D_LOCK(file_tree);
+		if(!current_file_node) {
+			// No images
+			D_UNLOCK(file_tree);
+			return;
+		}
 		BOSNode *new_prev = previous_file();
 		BOSNode *new_next = next_file();
 
@@ -3007,6 +3012,11 @@ void preload_adjacent_images() {/*{{{*/
 #ifndef CONFIGURED_WITHOUT_MONTAGE_MODE
 	if(option_thumbnails.enabled && option_thumbnails.auto_generate_for_adjacents > 0) {
 		D_LOCK(file_tree);
+		if(!current_file_node) {
+			// No images
+			D_UNLOCK(file_tree);
+			return;
+		}
 		size_t thumbnail_rank = bostree_rank(current_file_node);
 		size_t count;
 		if(thumbnail_rank > (unsigned)option_thumbnails.auto_generate_for_adjacents) {
