@@ -1436,7 +1436,7 @@ BOSNode *load_images_handle_parameter_add_file(load_images_state_t state, file_t
 	if(!file_tree_valid) {
 		file_free(file);
 		D_UNLOCK(file_tree);
-		return NULL;
+		return FALSE_POINTER;
 	}
 
 	if(bostree_node_count(file_tree) >= INT_MAX) {
@@ -1445,7 +1445,7 @@ BOSNode *load_images_handle_parameter_add_file(load_images_state_t state, file_t
 		g_printerr("Cannot add image %s: Maximum number of images reached.\n", file->display_name);
 		file_free(file);
 		D_UNLOCK(file_tree);
-		return NULL;
+		return FALSE_POINTER;
 	}
 
 	BOSNode *new_node = NULL;
@@ -1895,7 +1895,7 @@ void load_images_handle_parameter(char *param, load_images_state_t state, gint d
 			return;
 		}
 		new_node = file_type_handlers[0].alloc_fn(state, file);
-		if(!current_file_node && main_window_visible) {
+		if(new_node && new_node != FALSE_POINTER && !current_file_node && main_window_visible) {
 			current_file_node = bostree_node_weak_ref(new_node);
 			g_idle_add((GSourceFunc)absolute_image_movement, bostree_node_weak_ref(new_node));
 		}
@@ -3804,8 +3804,8 @@ void apply_external_image_filter(gchar *external_filter) {/*{{{*/
 					g_mutex_init(&new_image->lock);
 
 					BOSNode *loaded_file = new_image->file_type->alloc_fn(FILTER_OUTPUT, new_image);
-					if(loaded_file) {
-						// NULL if pqiv is exiting
+					if(loaded_file && loaded_file != FALSE_POINTER) {
+						// FALSE_POINTER if pqiv is exiting
 						absolute_image_movement(bostree_node_weak_ref(loaded_file));
 					}
 				}
