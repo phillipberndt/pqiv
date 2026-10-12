@@ -6786,10 +6786,12 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 				bostree_node_weak_unref(file_tree, montage_window_control.selected_node);
 				montage_window_control.selected_node = NULL;
 				if(!file_tree_valid) {
+					D_UNLOCK(file_tree);
 					break;
 				}
 				target = bostree_select(file_tree, 0);
 				if(!target) {
+					D_UNLOCK(file_tree);
 					break;
 				}
 				target = bostree_node_weak_ref(target);
