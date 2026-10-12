@@ -5454,7 +5454,7 @@ gboolean window_draw_callback(GtkWidget *widget, cairo_t *cr_arg, gpointer user_
 		// retry with a smaller font size
 		gint font_size;
 		if(current_info_text_cached_font_size < 0) {
-			const gint desc_font_size = pango_font_description_get_size(pango_font_desc);
+			const gint desc_font_size = pango_font_description_get_size(pango_font_desc) / PANGO_SCALE;
 			font_size = desc_font_size != 0 ? desc_font_size : 12;
 			font_size *= screen_scale_factor;
 			current_info_text_cached_font_size = 0;
