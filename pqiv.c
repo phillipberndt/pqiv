@@ -4911,8 +4911,8 @@ void window_draw_thumbnail_montage_show_binding_overlays_looper(gpointer key, gp
 		cairo_save(cr_arg);
 
 		cairo_translate(cr_arg,
-			(main_window_width  - n_thumbs_x * (option_thumbnails.width + 10)) / 2  + data.current_x * (option_thumbnails.width + 10),
-			(main_window_height - n_thumbs_y * (option_thumbnails.height + 10)) / 2 + data.current_y * (option_thumbnails.height + 10)
+			(main_window_width / screen_scale_factor  - n_thumbs_x * (option_thumbnails.width + 10)) / 2  + data.current_x * (option_thumbnails.width + 10),
+			(main_window_height / screen_scale_factor - n_thumbs_y * (option_thumbnails.height + 10)) / 2 + data.current_y * (option_thumbnails.height + 10)
 		);
 
 		BOSNode *node = bostree_select(file_tree, (montage_window_control.scroll_y + data.current_y) * n_thumbs_x + data.current_x);
@@ -6587,8 +6587,8 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 			follow_mode_key_binding.next_key_bindings = g_hash_table_new_full((GHashFunc)g_direct_hash, (GEqualFunc)g_direct_equal, NULL, key_binding_t_destroy_callback);
 
 			{
-				const int n_thumbs_x = main_window_width / (option_thumbnails.width + 10);
-				const int n_thumbs_y = main_window_height / (option_thumbnails.height + 10);
+				const int n_thumbs_x = main_window_width / (option_thumbnails.width + 10) / screen_scale_factor;
+				const int n_thumbs_y = main_window_height / (option_thumbnails.height + 10) / screen_scale_factor;
 				const ptrdiff_t number_of_images = (ptrdiff_t)bostree_node_count(file_tree);
 				const ptrdiff_t visible_thumbnails = ((montage_window_control.scroll_y + n_thumbs_y) * n_thumbs_x > number_of_images ? number_of_images - montage_window_control.scroll_y * n_thumbs_x : n_thumbs_x * n_thumbs_y);
 				const int number_of_characters = strlen(parameter.pcharptr);
