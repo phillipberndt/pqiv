@@ -3375,6 +3375,7 @@ void relative_image_movement(ptrdiff_t movement) {/*{{{*/
 		if(option_end_of_files_action == QUIT) {
 			bostree_node_weak_unref(file_tree, target);
 			gtk_main_quit();
+			return;
 		}
 		else if(option_end_of_files_action == WAIT) {
 			bostree_node_weak_unref(file_tree, target);
