@@ -44,7 +44,7 @@ BOSNode *file_type_poppler_alloc(load_images_state_t state, file_t *file) {/*{{{
 		if(!data) {
 			g_printerr("Failed to load PDF %s: Error while reading file\n", file->display_name);
 			file_free(file);
-			return NULL;
+			return FALSE_POINTER;
 		}
 		PopplerDocument *poppler_document = poppler_document_new_from_stream(data, -1, NULL, NULL, &error_pointer);
 	#else
