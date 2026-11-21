@@ -32,6 +32,36 @@
 #define PQIV_VERSION "2.13.3"
 #endif
 
+#if GTK_MAJOR_VERSION >= 4
+// GTK 4 matches file filters against a GFileInfo instead. Emulate the GTK 3 API.
+typedef enum {
+	GTK_FILE_FILTER_FILENAME     = 1 << 0,
+	GTK_FILE_FILTER_URI          = 1 << 1,
+	GTK_FILE_FILTER_DISPLAY_NAME = 1 << 2,
+	GTK_FILE_FILTER_MIME_TYPE    = 1 << 3
+} GtkFileFilterFlags;
+
+typedef struct {
+	GtkFileFilterFlags contains;
+	const gchar *filename;
+	const gchar *uri;
+	const gchar *display_name;
+	const gchar *mime_type;
+} GtkFileFilterInfo;
+
+static inline gboolean gtk_file_filter_filter(GtkFileFilter *filter, const GtkFileFilterInfo *filter_info) {
+	// GTK 4 reads both attributes. An empty value matches none of the rules pqiv uses.
+	GFileInfo *file_info = g_file_info_new();
+	gchar *content_type = (filter_info->contains & GTK_FILE_FILTER_MIME_TYPE) ? g_content_type_from_mime_type(filter_info->mime_type) : NULL;
+	g_file_info_set_display_name(file_info, (filter_info->contains & GTK_FILE_FILTER_DISPLAY_NAME) ? filter_info->display_name : "");
+	g_file_info_set_content_type(file_info, content_type ? content_type : "");
+	gboolean retval = gtk_filter_match(GTK_FILTER(filter), file_info);
+	g_free(content_type);
+	g_object_unref(file_info);
+	return retval;
+}
+#endif
+
 #define FILE_FLAGS_ANIMATION      (guint)(1)
 #define FILE_FLAGS_MEMORY_IMAGE   (guint)(1<<1)
 

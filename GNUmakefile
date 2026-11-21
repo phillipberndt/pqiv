@@ -47,6 +47,7 @@ endif
 
 # pkg-config lines for the main program
 LIBS_GENERAL=glib-2.0 >= 2.8 cairo >= 1.6 pango >= 1.10 gio-2.0
+LIBS_GTK4=gtk4
 LIBS_GTK3=gtk+-3.0 gdk-3.0
 LIBS_GTK2=gtk+-2.0 >= 2.6 gdk-2.0 >= 2.8
 
@@ -69,9 +70,11 @@ ifeq ($(EXECUTABLE_EXTENSION),.exe)
    LDLIBS_poppler+=-llcms2 -lstdc++
 endif
 
-# If no GTK_VERSION is set, try to auto-determine, with GTK 3 preferred
+# If no GTK_VERSION is set, try to auto-determine, with GTK 4 preferred, then GTK 3
 ifeq ($(GTK_VERSION), 0)
-	ifeq ($(shell $(PKG_CONFIG) --errors-to-stdout --print-errors "$(LIBS_GTK3)"), )
+	ifeq ($(shell $(PKG_CONFIG) --errors-to-stdout --print-errors "$(LIBS_GTK4)"), )
+		override GTK_VERSION=4
+	else ifeq ($(shell $(PKG_CONFIG) --errors-to-stdout --print-errors "$(LIBS_GTK3)"), )
 		override GTK_VERSION=3
 	else
 		LIBS=$(LIBS_GTK2)
@@ -84,6 +87,11 @@ endif
 ifeq ($(GTK_VERSION), 3)
 	LIBS=$(LIBS_GTK3)
 endif
+ifeq ($(GTK_VERSION), 4)
+	LIBS=$(LIBS_GTK4)
+	# pqiv uses some APIs that later GTK 4 versions deprecated, e.g. GtkDialog, GtkTreeView and the X11 functions
+	GTK_DEFS=-DGDK_VERSION_MIN_REQUIRED=GDK_VERSION_4_0
+endif
 LIBS+=$(LIBS_GENERAL)
 
 # Add platform specific libraries
@@ -95,7 +103,7 @@ else
 endif
 
 # We need X11 to workaround a bug, see http://stackoverflow.com/questions/18647475
-ifeq ($(filter x11, $(shell $(PKG_CONFIG) --errors-to-stdout --variable=target gtk+-$(GTK_VERSION).0; $(PKG_CONFIG) --errors-to-stdout --variable=targets gtk+-$(GTK_VERSION).0)), x11)
+ifeq ($(filter x11, $(shell $(PKG_CONFIG) --errors-to-stdout --variable=target $(firstword $(LIBS_GTK$(GTK_VERSION))); $(PKG_CONFIG) --errors-to-stdout --variable=targets $(firstword $(LIBS_GTK$(GTK_VERSION))))), x11)
 	LIBS+=x11
 endif
 
@@ -167,7 +175,7 @@ ifndef VERBOSE
 endif
 
 # Assemble final compiler flags
-CFLAGS_REAL=$(PQIV_WARNING_FLAGS) $(PQIV_VERSION_FLAG) $(CFLAGS) $(DEBUG_CFLAGS) $(EXTRA_DEFS) $(shell $(PKG_CONFIG) --cflags "$(LIBS)")
+CFLAGS_REAL=$(PQIV_WARNING_FLAGS) $(PQIV_VERSION_FLAG) $(CFLAGS) $(DEBUG_CFLAGS) $(EXTRA_DEFS) $(GTK_DEFS) $(shell $(PKG_CONFIG) --cflags "$(LIBS)")
 LDLIBS_REAL=$(shell $(PKG_CONFIG) --libs "$(LIBS)") $(LDLIBS)
 LDFLAGS_REAL=$(LDFLAGS)
 

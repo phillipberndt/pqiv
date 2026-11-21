@@ -55,12 +55,16 @@
 	#include <gio/gunixinputstream.h>
 #endif
 #ifdef GDK_WINDOWING_X11
-	#include <gdk/gdkx.h>
+	#if GTK_MAJOR_VERSION >= 4
+		#include <gdk/x11/gdkx.h>
+	#else
+		#include <gdk/gdkx.h>
+	#endif
 	#include <X11/Xlib.h>
 	#include <X11/Xutil.h>
 	#include <cairo/cairo-xlib.h>
 
-	#if GTK_MAJOR_VERSION < 3
+	#if GTK_MAJOR_VERSION < 3 || GTK_MAJOR_VERSION >= 4
 		#include <X11/Xatom.h>
 	#endif
 #endif
@@ -215,6 +219,545 @@ cairo_pattern_t *background_checkerboard_pattern = NULL;
 gboolean gui_initialized = FALSE;
 int global_argc;
 char **global_argv;
+
+#if GTK_MAJOR_VERSION >= 4 // GTK 4 compatibility {{{
+// GTK 4 removed or renamed many of the GTK 3 APIs pqiv uses. Where GTK 4 has
+// an equivalent, the GTK 3 names are mapped to it here, or emulated. The
+// window manager features that GTK 4 dropped are emulated using Xlib on X11,
+// the way GTK 3 implemented them there; like GTK 3 on Wayland, they do nothing
+// elsewhere.
+
+// Renamed and merged APIs
+#define GDK_MOD1_MASK GDK_ALT_MASK
+#define gdk_threads_add_idle g_idle_add
+#define gdk_threads_add_timeout g_timeout_add
+#define gtk_window_new(type) gtk_window_new()
+#define gtk_scrolled_window_new(hadjustment, vadjustment) gtk_scrolled_window_new()
+#define gtk_widget_show_all gtk_widget_show
+static gboolean gtk4_unref_callback(gpointer object) {
+	g_object_unref(object);
+	return FALSE;
+}
+static void gtk4_window_destroy(GtkWindow *window) {
+	// pqiv destroys windows from within their signal handlers, after which GTK
+	// 4 still uses them. Like GTK 3 does while it delivers an event, keep the
+	// window alive until then.
+	g_idle_add(gtk4_unref_callback, g_object_ref(window));
+	gtk_window_destroy(window);
+}
+#define gtk_widget_destroy(widget) gtk4_window_destroy(GTK_WINDOW(widget)) // pqiv only destroys toplevels
+#define gtk_entry_get_text(entry) gtk_editable_get_text(GTK_EDITABLE(entry))
+#define GTK_CONTAINER GTK_WIDGET
+static void UNUSED_FUNCTION gtk_container_add(GtkWidget *container, GtkWidget *child) {
+	if(GTK_IS_WINDOW(container)) {
+		gtk_window_set_child(GTK_WINDOW(container), child);
+	}
+	else {
+		gtk_scrolled_window_set_child(GTK_SCROLLED_WINDOW(container), child);
+	}
+}
+typedef GdkSurface GdkWindow;
+typedef GdkDisplay GdkScreen; // GTK 4 has one screen per display
+#define GDK_SCREEN GDK_DISPLAY
+#define gdk_screen_get_default gdk_display_get_default
+#define gdk_screen_get_display(screen) (screen)
+#define gtk_widget_get_screen gtk_widget_get_display
+#define gtk_widget_get_window(widget) gtk_native_get_surface(GTK_NATIVE(widget))
+#define gdk_window_get_display gdk_surface_get_display
+#define gdk_display_get_monitor_at_window gdk_display_get_monitor_at_surface
+#ifdef GDK_WINDOWING_X11
+	#undef GDK_IS_X11_SCREEN // GTK 4's macro is about GdkX11Screen, which pqiv does not use
+	#define GDK_IS_X11_SCREEN GDK_IS_X11_DISPLAY
+	#define GDK_SCREEN_XDISPLAY gdk_x11_display_get_xdisplay
+	#define gdk_x11_window_get_xid gdk_x11_surface_get_xid
+#endif
+
+// The main loop. gtk_dialog_run() is emulated below.
+GMainLoop *gtk4_main_loop = NULL;
+#define gtk_main() g_main_loop_run(gtk4_main_loop = g_main_loop_new(NULL, FALSE))
+#define gtk_main_level() (gtk4_main_loop && g_main_loop_is_running(gtk4_main_loop))
+#define gtk_main_quit gtk4_main_quit
+static void gtk4_main_quit(void) {
+	g_main_loop_quit(gtk4_main_loop);
+}
+
+// GTK 4 windows do not draw; pqiv draws into a GtkDrawingArea filling the main
+// window instead. GTK 4 does not redraw children if their parent's redraw is
+// queued, so redirect those requests. pqiv queues redraws from other threads
+// too, which GTK 4 does not support, so pass these to the main thread.
+GtkWidget *main_window_area = NULL;
+static gboolean gtk4_widget_queue_draw_callback(gpointer widget) {
+	gtk_widget_queue_draw(GTK_WIDGET(widget));
+	g_object_unref(widget);
+	return FALSE;
+}
+static void gtk4_widget_queue_draw(GtkWidget *widget) {
+	if(widget == GTK_WIDGET(main_window) && main_window_area) {
+		widget = main_window_area;
+	}
+	if(g_main_context_is_owner(NULL)) {
+		gtk_widget_queue_draw(widget);
+	}
+	else {
+		g_idle_add(gtk4_widget_queue_draw_callback, g_object_ref(widget));
+	}
+}
+#define gtk_widget_queue_draw(widget) gtk4_widget_queue_draw(GTK_WIDGET(widget))
+#define gtk_widget_queue_draw_area(widget, x, y, width, height) gtk4_widget_queue_draw(GTK_WIDGET(widget))
+
+// Window titles are also set from other threads. Pass these to the main
+// thread as well, where only the latest title is set.
+G_LOCK_DEFINE_STATIC(gtk4_window_title);
+static gchar *gtk4_window_title = NULL;
+static gboolean gtk4_window_set_title_callback(gpointer window) {
+	G_LOCK(gtk4_window_title);
+	if(gtk4_window_title) {
+		gtk_window_set_title(GTK_WINDOW(window), gtk4_window_title);
+		g_clear_pointer(&gtk4_window_title, g_free);
+	}
+	G_UNLOCK(gtk4_window_title);
+	g_object_unref(window);
+	return FALSE;
+}
+static void UNUSED_FUNCTION gtk4_window_set_title(GtkWindow *window, const gchar *title) {
+	G_LOCK(gtk4_window_title);
+	g_clear_pointer(&gtk4_window_title, g_free);
+	if(g_main_context_is_owner(NULL)) {
+		gtk_window_set_title(window, title);
+	}
+	else {
+		gtk4_window_title = g_strdup(title);
+		g_idle_add(gtk4_window_set_title_callback, g_object_ref(window));
+	}
+	G_UNLOCK(gtk4_window_title);
+}
+#define gtk_window_set_title gtk4_window_set_title
+
+// Events. GTK 4 delivers them to event controllers instead of event signals.
+// pqiv's event handlers receive these structures with the fields of the GTK 3
+// events that they use; the adapters filling them are in create_window() and
+// gtk4_add_event_controllers().
+typedef GdkToplevelState GdkWindowState;
+#define GDK_WINDOW_STATE_FULLSCREEN GDK_TOPLEVEL_STATE_FULLSCREEN
+#define GDK_2BUTTON_PRESS GDK_EVENT_LAST
+typedef struct { guint keyval; GdkModifierType state, consumed_modifiers; } GdkEventKey;
+typedef struct { guint type; guint32 time; gdouble x, y; GdkModifierType state; guint button; } GdkEventButton;
+typedef struct { gdouble x, y, x_root, y_root; GdkModifierType state; } GdkEventMotion;
+typedef struct { GdkScrollDirection direction; GdkModifierType state; } GdkEventScroll;
+typedef struct { gint x, y, width, height; } GdkEventConfigure;
+typedef struct { GdkWindowState changed_mask, new_window_state; } GdkEventWindowState;
+
+// GTK 4 has no event masks and always reports motion. pqiv only uses them to
+// reduce the number of motion events.
+#define gtk_widget_add_events(widget, events)
+#define gtk_widget_set_events(widget, events)
+#define gdk_window_set_events(window, events) (void)(window)
+
+typedef struct {
+	gboolean (*key_press)(GtkWidget *, GdkEventKey *, gpointer);
+	gboolean (*button_press)(GtkWidget *, GdkEventButton *, gpointer);
+	gboolean (*button_release)(GtkWidget *, GdkEventButton *, gpointer);
+	gpointer user_data;
+} gtk4_event_handlers_t;
+static gboolean gtk4_key_pressed_callback(GtkEventControllerKey *controller, guint keyval, guint keycode, GdkModifierType state, gpointer user_data) {
+	gtk4_event_handlers_t *handlers = user_data;
+	GdkEventKey event = { keyval, state, gdk_key_event_get_consumed_modifiers(gtk_event_controller_get_current_event(GTK_EVENT_CONTROLLER(controller))) };
+	return handlers->key_press(gtk_event_controller_get_widget(GTK_EVENT_CONTROLLER(controller)), &event, handlers->user_data);
+}
+static void gtk4_click_callback(GtkGestureClick *gesture, gint n_press, gdouble x, gdouble y, gpointer user_data) {
+	gtk4_event_handlers_t *handlers = user_data;
+	GtkEventController *controller = GTK_EVENT_CONTROLLER(gesture);
+	GdkEvent *current_event = gtk_event_controller_get_current_event(controller);
+	GdkEventButton event = { gdk_event_get_event_type(current_event), gdk_event_get_time(current_event), x, y, gdk_event_get_modifier_state(current_event), gtk_gesture_single_get_current_button(GTK_GESTURE_SINGLE(gesture)) };
+	gboolean (*handler)(GtkWidget *, GdkEventButton *, gpointer) = event.type == GDK_BUTTON_RELEASE ? handlers->button_release : handlers->button_press;
+	// GTK 3 reports the second press of a double click twice, the second time as a GDK_2BUTTON_PRESS.
+	// pqiv's handlers ignore the first report.
+	if(event.type == GDK_BUTTON_PRESS && n_press % 3 == 2) {
+		event.type = GDK_2BUTTON_PRESS;
+	}
+	if(handler) {
+		handler(gtk_event_controller_get_widget(controller), &event, handlers->user_data);
+	}
+}
+static void gtk4_add_event_controllers(GtkWidget *widget, gboolean (*key_press)(GtkWidget *, GdkEventKey *, gpointer), gboolean (*button_press)(GtkWidget *, GdkEventButton *, gpointer), gboolean (*button_release)(GtkWidget *, GdkEventButton *, gpointer), gpointer user_data) {
+	// GTK 3 invokes signal handlers before the widget's own event handling. The capture phase does the same.
+	gtk4_event_handlers_t *handlers = g_new(gtk4_event_handlers_t, 1);
+	*handlers = (gtk4_event_handlers_t){ key_press, button_press, button_release, user_data };
+	g_object_set_data_full(G_OBJECT(widget), "pqiv-event-handlers", handlers, g_free);
+	if(key_press) {
+		GtkEventController *controller = gtk_event_controller_key_new();
+		gtk_event_controller_set_propagation_phase(controller, GTK_PHASE_CAPTURE);
+		g_signal_connect(controller, "key-pressed", G_CALLBACK(gtk4_key_pressed_callback), handlers);
+		gtk_widget_add_controller(widget, controller);
+	}
+	if(button_press || button_release) {
+		GtkGesture *gesture = gtk_gesture_click_new();
+		gtk_gesture_single_set_button(GTK_GESTURE_SINGLE(gesture), 0);
+		gtk_event_controller_set_propagation_phase(GTK_EVENT_CONTROLLER(gesture), GTK_PHASE_CAPTURE);
+		g_signal_connect(gesture, "pressed", G_CALLBACK(gtk4_click_callback), handlers);
+		g_signal_connect(gesture, "released", G_CALLBACK(gtk4_click_callback), handlers);
+		gtk_widget_add_controller(widget, GTK_EVENT_CONTROLLER(gesture));
+	}
+}
+
+gboolean gtk4_window_configure_callback(gpointer user_data);
+void window_layout_callback_gtk4(GdkSurface *surface, int width, int height, gpointer user_data);
+
+// Window positions and hints
+typedef enum { GTK_WIN_POS_NONE, GTK_WIN_POS_CENTER, GTK_WIN_POS_MOUSE, GTK_WIN_POS_CENTER_ALWAYS, GTK_WIN_POS_CENTER_ON_PARENT } GtkWindowPosition;
+typedef struct { gdouble min_aspect, max_aspect; } GdkGeometry;
+#define GDK_HINT_ASPECT (1 << 4)
+#define GDK_WINDOW_TYPE_HINT_DIALOG "_NET_WM_WINDOW_TYPE_DIALOG"
+typedef struct {
+	GtkWindowPosition position;
+	gboolean move_pending;
+	gint x, y;
+	glong position_hint;
+	gboolean center_pending;
+	gint width, height;
+	gboolean size_requested;
+	GdkGeometry geometry;
+	gint geometry_mask;
+	const char *type_hint;
+} gtk4_window_state_t;
+static gtk4_window_state_t *gtk4_window_state(GtkWindow *window);
+#ifdef GDK_WINDOWING_X11
+static Display *gtk4_x11_window(GtkWindow *window, Window *xid, gint *scale) {
+	GdkSurface *surface = gtk_native_get_surface(GTK_NATIVE(window));
+	if(!surface || !GDK_IS_X11_SURFACE(surface)) {
+		return NULL;
+	}
+	*xid = gdk_x11_surface_get_xid(surface);
+	*scale = gdk_surface_get_scale_factor(surface);
+	return gdk_x11_display_get_xdisplay(gdk_surface_get_display(surface));
+}
+static void gtk4_x11_center_position(GtkWindow *window, gint width, gint height, gint *x, gint *y) {
+	// GTK 3 centers on the work area of the monitor with the pointer, or the middle monitor
+	GdkDisplay *display = gtk_widget_get_display(GTK_WIDGET(window));
+	Display *xdisplay = gdk_x11_display_get_xdisplay(display);
+	GListModel *monitors = gdk_display_get_monitors(display);
+	GdkMonitor *monitor = g_list_model_get_item(monitors, g_list_model_get_n_items(monitors) / 2);
+	Window root, child;
+	gint pointer_x, pointer_y, window_x, window_y;
+	guint mask;
+	if(XQueryPointer(xdisplay, DefaultRootWindow(xdisplay), &root, &child, &pointer_x, &pointer_y, &window_x, &window_y, &mask)) {
+		for(guint i = 0; i < g_list_model_get_n_items(monitors); i++) {
+			GdkMonitor *candidate = g_list_model_get_item(monitors, i);
+			GdkRectangle geometry;
+			gdk_monitor_get_geometry(candidate, &geometry);
+			gint scale = gdk_monitor_get_scale_factor(candidate);
+			if(gdk_rectangle_contains_point(&geometry, pointer_x / scale, pointer_y / scale)) {
+				g_object_unref(monitor);
+				monitor = g_object_ref(candidate);
+			}
+			g_object_unref(candidate);
+		}
+	}
+	GdkRectangle area;
+	gdk_x11_monitor_get_workarea(monitor, &area);
+	g_object_unref(monitor);
+	*x = MAX(area.x, area.x + (area.width - width) / 2);
+	*y = MAX(area.y, area.y + (area.height - height) / 2);
+}
+static gboolean gtk4_x11_event_callback(GdkX11Display *display, XEvent *xevent, gpointer user_data);
+static void gtk4_x11_set_normal_hints(GtkWindow *window, gtk4_window_state_t *state) {
+	Window xid;
+	gint scale;
+	Display *xdisplay = gtk4_x11_window(window, &xid, &scale);
+	if(!xdisplay) {
+		return;
+	}
+	XSizeHints *hints = XAllocSizeHints();
+	glong supplied;
+	if(!XGetWMNormalHints(xdisplay, xid, hints, &supplied)) {
+		hints->flags = 0;
+	}
+	XSizeHints old_hints = *hints;
+	if(state->position_hint) {
+		hints->flags |= state->position_hint;
+		hints->x = state->x * scale;
+		hints->y = state->y * scale;
+	}
+	hints->flags &= ~PAspect;
+	if(state->geometry_mask & GDK_HINT_ASPECT) {
+		// Like GTK 3
+		hints->flags |= PAspect;
+		hints->min_aspect.x = state->geometry.min_aspect <= 1 ? 65536 * state->geometry.min_aspect : 65536;
+		hints->min_aspect.y = state->geometry.min_aspect <= 1 ? 65536 : 65536 / state->geometry.min_aspect;
+		hints->max_aspect.x = state->geometry.max_aspect <= 1 ? 65536 * state->geometry.max_aspect : 65536;
+		hints->max_aspect.y = state->geometry.max_aspect <= 1 ? 65536 : 65536 / state->geometry.max_aspect;
+	}
+	if(hints->flags != old_hints.flags || hints->x != old_hints.x || hints->y != old_hints.y || memcmp(&hints->min_aspect, &old_hints.min_aspect, sizeof(hints->min_aspect)) || memcmp(&hints->max_aspect, &old_hints.max_aspect, sizeof(hints->max_aspect))) {
+		XSetWMNormalHints(xdisplay, xid, hints);
+	}
+	XFree(hints);
+}
+static gboolean gtk4_x11_event_callback(GdkX11Display *display, XEvent *xevent, gpointer user_data) {
+	Window xid;
+	gint scale;
+	if(!main_window || !gtk4_x11_window(main_window, &xid, &scale)) {
+		return FALSE;
+	}
+	if(xevent->type == PropertyNotify && xevent->xproperty.atom == XA_WM_NORMAL_HINTS && xid == xevent->xproperty.window) {
+		// GTK 4 replaces WM_NORMAL_HINTS whenever the window's size constraints change. Restore pqiv's hints.
+		gtk4_x11_set_normal_hints(main_window, gtk4_window_state(main_window));
+	}
+	GdkSurface *surface = gtk_native_get_surface(GTK_NATIVE(main_window));
+	if(xevent->type == ConfigureNotify && xid == xevent->xconfigure.window && xid == xevent->xconfigure.event && xevent->xconfigure.width == gdk_surface_get_width(surface) * scale && xevent->xconfigure.height == gdk_surface_get_height(surface) * scale) {
+		// GTK 3 reports every ConfigureNotify, GTK 4 only the ones that change the window size
+		g_idle_add(gtk4_window_configure_callback, NULL);
+	}
+	return FALSE;
+}
+static void gtk4_x11_get_window_position(GtkWindow *window, gint *x, gint *y) {
+	Window xid, child;
+	gint scale;
+	Display *xdisplay = gtk4_x11_window(window, &xid, &scale);
+	if(xdisplay && XTranslateCoordinates(xdisplay, xid, DefaultRootWindow(xdisplay), 0, 0, x, y, &child)) {
+		*x /= scale;
+		*y /= scale;
+	}
+}
+#endif
+static void gtk4_window_compute_size_callback(GdkToplevel *toplevel, GdkToplevelSize *size, GtkWindow *window) {
+	// GTK 4 limits the window size to the monitor. GTK 3 requests the size pqiv
+	// asked for, and leaves limiting it to the window manager.
+	gtk4_window_state_t *state = gtk4_window_state(window);
+	if(state->size_requested) {
+		GtkWidget *child = gtk_window_get_child(window);
+		gdk_toplevel_size_set_size(size, state->width + gtk_widget_get_width(GTK_WIDGET(window)) - gtk_widget_get_width(child), state->height + gtk_widget_get_height(GTK_WIDGET(window)) - gtk_widget_get_height(child));
+	}
+}
+static void gtk4_window_realize_callback(GtkWindow *window, gtk4_window_state_t *state) {
+	// GtkWindow connects its handler on realization, too. This one runs after it.
+	g_signal_connect(gtk_native_get_surface(GTK_NATIVE(window)), "compute-size", G_CALLBACK(gtk4_window_compute_size_callback), window);
+	#ifdef GDK_WINDOWING_X11
+		Window xid;
+		gint scale;
+		Display *xdisplay = gtk4_x11_window(window, &xid, &scale);
+		if(!xdisplay) {
+			return;
+		}
+		if(state->type_hint) {
+			Atom type = XInternAtom(xdisplay, state->type_hint, False);
+			XChangeProperty(xdisplay, xid, XInternAtom(xdisplay, "_NET_WM_WINDOW_TYPE", False), XA_ATOM, 32, PropModeReplace, (guchar *)&type, 1);
+		}
+		// Hints read when the window is mapped
+		GtkWindow *parent = gtk_window_get_transient_for(window);
+		GtkWindowPosition position = state->position == GTK_WIN_POS_CENTER_ON_PARENT && (!parent || !gtk_widget_get_mapped(GTK_WIDGET(parent))) ? GTK_WIN_POS_NONE : state->position;
+		if(state->move_pending || position != GTK_WIN_POS_NONE) {
+			gint x = state->x, y = state->y;
+			if(!state->move_pending) {
+				gint width, height;
+				gtk_window_get_default_size(window, &width, &height);
+				if(width <= 0 || height <= 0) {
+					gtk_widget_measure(GTK_WIDGET(window), GTK_ORIENTATION_HORIZONTAL, -1, NULL, &width, NULL, NULL);
+					gtk_widget_measure(GTK_WIDGET(window), GTK_ORIENTATION_VERTICAL, width, NULL, &height, NULL, NULL);
+				}
+				if(position == GTK_WIN_POS_CENTER_ON_PARENT) {
+					// Like GTK 3, clamped onto the parent's monitor
+					gtk4_x11_get_window_position(parent, &x, &y);
+					x += (gtk_widget_get_width(GTK_WIDGET(parent)) - width) / 2;
+					y += (gtk_widget_get_height(GTK_WIDGET(parent)) - height) / 2;
+					GdkMonitor *monitor = gdk_display_get_monitor_at_surface(gtk_widget_get_display(GTK_WIDGET(parent)), gtk_native_get_surface(GTK_NATIVE(parent)));
+					if(monitor) {
+						GdkRectangle area;
+						gdk_monitor_get_geometry(monitor, &area);
+						x = width > area.width ? area.x + area.width / 2 - width / 2 : CLAMP(x, area.x, area.x + area.width - width);
+						y = height > area.height ? area.y + area.height / 2 - height / 2 : CLAMP(y, area.y, area.y + area.height - height);
+					}
+				}
+				else {
+					gtk4_x11_center_position(window, width, height, &x, &y);
+				}
+			}
+			XMoveWindow(xdisplay, xid, x * scale, y * scale);
+			state->position_hint = state->move_pending ? USPosition : PPosition;
+			state->x = x;
+			state->y = y;
+			state->move_pending = FALSE;
+		}
+		gtk4_x11_set_normal_hints(window, state);
+	#endif
+}
+static gtk4_window_state_t *gtk4_window_state(GtkWindow *window) {
+	gtk4_window_state_t *state = g_object_get_data(G_OBJECT(window), "pqiv-window-state");
+	if(!state) {
+		state = g_new0(gtk4_window_state_t, 1);
+		g_object_set_data_full(G_OBJECT(window), "pqiv-window-state", state, g_free);
+		g_signal_connect_after(window, "realize", G_CALLBACK(gtk4_window_realize_callback), state);
+		if(gtk_widget_get_realized(GTK_WIDGET(window))) {
+			gtk4_window_realize_callback(window, state);
+		}
+	}
+	return state;
+}
+static void gtk4_window_move(GtkWindow *window, gint x, gint y) {
+	gtk4_window_state_t *state = gtk4_window_state(window);
+	#ifdef GDK_WINDOWING_X11
+		Window xid;
+		gint scale;
+		Display *xdisplay = gtk4_x11_window(window, &xid, &scale);
+		if(xdisplay) {
+			XMoveWindow(xdisplay, xid, x * scale, y * scale);
+			return;
+		}
+	#endif
+	if(!gtk_widget_get_realized(GTK_WIDGET(window))) {
+		state->move_pending = TRUE;
+		state->x = x;
+		state->y = y;
+	}
+}
+static void gtk4_window_center(GtkWindow *window, gint width, gint height) {
+	#ifdef GDK_WINDOWING_X11
+		gtk4_window_state_t *state = gtk4_window_state(window);
+		gint x, y;
+		Window xid;
+		gint scale;
+		if(gtk4_x11_window(window, &xid, &scale)) {
+			gtk4_x11_center_position(window, width, height, &x, &y);
+			// Like GTK 3, only move if this differs from the last request
+			if(x != state->x || y != state->y) {
+				gtk4_window_move(window, x, y);
+				state->x = x;
+				state->y = y;
+			}
+		}
+	#endif
+}
+static gboolean gtk4_window_center_pending_callback(gpointer window) {
+	gtk4_window_state_t *state = gtk4_window_state(GTK_WINDOW(window));
+	GtkWidget *child = gtk_window_get_child(GTK_WINDOW(window));
+	if(state->center_pending && gtk_widget_get_mapped(GTK_WIDGET(window)) && gtk_widget_get_width(child) > 0 && gtk_widget_get_height(child) > 0) {
+		gtk4_window_center(GTK_WINDOW(window), gtk_widget_get_width(child), gtk_widget_get_height(child));
+		state->center_pending = FALSE;
+	}
+	return FALSE;
+}
+static void gtk4_window_set_position(GtkWindow *window, GtkWindowPosition position) {
+	gtk4_window_state_t *state = gtk4_window_state(window);
+	state->position = position;
+	state->center_pending = position == GTK_WIN_POS_CENTER_ALWAYS;
+	if(state->center_pending) {
+		// Like GTK 3, center the window right after pqiv's current task, for
+		// the size requested in between, or else the current size. If the
+		// window does not have a size yet, when the window manager sets one.
+		g_idle_add_full(G_PRIORITY_HIGH, gtk4_window_center_pending_callback, g_object_ref(window), g_object_unref);
+	}
+}
+static void gtk4_window_set_default_size(GtkWindow *window, gint width, gint height) {
+	// For gtk4_window_compute_size_callback()
+	gtk4_window_state_t *state = gtk4_window_state(window);
+	state->width = width;
+	state->height = height;
+	state->size_requested = TRUE;
+	gtk_window_set_default_size(window, width, height);
+}
+static void gtk4_window_resize(GtkWindow *window, gint width, gint height) {
+	gtk4_window_state_t *state = gtk4_window_state(window);
+	// Like GTK 3, do not repeat a request
+	if(!gtk_widget_get_mapped(GTK_WIDGET(window)) || width != state->width || height != state->height) {
+		gtk4_window_set_default_size(window, width, height);
+		#ifdef GDK_WINDOWING_X11
+			// GTK 4 does not request a size it requested before, even if the window manager changed it since
+			Window xid;
+			gint scale;
+			Display *xdisplay = gtk4_x11_window(window, &xid, &scale);
+			if(xdisplay && gtk_widget_get_mapped(GTK_WIDGET(window))) {
+				// The X window has the size of the GtkWindow, which includes any CSD
+				GtkWidget *child = gtk_window_get_child(window);
+				XResizeWindow(xdisplay, xid, (width + gtk_widget_get_width(GTK_WIDGET(window)) - gtk_widget_get_width(child)) * scale, (height + gtk_widget_get_height(GTK_WIDGET(window)) - gtk_widget_get_height(child)) * scale);
+			}
+		#endif
+	}
+	if(state->position == GTK_WIN_POS_CENTER_ALWAYS) {
+		gtk4_window_center(window, width, height);
+		state->center_pending = FALSE;
+	}
+}
+static void gtk4_window_set_geometry_hints(GtkWindow *window, GtkWidget *geometry_widget, GdkGeometry *geometry, gint geometry_mask) {
+	gtk4_window_state_t *state = gtk4_window_state(window);
+	state->geometry_mask = geometry_mask;
+	if(geometry) {
+		state->geometry = *geometry;
+	}
+	#ifdef GDK_WINDOWING_X11
+		gtk4_x11_set_normal_hints(window, state);
+	#endif
+}
+static void UNUSED_FUNCTION gtk4_window_set_type_hint(GtkWindow *window, const char *type_hint) {
+	gtk4_window_state(window)->type_hint = type_hint;
+}
+// While a motion event is handled, the pointer position it reports. GTK 4
+// delivers motion only once per frame, so the pointer has usually moved on
+// when pqiv warps it back; warping relative to the event keeps that movement.
+graphene_point_t *gtk4_motion_event_root = NULL;
+static void gtk4_device_warp(GdkDevice *device, GdkDisplay *display, gdouble x, gdouble y) {
+	#ifdef GDK_WINDOWING_X11
+		if(GDK_IS_X11_DISPLAY(display)) {
+			// Like GTK 3, in physical pixels
+			Display *xdisplay = gdk_x11_display_get_xdisplay(display);
+			if(gtk4_motion_event_root) {
+				XWarpPointer(xdisplay, None, None, 0, 0, 0, 0, round((x - gtk4_motion_event_root->x) * screen_scale_factor), round((y - gtk4_motion_event_root->y) * screen_scale_factor));
+				*gtk4_motion_event_root = GRAPHENE_POINT_INIT(x, y);
+				return;
+			}
+			XWarpPointer(xdisplay, None, DefaultRootWindow(xdisplay), 0, 0, 0, 0, round(x * screen_scale_factor), round(y * screen_scale_factor));
+		}
+	#endif
+}
+#define gtk_window_move gtk4_window_move
+#define gtk_window_resize gtk4_window_resize
+#define gtk_window_set_default_size gtk4_window_set_default_size
+#define gtk_window_set_position gtk4_window_set_position
+#define gtk_window_set_geometry_hints gtk4_window_set_geometry_hints
+#define gtk_window_set_type_hint gtk4_window_set_type_hint
+#define gdk_device_warp gtk4_device_warp
+static GdkSurface *gtk4_surface_get_device_position(GdkSurface *surface, GdkDevice *device, gint *x, gint *y, GdkModifierType *mask) {
+	gdouble surface_x, surface_y;
+	gdk_surface_get_device_position(surface, device, &surface_x, &surface_y, mask);
+	*x = round(surface_x);
+	*y = round(surface_y);
+	return surface;
+}
+#define gdk_window_get_device_position gtk4_surface_get_device_position
+
+// gtk_dialog_run(): Run a nested main loop until the dialog responds or is
+// closed. Like GTK 3, do not destroy the dialog if it is closed.
+typedef struct { GMainLoop *loop; gint response_id; } gtk4_dialog_run_t;
+static void gtk4_dialog_run_response_callback(GtkDialog *dialog, gint response_id, gpointer user_data) {
+	((gtk4_dialog_run_t *)user_data)->response_id = response_id;
+	g_main_loop_quit(((gtk4_dialog_run_t *)user_data)->loop);
+}
+static void gtk4_dialog_run_unmap_callback(GtkWidget *dialog, gpointer user_data) {
+	g_main_loop_quit(((gtk4_dialog_run_t *)user_data)->loop);
+}
+static gint UNUSED_FUNCTION gtk4_dialog_run(GtkDialog *dialog) {
+	gtk4_dialog_run_t run = { g_main_loop_new(NULL, FALSE), GTK_RESPONSE_NONE };
+	gboolean hide_on_close = gtk_window_get_hide_on_close(GTK_WINDOW(dialog));
+	gtk_window_set_hide_on_close(GTK_WINDOW(dialog), TRUE);
+	gulong response_handler = g_signal_connect(dialog, "response", G_CALLBACK(gtk4_dialog_run_response_callback), &run);
+	gulong unmap_handler = g_signal_connect(dialog, "unmap", G_CALLBACK(gtk4_dialog_run_unmap_callback), &run);
+	g_object_ref(dialog);
+	gtk_widget_show(GTK_WIDGET(dialog));
+	g_main_loop_run(run.loop);
+	g_signal_handler_disconnect(dialog, response_handler);
+	g_signal_handler_disconnect(dialog, unmap_handler);
+	gtk_window_set_hide_on_close(GTK_WINDOW(dialog), hide_on_close);
+	g_object_unref(dialog);
+	g_main_loop_unref(run.loop);
+	return run.response_id;
+}
+#define gtk_dialog_run gtk4_dialog_run
+static UNUSED_FUNCTION GtkWidget *gtk4_dialog_new(GtkWidget *dialog) {
+	gtk_window_set_position(GTK_WINDOW(dialog), GTK_WIN_POS_CENTER_ON_PARENT); // GTK 3's default for dialogs
+	return dialog;
+}
+#define gtk_dialog_new_with_buttons(...) gtk4_dialog_new(gtk_dialog_new_with_buttons(__VA_ARGS__))
+
+#define gtk_init_check(argc, argv) gtk_init_check() // GTK 4 does not parse the command line
+#endif // }}}
 
 // Exit status of pqiv; set to 1 if pqiv quits because no images are left
 int exit_status = 0;
@@ -1342,7 +1885,9 @@ void parse_command_line() {/*{{{*/
 	g_option_context_set_help_enabled(parser, TRUE);
 	g_option_context_set_ignore_unknown_options(parser, FALSE);
 	g_option_context_add_main_entries(parser, options, NULL);
+#if GTK_MAJOR_VERSION < 4
 	g_option_context_add_group(parser, gtk_get_option_group(TRUE));
+#endif
 
 	GError *error_pointer = NULL;
 	if(g_option_context_parse(parser, &global_argc, &global_argv, &error_pointer) == FALSE) {
@@ -3632,8 +4177,12 @@ gboolean apply_external_image_filter_show_output_window(gpointer text) {/*{{{*/
 	gtk_window_set_destroy_with_parent(GTK_WINDOW(output_window), TRUE);
 	gtk_window_set_type_hint(GTK_WINDOW(output_window), GDK_WINDOW_TYPE_HINT_DIALOG);
 	gtk_widget_set_size_request(output_window, 400, 480);
+#if GTK_MAJOR_VERSION >= 4
+	gtk4_add_event_controllers(output_window, window_key_press_close_handler_callback, NULL, NULL, NULL);
+#else
 	g_signal_connect(output_window, "key-press-event",
 			G_CALLBACK(window_key_press_close_handler_callback), NULL);
+#endif
 	GtkWidget *output_scroller = gtk_scrolled_window_new(NULL, NULL);
 	gtk_container_add(GTK_CONTAINER(output_window), output_scroller);
 	gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(output_scroller),
@@ -4188,11 +4737,15 @@ void do_jump_dialog() { /* {{{ */
 		NULL);
 
 	GtkWidget *search_entry = gtk_entry_new();
+#if GTK_MAJOR_VERSION >= 4
+	gtk_box_append(GTK_BOX(gtk_dialog_get_content_area(GTK_DIALOG(dlg_window))), search_entry);
+#else
 	gtk_box_pack_start(GTK_BOX(gtk_dialog_get_content_area(GTK_DIALOG(dlg_window))),
 		search_entry,
 		FALSE,
 		TRUE,
 		0);
+#endif
 
 	// Build list for searching
 	GtkListStore *search_list = gtk_list_store_new(3, G_TYPE_LONG, G_TYPE_STRING, G_TYPE_POINTER);
@@ -4237,11 +4790,16 @@ void do_jump_dialog() { /* {{{ */
 	GtkWidget *scroll_bar = gtk_scrolled_window_new(NULL, NULL);
 	gtk_container_add(GTK_CONTAINER(scroll_bar),
 		search_list_box);
+#if GTK_MAJOR_VERSION >= 4
+	gtk_widget_set_vexpand(scroll_bar, TRUE);
+	gtk_box_append(GTK_BOX(gtk_dialog_get_content_area(GTK_DIALOG(dlg_window))), scroll_bar);
+#else
 	gtk_box_pack_end(GTK_BOX(gtk_dialog_get_content_area(GTK_DIALOG(dlg_window))),
 		scroll_bar,
 		TRUE,
 		TRUE,
 		0);
+#endif
 
 	// Jump to active image
 	GtkTreePath *goto_active_path = gtk_tree_path_new_from_indices(bostree_rank(current_file_node), -1);
@@ -4256,9 +4814,14 @@ void do_jump_dialog() { /* {{{ */
 
 	// Show dialog
 	g_signal_connect(search_entry, "changed", G_CALLBACK(jump_dialog_entry_changed_callback), search_list_box);
+#if GTK_MAJOR_VERSION >= 4
+	gtk4_add_event_controllers(search_entry, jump_dialog_exit_on_enter_callback, NULL, NULL, dlg_window);
+	gtk4_add_event_controllers(search_list_box, jump_dialog_exit_on_enter_callback, jump_dialog_exit_on_dbl_click_callback, NULL, dlg_window);
+#else
 	g_signal_connect(search_entry, "key-press-event", G_CALLBACK(jump_dialog_exit_on_enter_callback), dlg_window);
 	g_signal_connect(search_list_box, "key-press-event", G_CALLBACK(jump_dialog_exit_on_enter_callback), dlg_window);
 	g_signal_connect(search_list_box, "button-press-event", G_CALLBACK(jump_dialog_exit_on_dbl_click_callback), dlg_window);
+#endif
 	gtk_widget_set_size_request(dlg_window, 640, 480);
 	gtk_widget_show_all(dlg_window);
 
@@ -6968,7 +7531,11 @@ gboolean window_configure_callback(GtkWidget *widget, GdkEventConfigure *event, 
 		if(main_window_width != old_main_window_width || main_window_height != old_main_window_height) {
 			set_scale_level_to_fit();
 		}
+#if GTK_MAJOR_VERSION >= 4
+		gtk_widget_queue_draw(GTK_WIDGET(main_window));
+#else
 		gdk_window_invalidate_rect(gtk_widget_get_window(GTK_WIDGET(main_window)), NULL, TRUE);
+#endif
 		queue_draw();
 
 		// We need to redraw in old GTK versions to avoid artifacts
@@ -7085,12 +7652,17 @@ void handle_input_event(guint key_binding_value) {/*{{{*/
 #endif
 }/*}}}*/
 gboolean window_key_press_callback(GtkWidget *widget, GdkEventKey *event, gpointer user_data) {/*{{{*/
+#if GTK_MAJOR_VERSION >= 4
+	// GTK 4 translates the key itself
+	handle_input_event(KEY_BINDING_VALUE(0, event->state & ~event->consumed_modifiers, event->keyval));
+#else
 	GdkKeymap *keymap = gdk_keymap_get_for_display(gtk_widget_get_display(GTK_WIDGET(main_window)));
 	guint keyval;
 	GdkModifierType consumed;
 
 	gdk_keymap_translate_keyboard_state(keymap, event->hardware_keycode, event->state, event->group, &keyval, NULL, NULL, &consumed);
 	handle_input_event(KEY_BINDING_VALUE(0, event->state & ~consumed, keyval));
+#endif
 	return FALSE;
 }/*}}}*/
 void window_center_mouse() {/*{{{*/
@@ -7290,6 +7862,11 @@ void window_hide_cursor() {/*{{{*/
 	if(!main_window_visible) {
 		return;
 	}
+	#if GTK_MAJOR_VERSION >= 4
+	// GTK 4 manages the cursor per widget
+	gtk_widget_set_cursor_from_name(GTK_WIDGET(main_window), "none");
+	cursor_visible = FALSE;
+	#else
 	GdkDisplay *display = gtk_widget_get_display(GTK_WIDGET(main_window));
 	#if GTK_CHECK_VERSION(3, 10, 0)
 	// The nice version for obtaining a blank cursor is this:
@@ -7312,16 +7889,22 @@ void window_hide_cursor() {/*{{{*/
 	#if GTK_MAJOR_VERSION >= 3 && !GTK_CHECK_VERSION(3, 10, 0)
 		g_object_unref(cursor);
 	#endif
+	#endif
 }/*}}}*/
 void window_show_cursor() {/*{{{*/
 	if(!main_window_visible) {
 		return;
 	}
+	#if GTK_MAJOR_VERSION >= 4
+	gtk_widget_set_cursor(GTK_WIDGET(main_window), NULL);
+	cursor_visible = TRUE;
+	#else
 	GdkWindow *window = gtk_widget_get_window(GTK_WIDGET(main_window));
 	if(window) {
 		gdk_window_set_cursor(window, NULL);
 		cursor_visible = TRUE;
 	}
+	#endif
 }/*}}}*/
 gboolean window_state_into_fullscreen_actions(gpointer user_data) {/*{{{*/
 	if(user_data == NULL) {
@@ -7402,7 +7985,16 @@ gboolean window_state_callback(GtkWidget *widget, GdkEventWindowState *event, gp
 }/*}}}*/
 void window_screen_activate_rgba() {/*{{{*/
 	GdkScreen *screen = gtk_widget_get_screen(GTK_WIDGET(main_window));
-	#if GTK_MAJOR_VERSION >= 3
+	#if GTK_MAJOR_VERSION >= 4
+		// GTK 4 windows are transparent where the display supports it, except for the theme's background
+		static GtkCssProvider *css_provider = NULL;
+		if(!css_provider) {
+			css_provider = gtk_css_provider_new();
+			gtk_css_provider_load_from_data(css_provider, "window.pqiv-transparent-background { background: none; }", -1);
+			gtk_style_context_add_provider_for_display(screen, GTK_STYLE_PROVIDER(css_provider), GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
+		}
+		gtk_widget_add_css_class(GTK_WIDGET(main_window), "pqiv-transparent-background");
+	#elif GTK_MAJOR_VERSION >= 3
 		GdkVisual *visual = gdk_screen_get_rgba_visual(screen);
 		if (visual == NULL) {
 			visual = gdk_screen_get_system_visual(screen);
@@ -7426,7 +8018,14 @@ void window_screen_window_manager_changed_callback(gpointer user_data) {/*{{{*/
 		GdkScreen *screen = GDK_SCREEN(user_data);
 
 		// TODO Would _NET_WM_ALLOWED_ACTIONS -> _NET_WM_ACTION_RESIZE and _NET_WM_ACTION_FULLSCREEN  be a better choice here?
-		#if GTK_MAJOR_VERSION >= 3
+		#if GTK_MAJOR_VERSION >= 4
+			if(GDK_IS_X11_DISPLAY(screen)) {
+				GdkX11Screen *x11_screen = gdk_x11_display_get_screen(screen);
+				wm_supports_fullscreen = gdk_x11_screen_supports_net_wm_hint(x11_screen, "_NET_WM_STATE_FULLSCREEN");
+				wm_supports_moveresize = gdk_x11_screen_supports_net_wm_hint(x11_screen, "_NET_MOVERESIZE_WINDOW");
+				wm_supports_framedrawn = gdk_x11_screen_supports_net_wm_hint(x11_screen, "_NET_WM_FRAME_DRAWN");
+			}
+		#elif GTK_MAJOR_VERSION >= 3
 			if(GDK_IS_X11_SCREEN(screen)) {
 				wm_supports_fullscreen = gdk_x11_screen_supports_net_wm_hint(screen, gdk_x11_xatom_to_atom(gdk_x11_get_xatom_by_name("_NET_WM_STATE_FULLSCREEN")));
 				wm_supports_moveresize = gdk_x11_screen_supports_net_wm_hint(screen, gdk_x11_xatom_to_atom(gdk_x11_get_xatom_by_name("_NET_MOVERESIZE_WINDOW")));
@@ -7444,7 +8043,11 @@ void window_screen_changed_callback(GtkWidget *widget, GdkScreen *previous_scree
 	GdkWindow *window = gtk_widget_get_window(GTK_WIDGET(main_window));
 
 	#if defined(GDK_WINDOWING_X11)
-		#if GTK_CHECK_VERSION(3, 0, 0)
+		#if GTK_MAJOR_VERSION >= 4
+			if(GDK_IS_X11_DISPLAY(screen)) {
+				g_signal_connect_swapped(gdk_x11_display_get_screen(screen), "window-manager-changed", G_CALLBACK(window_screen_window_manager_changed_callback), screen);
+			}
+		#elif GTK_CHECK_VERSION(3, 0, 0)
 			if(GDK_IS_X11_DISPLAY(gdk_screen_get_display(screen))) {
 				g_signal_connect(screen, "window-manager-changed", G_CALLBACK(window_screen_window_manager_changed_callback), screen);
 			}
@@ -7457,6 +8060,12 @@ void window_screen_changed_callback(GtkWidget *widget, GdkScreen *previous_scree
 	#if GTK_CHECK_VERSION(3, 22, 0)
 		GdkDisplay *display = gdk_window_get_display(window);
 		GdkMonitor *monitor = gdk_display_get_monitor_at_window(display, window);
+		#if GTK_MAJOR_VERSION >= 4
+			if(!monitor) {
+				// GTK 4 may not know the monitor before the window is mapped
+				return;
+			}
+		#endif
 
 		static GdkMonitor *old_monitor = NULL;
 		if(old_monitor != NULL && option_transparent_background) {
@@ -7496,6 +8105,18 @@ void window_screen_changed_callback(GtkWidget *widget, GdkScreen *previous_scree
 	#endif
 }/*}}}*/
 void window_realize_callback(GtkWidget *widget, gpointer user_data) {/*{{{*/
+#if GTK_MAJOR_VERSION >= 4
+	// pqiv draws into a drawing area besides the CSD, which leaves the CSD dimensions at 0.
+	// GTK 4 has no configure events; the surface reports monitor changes instead.
+	g_signal_connect_swapped(gtk_widget_get_window(widget), "enter-monitor", G_CALLBACK(window_screen_changed_callback), NULL);
+	#if defined(GDK_WINDOWING_X11)
+	if(!GDK_IS_X11_DISPLAY(gtk_widget_get_display(widget)))
+	#endif
+	{
+		// See gtk4_window_configure_callback(). On X11, gtk4_x11_event_callback() does this.
+		g_signal_connect(gtk_widget_get_window(widget), "layout", G_CALLBACK(window_layout_callback_gtk4), NULL);
+	}
+#else
 	// Compute CSD dimensions
 	// If the theme changes while pqiv is running, this breaks, but that should rarely happen
 	GtkAllocation box_allocation, window_allocation;
@@ -7509,6 +8130,7 @@ void window_realize_callback(GtkWidget *widget, gpointer user_data) {/*{{{*/
 	csd_width = csd_left + csd_right;
 	gtk_widget_destroy(main_window_box);
 	main_window_box = NULL;
+#endif
 
 	// Transition to fullscreen if that was requested
 	if(option_start_fullscreen) {
@@ -7540,6 +8162,135 @@ void window_realize_callback(GtkWidget *widget, gpointer user_data) {/*{{{*/
 		set_cursor_auto_hide_mode(TRUE);
 	}
 }/*}}}*/
+#if GTK_MAJOR_VERSION >= 4
+// Adapters from GTK 4's signals and event controllers to the GTK 3 style handlers above {{{
+void window_draw_callback_gtk4(GtkDrawingArea *area, cairo_t *cr, int width, int height, gpointer user_data) {
+	window_draw_callback(GTK_WIDGET(area), cr, user_data);
+}
+void window_resize_callback_gtk4(GtkDrawingArea *area, int width, int height, gpointer user_data) {
+	gtk4_window_state_t *state = gtk4_window_state(main_window);
+	if((width != state->width || height != state->height) && width > 0 && height > 0) {
+		// The window manager or the user chose a different size. Stop requesting pqiv's.
+		state->size_requested = FALSE;
+		if(state->center_pending) {
+			// See gtk4_window_set_position()
+			gtk4_window_center(main_window, width, height);
+			state->center_pending = FALSE;
+		}
+		GdkSurface *surface = gtk_native_get_surface(GTK_NATIVE(main_window));
+		if((state->geometry_mask & GDK_HINT_ASPECT) && surface && !(gdk_toplevel_get_state(GDK_TOPLEVEL(surface)) & (GDK_TOPLEVEL_STATE_FULLSCREEN | GDK_TOPLEVEL_STATE_MAXIMIZED | GDK_TOPLEVEL_STATE_TILED))) {
+			// Like GTK 3, enforce the aspect ratio if the window manager or compositor did not
+			gint new_width = width, new_height = height;
+			if(state->geometry.min_aspect * new_height > new_width) {
+				new_height -= (gint)(new_height - new_width / state->geometry.min_aspect);
+			}
+			if(state->geometry.max_aspect * new_height < new_width) {
+				new_width -= (gint)(new_width - new_height * state->geometry.max_aspect);
+			}
+			if(new_width != width || new_height != height) {
+				gtk_window_resize(main_window, MAX(new_width, 1), MAX(new_height, 1));
+			}
+		}
+	}
+	// GTK 3 reports the window position as well. Like GTK 3 on Wayland, report 0, 0 there.
+	GdkEventConfigure event = { 0, 0, width, height };
+	#if defined(GDK_WINDOWING_X11)
+		gtk4_x11_get_window_position(main_window, &event.x, &event.y);
+	#endif
+	window_configure_callback(GTK_WIDGET(main_window), &event, NULL);
+}
+gboolean gtk4_window_configure_callback(gpointer user_data) {
+	// GTK 3 reports a configure event whenever the window manager or compositor
+	// configures the window, even if its size does not change, e.g. if it is
+	// tiled or maximized. GTK 4 only reports size changes, the others are
+	// reported from here.
+	if(main_window_area) {
+		window_resize_callback_gtk4(GTK_DRAWING_AREA(main_window_area), gtk_widget_get_width(main_window_area), gtk_widget_get_height(main_window_area), NULL);
+	}
+	return FALSE;
+}
+void window_layout_callback_gtk4(GdkSurface *surface, int width, int height, gpointer user_data) {
+	// Like GTK 3, before reporting a state change, see window_fullscreened_callback_gtk4()
+	static int old_width, old_height;
+	if(width == old_width && height == old_height) {
+		gtk4_window_configure_callback(NULL);
+	}
+	old_width = width;
+	old_height = height;
+}
+void window_fullscreened_callback_gtk4(GObject *object, GParamSpec *pspec, gpointer user_data);
+void window_fullscreened_layout_callback_gtk4(GdkSurface *surface, int width, int height, gpointer user_data) {
+	PQIV_DISABLE_PEDANTIC
+	g_signal_handlers_disconnect_by_func(surface, G_CALLBACK(window_fullscreened_layout_callback_gtk4), NULL);
+	PQIV_ENABLE_PEDANTIC
+	window_fullscreened_callback_gtk4(NULL, NULL, surface);
+}
+void window_fullscreened_callback_gtk4(GObject *object, GParamSpec *pspec, gpointer user_data) {
+	if(object && object != G_OBJECT(main_window)) {
+		// A window that recreate_window() destroyed
+		return;
+	}
+	#if defined(GDK_WINDOWING_X11)
+	if(!GDK_IS_X11_DISPLAY(gtk_widget_get_display(GTK_WIDGET(main_window))))
+	#endif
+	if(!user_data && gtk_native_get_surface(GTK_NATIVE(main_window))) {
+		// On Wayland, GTK 3 reports the new window size before the new state,
+		// GTK 4 in the next layout. Report the state after that.
+		g_signal_connect_after(gtk_native_get_surface(GTK_NATIVE(main_window)), "layout", G_CALLBACK(window_fullscreened_layout_callback_gtk4), NULL);
+		return;
+	}
+	// The window manager may restore an older size when the fullscreen state
+	// changes. GTK 3 then requests pqiv's size again, see gtk4_window_resize().
+	gtk4_window_state_t *state = gtk4_window_state(main_window);
+	state->width = state->height = 0;
+	state->size_requested = FALSE;
+	GdkEventWindowState event = { GDK_WINDOW_STATE_FULLSCREEN, gtk_window_is_fullscreen(main_window) ? GDK_WINDOW_STATE_FULLSCREEN : 0 };
+	window_state_callback(GTK_WIDGET(main_window), &event, NULL);
+	// GTK 3 redraws windows when their state changes, even if their size does not
+	gtk_widget_queue_draw(GTK_WIDGET(main_window));
+}
+void window_motion_callback_gtk4(GtkEventControllerMotion *controller, gdouble x, gdouble y, gpointer user_data) {
+	GdkModifierType state = gtk_event_controller_get_current_event_state(GTK_EVENT_CONTROLLER(controller));
+	// GTK 3 reports root coordinates as well. Like GTK 3 on Wayland, use the window's there.
+	GdkEventMotion event = { x, y, x, y, state };
+	#if defined(GDK_WINDOWING_X11)
+		gint window_x = 0, window_y = 0;
+		gtk4_x11_get_window_position(main_window, &window_x, &window_y);
+		event.x_root += window_x;
+		event.y_root += window_y;
+	#endif
+	// GTK 3 reports motion over a GtkWindow twice, once to let the window
+	// handle window manager gestures, see _gtk_window_check_handle_wm_event().
+	// Dragging in fullscreen moves twice as fast because of that.
+	graphene_point_t event_root = GRAPHENE_POINT_INIT(event.x_root, event.y_root);
+	gtk4_motion_event_root = &event_root;
+	window_motion_notify_callback(GTK_WIDGET(main_window), &event, NULL);
+	window_motion_notify_callback(GTK_WIDGET(main_window), &event, NULL);
+	gtk4_motion_event_root = NULL;
+}
+gboolean window_scroll_callback_gtk4(GtkEventControllerScroll *controller, gdouble dx, gdouble dy, gpointer user_data) {
+	// GTK 3 reports each step as an event of its own
+	GdkEventScroll event = { GDK_SCROLL_UP, gtk_event_controller_get_current_event_state(GTK_EVENT_CONTROLLER(controller)) };
+	for(; dy < -.5; dy += 1.) {
+		event.direction = GDK_SCROLL_UP;
+		window_scroll_callback(GTK_WIDGET(main_window), &event, NULL);
+	}
+	for(; dy > .5; dy -= 1.) {
+		event.direction = GDK_SCROLL_DOWN;
+		window_scroll_callback(GTK_WIDGET(main_window), &event, NULL);
+	}
+	for(; dx < -.5; dx += 1.) {
+		event.direction = GDK_SCROLL_LEFT;
+		window_scroll_callback(GTK_WIDGET(main_window), &event, NULL);
+	}
+	for(; dx > .5; dx -= 1.) {
+		event.direction = GDK_SCROLL_RIGHT;
+		window_scroll_callback(GTK_WIDGET(main_window), &event, NULL);
+	}
+	return TRUE;
+}
+// }}}
+#endif
 void create_window() { /*{{{*/
 	if(main_window != NULL) {
 		return;
@@ -7555,11 +8306,27 @@ void create_window() { /*{{{*/
 	main_window = GTK_WINDOW(gtk_window_new(GTK_WINDOW_TOPLEVEL));
 
 	g_signal_connect(main_window, "destroy", G_CALLBACK(window_close_callback), NULL);
-	#if GTK_MAJOR_VERSION < 3
+	#if GTK_MAJOR_VERSION >= 4
+		main_window_area = gtk_drawing_area_new();
+		gtk_window_set_child(main_window, main_window_area);
+		gtk_drawing_area_set_draw_func(GTK_DRAWING_AREA(main_window_area), window_draw_callback_gtk4, NULL, NULL);
+		g_signal_connect(main_window_area, "resize", G_CALLBACK(window_resize_callback_gtk4), NULL);
+		g_signal_connect(main_window, "notify::fullscreened", G_CALLBACK(window_fullscreened_callback_gtk4), NULL);
+		gtk4_add_event_controllers(GTK_WIDGET(main_window), window_key_press_callback, NULL, NULL, NULL);
+		gtk4_add_event_controllers(main_window_area, NULL, window_button_press_callback, window_button_release_callback, NULL);
+		GtkEventController *motion_controller = gtk_event_controller_motion_new();
+		g_signal_connect(motion_controller, "motion", G_CALLBACK(window_motion_callback_gtk4), NULL);
+		gtk_widget_add_controller(main_window_area, motion_controller);
+		// GTK 3 delivers discrete scroll events only, because pqiv does not request smooth ones
+		GtkEventController *scroll_controller = gtk_event_controller_scroll_new(GTK_EVENT_CONTROLLER_SCROLL_BOTH_AXES | GTK_EVENT_CONTROLLER_SCROLL_DISCRETE);
+		g_signal_connect(scroll_controller, "scroll", G_CALLBACK(window_scroll_callback_gtk4), NULL);
+		gtk_widget_add_controller(main_window_area, scroll_controller);
+	#elif GTK_MAJOR_VERSION < 3
 		g_signal_connect(main_window, "expose-event", G_CALLBACK(window_expose_callback), NULL);
 	#else
 		g_signal_connect(main_window, "draw", G_CALLBACK(window_draw_callback), NULL);
 	#endif
+	#if GTK_MAJOR_VERSION < 4
 	g_signal_connect(main_window, "configure-event", G_CALLBACK(window_configure_callback), NULL);
 	g_signal_connect(main_window, "key-press-event", G_CALLBACK(window_key_press_callback), NULL);
 	g_signal_connect(main_window, "scroll-event", G_CALLBACK(window_scroll_callback), NULL);
@@ -7568,8 +8335,10 @@ void create_window() { /*{{{*/
 	g_signal_connect(main_window, "button-press-event", G_CALLBACK(window_button_press_callback), NULL);
 	g_signal_connect(main_window, "button-release-event", G_CALLBACK(window_button_release_callback), NULL);
 	g_signal_connect(main_window, "window-state-event", G_CALLBACK(window_state_callback), NULL);
+	#endif
 	g_signal_connect(main_window, "realize", G_CALLBACK(window_realize_callback), NULL);
 
+	#if GTK_MAJOR_VERSION < 4
 	// Not used for anything except determining CSD dimensions
 	#if GTK_CHECK_VERSION(3, 2, 0)
 	main_window_box = GTK_WIDGET(gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0));
@@ -7577,6 +8346,7 @@ void create_window() { /*{{{*/
 	main_window_box = GTK_WIDGET(gtk_hbox_new(TRUE, 0));
 	#endif
 	gtk_container_add(GTK_CONTAINER(main_window), main_window_box);
+	#endif
 
 	gtk_widget_set_events(GTK_WIDGET(main_window),
 		GDK_EXPOSURE_MASK | GDK_SCROLL_MASK | GDK_BUTTON_MOTION_MASK |
@@ -7586,7 +8356,30 @@ void create_window() { /*{{{*/
 	// Initialize the screen geometry variable to the primary screen
 	// Useful if no WM is present
 	GdkScreen *screen = gdk_screen_get_default();
-	#if GTK_CHECK_VERSION(3, 22, 0)
+	#if GTK_MAJOR_VERSION >= 4
+		GdkDisplay *display = gdk_screen_get_display(screen);
+		GdkMonitor *monitor = g_list_model_get_item(gdk_display_get_monitors(display), 0);
+		g_object_unref(monitor); // The display keeps a reference
+		#if defined(GDK_WINDOWING_X11)
+			if(GDK_IS_X11_DISPLAY(display)) {
+				monitor = gdk_x11_display_get_primary_monitor(display);
+
+				// GTK 3 capitalizes the class part of WM_CLASS, GTK 4 does not
+				gchar *program_class = g_strdup(g_get_prgname());
+				program_class[0] = g_ascii_toupper(program_class[0]);
+				gdk_x11_display_set_program_class(display, program_class);
+				g_free(program_class);
+
+				static gboolean event_callback_connected = FALSE;
+				if(!event_callback_connected) {
+					g_signal_connect(display, "xevent", G_CALLBACK(gtk4_x11_event_callback), NULL);
+					event_callback_connected = TRUE;
+				}
+			}
+		#endif
+		gdk_monitor_get_geometry(monitor, &screen_geometry);
+		screen_scale_factor = gdk_monitor_get_scale_factor(monitor);
+	#elif GTK_CHECK_VERSION(3, 22, 0)
 		GdkDisplay *display = gdk_screen_get_display(screen);
 		GdkMonitor *monitor = gdk_display_get_primary_monitor(display);
 		if(!monitor) {
@@ -7624,7 +8417,9 @@ void create_window() { /*{{{*/
 #if GTK_MAJOR_VERSION < 3
 	gtk_widget_set_double_buffered(GTK_WIDGET(main_window), TRUE);
 #endif
+#if GTK_MAJOR_VERSION < 4
 	gtk_widget_set_app_paintable(GTK_WIDGET(main_window), TRUE);
+#endif
 
 	if(option_transparent_background) {
 		gtk_window_set_decorated(main_window, FALSE);
@@ -7726,7 +8521,7 @@ char *key_binding_sequence_to_string(guint key_binding_value, gchar *prefix) {/*
 		}
 	}
 	else {
-		char *keyval_name = gdk_keyval_name(keycode);
+		const char *keyval_name = gdk_keyval_name(keycode);
 		str_key = g_strdup_printf("%s%s%s%s%s ", prefix ? prefix : "", modifier, keyval_name && keyval_name[0] && !keyval_name[1] ? "" : "<", keyval_name, keyval_name && keyval_name[0] && !keyval_name[1] ? "" : ">");
 	}
 
@@ -8586,6 +9381,11 @@ int main(int argc, char *argv[]) {
 	parse_command_line();
 
 	if(!windowing_available) {
+		#if GTK_MAJOR_VERSION >= 4
+			// GTK 3 reports this from parse_command_line()
+			g_printerr("Cannot open display: \n");
+			return 1;
+		#endif
 		g_warn_if_reached(); // this should never be called because parse_command_line() calls gtk_init() again.
 		return 1;
 	}

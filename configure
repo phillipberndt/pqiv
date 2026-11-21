@@ -45,7 +45,7 @@ general options:
   --prefix=..           Set the prefix for installed files [/usr]
   --destdir=..          Set the destination prefix for "make install" [/]
   --libdir=..           Set the directory for shared libraries [\$PREFIX/lib]
-  --gtk-version=2       Use GTK+-2.0 even if GTK+-3.0 is available
+  --gtk-version=4|3|2   Select the GTK version to use [newest available]
   --cross=..            Set a cross-compiler prefix (e.g. \`i686-pc-mingw32-')
 
   Some of the usual autotools options are supported as well for advanced users.
@@ -293,6 +293,7 @@ if [ -z "$BACKENDS" ]; then
 fi
 
 echo -n "Checking if the prerequisites are installed.. "
+LIBS_GTK4="`$MAKE get_libs GTK_VERSION=4 EXECUTABLE_EXTENSION=$EXECUTABLE_EXTENSION ${PKG_CONFIG:+PKG_CONFIG="$PKG_CONFIG"} ${BACKENDS:+BACKENDS="$BACKENDS"} | awk '/^LIBS:/ {print substr($0, 7);}'`"
 LIBS_GTK3="`$MAKE get_libs GTK_VERSION=3 EXECUTABLE_EXTENSION=$EXECUTABLE_EXTENSION ${PKG_CONFIG:+PKG_CONFIG="$PKG_CONFIG"} ${BACKENDS:+BACKENDS="$BACKENDS"} | awk '/^LIBS:/ {print substr($0, 7);}'`"
 LIBS_GTK2="`$MAKE get_libs GTK_VERSION=2 EXECUTABLE_EXTENSION=$EXECUTABLE_EXTENSION ${PKG_CONFIG:+PKG_CONFIG="$PKG_CONFIG"} ${BACKENDS:+BACKENDS="$BACKENDS"} | awk '/^LIBS:/ {print substr($0, 7);}'`"
 
@@ -304,7 +305,18 @@ if [ $? != 0 ]; then
 	exit 1
 fi
 
-if ${PKG_CONFIG:-pkg-config} --exists "$LIBS_GTK3"; then
+if [ "$GTK_VERSION" != 2 -a "$GTK_VERSION" != 3 ] && ${PKG_CONFIG:-pkg-config} --exists "$LIBS_GTK4"; then
+	LIBS="${LIBS_GTK4}"
+	echo "ok"
+elif [ "$GTK_VERSION" = 4 ]; then
+	echo "failed."
+	echo
+	echo
+	echo "You manually specified --gtk-version=4, which was not found." >&2
+	echo "If you want GTK4, install the development packages for" >&2
+	echo " ${LIBS_GTK4}" >&2
+	exit 1
+elif ${PKG_CONFIG:-pkg-config} --exists "$LIBS_GTK3"; then
 	LIBS="${LIBS_GTK3}"
 	echo "ok"
 else
@@ -326,6 +338,8 @@ else
 		echo
 		echo
 		echo "Please install either the development packages for " >&2
+		echo " ${LIBS_GTK4}" >&2
+		echo "or for" >&2
 		echo " ${LIBS_GTK3}" >&2
 		echo "or for" >&2
 		echo " ${LIBS_GTK2}" >&2

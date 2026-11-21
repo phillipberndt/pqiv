@@ -212,7 +212,7 @@ void file_type_gdkpixbuf_load(file_t *file, GInputStream *data, GError **error_p
 				}
 			}
 
-			#if 0 && (GDK_MAJOR_VERSION == 3 && GDK_MINOR_VERSION >= 10) || (GDK_MAJOR_VERSION > 3)
+			#if 0 && ((GDK_MAJOR_VERSION == 3 && GDK_MINOR_VERSION >= 10) || (GDK_MAJOR_VERSION > 3))
 				// This function has a bug, see
 				// https://bugzilla.gnome.org/show_bug.cgi?id=736624
 				// We therefore have to use the below version even if this function is available.
