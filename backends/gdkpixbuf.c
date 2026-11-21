@@ -21,12 +21,17 @@
 #include "../pqiv.h"
 #include <math.h>
 
+// gdk-pixbuf 2.44 deprecated its animation API without a replacement. Keep
+// using it while it exists; without it, only load still images.
+#define GDKPIXBUF_ANIMATIONS (GDK_PIXBUF_MAJOR < 3)
+
 /* Default (GdkPixbuf) file type implementation {{{ */
 typedef struct {
 	// The surface where the image is stored. Only non-NULL for
 	// the current, previous and next image.
 	cairo_surface_t *image_surface;
 
+#if GDKPIXBUF_ANIMATIONS
 	// For file_type & FILE_FLAGS_ANIMATION, this stores the
 	// whole animation. As with the surface, this is only non-NULL
 	// for the current, previous and next image.
@@ -42,6 +47,7 @@ G_GNUC_BEGIN_IGNORE_DEPRECATIONS
 #if GLIB_CHECK_VERSION(2, 62, 0)
 G_GNUC_END_IGNORE_DEPRECATIONS
 #endif
+#endif
 } file_private_data_gdkpixbuf_t;
 
 BOSNode *file_type_gdkpixbuf_alloc(load_images_state_t state, file_t *file) {/*{{{*/
@@ -53,19 +59,25 @@ void file_type_gdkpixbuf_free(file_t *file) {/*{{{*/
 }/*}}}*/
 void file_type_gdkpixbuf_unload(file_t *file) {/*{{{*/
 	file_private_data_gdkpixbuf_t *private = file->private;
+#if GDKPIXBUF_ANIMATIONS
 	if(private->pixbuf_animation != NULL) {
 		g_object_unref(private->pixbuf_animation);
 		private->pixbuf_animation = NULL;
 	}
+#endif
 	if(private->image_surface != NULL) {
 		cairo_surface_destroy(private->image_surface);
 		private->image_surface = NULL;
 	}
+#if GDKPIXBUF_ANIMATIONS
 	if(private->animation_iter != NULL) {
 		g_object_unref(private->animation_iter);
 		private->animation_iter = NULL;
 	}
+#endif
 }/*}}}*/
+#if GDKPIXBUF_ANIMATIONS
+G_GNUC_BEGIN_IGNORE_DEPRECATIONS
 double file_type_gdkpixbuf_animation_initialize(file_t *file) {/*{{{*/
 	file_private_data_gdkpixbuf_t *private = file->private;
 	if(private->animation_iter == NULL) {
@@ -108,12 +120,16 @@ double file_type_gdkpixbuf_animation_next_frame(file_t *file) {/*{{{*/
 
 	return gdk_pixbuf_animation_iter_get_delay_time(private->animation_iter);
 }/*}}}*/
+G_GNUC_END_IGNORE_DEPRECATIONS
+#endif
 gboolean file_type_gdkpixbuf_load_destroy_old_image_callback(gpointer old_surface) {/*{{{*/
 	cairo_surface_destroy((cairo_surface_t *)old_surface);
 	return FALSE;
 }/*}}}*/
 void file_type_gdkpixbuf_load(file_t *file, GInputStream *data, GError **error_pointer) {/*{{{*/
 	file_private_data_gdkpixbuf_t *private = (file_private_data_gdkpixbuf_t *)file->private;
+#if GDKPIXBUF_ANIMATIONS
+G_GNUC_BEGIN_IGNORE_DEPRECATIONS
 	GdkPixbufAnimation *pixbuf_animation = NULL;
 
 	#if (GDK_PIXBUF_MAJOR > 2 || (GDK_PIXBUF_MAJOR == 2 && GDK_PIXBUF_MINOR >= 28))
@@ -166,6 +182,10 @@ void file_type_gdkpixbuf_load(file_t *file, GInputStream *data, GError **error_p
 
 	GdkPixbuf *pixbuf = g_object_ref(gdk_pixbuf_animation_get_static_image(pixbuf_animation));
 	g_object_unref(pixbuf_animation);
+G_GNUC_END_IGNORE_DEPRECATIONS
+#else
+	GdkPixbuf *pixbuf = gdk_pixbuf_new_from_stream(data, image_loader_cancellable, error_pointer);
+#endif
 
 	if(pixbuf != NULL) {
 		GdkPixbuf *new_pixbuf = gdk_pixbuf_apply_embedded_orientation(pixbuf);
@@ -287,8 +307,10 @@ void file_type_gdkpixbuf_initializer(file_type_handler_t *info) {/*{{{*/
 	info->free_fn                  =  file_type_gdkpixbuf_free;
 	info->load_fn                  =  file_type_gdkpixbuf_load;
 	info->unload_fn                =  file_type_gdkpixbuf_unload;
+#if GDKPIXBUF_ANIMATIONS
 	info->animation_initialize_fn  =  file_type_gdkpixbuf_animation_initialize;
 	info->animation_next_frame_fn  =  file_type_gdkpixbuf_animation_next_frame;
+#endif
 	info->draw_fn                  =  file_type_gdkpixbuf_draw;
 }/*}}}*/
 /* }}} */
