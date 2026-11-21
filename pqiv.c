@@ -198,6 +198,7 @@ gint csd_left, csd_right, csd_top, csd_bottom, csd_height, csd_width;
 gint requested_main_window_resize_pos_callback_id = -1;
 gint requested_main_window_width = -1;
 gint requested_main_window_height = -1;
+gboolean requested_main_window_fit = FALSE;
 gboolean wm_ignores_size_requests = FALSE;
 
 gint main_window_width = 10;
@@ -2679,6 +2680,7 @@ gboolean main_window_resize_callback(gpointer user_data) {/*{{{*/
 	if(main_window_width >= 0 && abs(main_window_width - new_window_width) + abs(main_window_height - new_window_height) > 1) {
 		requested_main_window_width = new_window_width + csd_width;
 		requested_main_window_height = new_window_height + csd_height;
+		requested_main_window_fit = TRUE;
 		gtk_window_resize(main_window, new_window_width / screen_scale_factor, new_window_height / screen_scale_factor);
 	}
 
@@ -2804,6 +2806,7 @@ void main_window_adjust_for_image() {/*{{{*/
 			main_window_height = new_window_height;
 			requested_main_window_width = new_window_width;
 			requested_main_window_height = new_window_height;
+			requested_main_window_fit = TRUE;
 
 			// Some window managers create a race here upon application startup:
 			// They resize, as requested above, and afterwards apply their idea of
@@ -2817,6 +2820,7 @@ void main_window_adjust_for_image() {/*{{{*/
 
 			requested_main_window_width = new_window_width;
 			requested_main_window_height = new_window_height;
+			requested_main_window_fit = TRUE;
 			if(option_enforce_window_aspect_ratio) {
 				gtk_window_set_geometry_hints(main_window, NULL, &hints, GDK_HINT_ASPECT);
 			}
@@ -2830,6 +2834,12 @@ void main_window_adjust_for_image() {/*{{{*/
 				gtk_window_set_geometry_hints(main_window, NULL, &hints, GDK_HINT_ASPECT);
 			}
 #endif
+		}
+
+		// A tiling WM keeps the window size. GTK might not even report that, so
+		// scale the image to the window right away.
+		if(wm_ignores_size_requests && main_window_visible) {
+			set_scale_level_to_fit();
 		}
 
 		// In theory, we do not need to draw manually here. The resizing will
@@ -4172,6 +4182,7 @@ gboolean window_key_press_close_handler_callback(GtkWidget *widget, GdkEventKey 
 gboolean apply_external_image_filter_show_output_window(gpointer text) {/*{{{*/
 	GtkWidget *output_window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
 	gtk_window_set_title(GTK_WINDOW(output_window), "Command output");
+	gtk_window_set_transient_for(GTK_WINDOW(output_window), main_window);
 	gtk_window_set_position(GTK_WINDOW(output_window), GTK_WIN_POS_CENTER_ON_PARENT);
 	gtk_window_set_modal(GTK_WINDOW(output_window), TRUE);
 	gtk_window_set_destroy_with_parent(GTK_WINDOW(output_window), TRUE);
@@ -6231,6 +6242,9 @@ void set_scale_level_to_fit() {/*{{{*/
 		if(fabs(new_scale_level - current_scale_level) > DBL_EPSILON) {
 			current_scale_level = new_scale_level;
 			invalidate_current_scaled_image_surface();
+			D_UNLOCK(file_tree);
+			update_info_text(NULL);
+			return;
 		}
 	}
 	D_UNLOCK(file_tree);
@@ -6422,6 +6436,7 @@ void action(pqiv_action_t action_id, pqiv_action_parameter_t parameter) {/*{{{*/
 				// Required to avoid tearing
 				requested_main_window_width = current_scale_level * image_width;
 				requested_main_window_height = current_scale_level * image_height;
+				requested_main_window_fit = FALSE;
 				window_prerender_background_pixmap(requested_main_window_width, requested_main_window_height, current_scale_level, main_window_in_fullscreen);
 				gtk_window_resize(main_window, current_scale_level * image_width / screen_scale_factor, current_scale_level * image_height / screen_scale_factor);
 				if(!wm_supports_moveresize) {
@@ -7493,9 +7508,13 @@ gboolean window_configure_callback(GtkWidget *widget, GdkEventConfigure *event, 
 	}
 
 	// Check whether the WM completely ignored our size request to detect tiling WMs
+	gboolean fit_to_window = FALSE;
 	if(requested_main_window_width >= 0) {
 		wm_ignores_size_requests = !(abs(event->width - requested_main_window_width) < 3 && abs(event->height - requested_main_window_height) < 3);
 		requested_main_window_width = -1;
+
+		// If the request was for the image's size, scale it to the window instead
+		fit_to_window = wm_ignores_size_requests && requested_main_window_fit;
 	}
 
 	if(wm_ignores_size_requests || (main_window_width != event->width - csd_width || main_window_height != event->height - csd_height)) {
@@ -7528,7 +7547,7 @@ gboolean window_configure_callback(GtkWidget *widget, GdkEventConfigure *event, 
 		}
 
 		// Rescale the image
-		if(main_window_width != old_main_window_width || main_window_height != old_main_window_height) {
+		if(main_window_width != old_main_window_width || main_window_height != old_main_window_height || fit_to_window) {
 			set_scale_level_to_fit();
 		}
 #if GTK_MAJOR_VERSION >= 4
@@ -7935,13 +7954,13 @@ gboolean window_state_out_of_fullscreen_actions(gpointer user_data) {/*{{{*/
 		current_shift_y = 0;
 		window_show_cursor();
 		set_cursor_auto_hide_mode(TRUE);
-		update_info_text(NULL);
 	}
 
 	// If the fullscreen state is left, readjust image placement/size/..
 	scale_override = FALSE;
 	set_scale_level_for_screen();
 	main_window_adjust_for_image();
+	update_info_text(NULL);
 	if(!main_window_visible) {
 		main_window_visible = TRUE;
 		gtk_widget_show_all(GTK_WIDGET(main_window));
