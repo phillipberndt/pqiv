@@ -29,7 +29,7 @@
 #include "lib/bostree.h"
 
 #ifndef PQIV_VERSION
-#define PQIV_VERSION "2.13.3"
+#define PQIV_VERSION "2.14"
 #endif
 
 #if GTK_MAJOR_VERSION >= 4

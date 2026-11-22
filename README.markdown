@@ -60,7 +60,7 @@ distribution packages are usually somewhat out of date:
 
 If you'd like to compile pqiv manually, you'll need
 
- * gtk+ 3.0 *or* gtk+ 2.6
+ * gtk 4.0 *or* gtk+ 3.0 *or* gtk+ 2.6
  * gdk-pixbuf 2.2 (included in gtk+)
  * glib 2.32 (with gvfs for opening URLs)
  * cairo 1.6
@@ -182,8 +182,10 @@ For some advanced uses of pqiv, take a look at these resouces:
 Changelog
 ---------
 
-pqiv (dev)
+pqiv (dev; targeting 2.14)
+ * Support gtk 4
  * Fix YUVJ deprecation warning for ffmpeg (fixes #266)
+ * Several crash and other bug fixes from automated code review
 
 pqiv 2.13.3
  * Fix ffmpeg 8.0 compatibility (fixes #258)
