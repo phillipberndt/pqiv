@@ -1,0 +1,84 @@
+option(
+    'gdkpixbuf',
+    type: 'feature',
+    value: 'auto',
+    description: 'Enable image support',
+)
+option(
+    'archive_cbx',
+    type: 'feature',
+    value: 'auto',
+    description: 'Enable *.cb? comic book archive support',
+)
+option(
+    'archive',
+    type: 'feature',
+    value: 'auto',
+    description: 'Enable eneric archive file support',
+)
+option(
+    'poppler',
+    type: 'feature',
+    value: 'auto',
+    description: 'Enable PDF support',
+)
+option(
+    'libav',
+    type: 'feature',
+    value: 'auto',
+    description: 'Enable video support with libav/ffmpeg',
+)
+option(
+    'spectre',
+    type: 'feature',
+    value: 'auto',
+    description: 'Enable PS/EPS support',
+)
+option(
+    'wand',
+    type: 'feature',
+    value: 'auto',
+    description: 'Enable various image format support with ImageMagick',
+)
+option(
+    'webp',
+    type: 'feature',
+    value: 'auto',
+    description: 'Enable WebP format support',
+)
+option(
+    'montage',
+    type: 'boolean',
+    value: true,
+    description: 'Enable thumbnail overview',
+)
+option(
+    'actions',
+    type: 'boolean',
+    value: true,
+    description: 'Enable configurable key/mouse bindings and actions',
+)
+option(
+    'external-commands',
+    type: 'boolean',
+    value: true,
+    description: 'Enable calling external programs',
+)
+option(
+    'jump-dialog',
+    type: 'boolean',
+    value: true,
+    description: 'Enable jump dialogue with -j',
+)
+option(
+    'info-text',
+    type: 'boolean',
+    value: true,
+    description: 'Enable support for info text',
+)
+option(
+    'build-shared',
+    type: 'boolean',
+    value: false,
+    description: 'Build backends in shared mode, for distribution purposes. Defaults to statically building backends in.',
+)

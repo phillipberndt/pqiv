@@ -20,6 +20,7 @@
 #define _GNU_SOURCE
 
 #include "pqiv.h"
+#include "config.h"
 #include "lib/config_parser.h"
 #include "lib/thumbnailcache.h"
 #include "lib/strnatcmp.h"
